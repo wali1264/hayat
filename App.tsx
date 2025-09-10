@@ -573,9 +573,9 @@ const ActivationScreen = ({ onActivate }: { onActivate: () => void }) => {
             }
             if (!newLicense) throw new Error('ثبت لایسنس با شکست مواجه شد.');
 
-            // Success
-            window.localStorage.setItem('hayat_isAppActivated', 'true');
-            window.localStorage.setItem('hayat_licenseId', newLicense.id);
+            // Success: Store items in localStorage using JSON.stringify for consistency with usePersistentState
+            window.localStorage.setItem('hayat_isAppActivated', JSON.stringify(true));
+            window.localStorage.setItem('hayat_licenseId', JSON.stringify(newLicense.id));
             window.localStorage.setItem('hayat_session', JSON.stringify(session));
 
             alert("برنامه با موفقیت فعال شد! برنامه مجددا راه‌اندازی می‌شود.");
@@ -848,9 +848,9 @@ const App: React.FC = () => {
     const handleBackupOnline = async () => {
         if (!licenseId) {
             alert("برای پشتیبان‌گیری آنلاین، ابتدا باید برنامه را فعال کنید.");
-            return;
+            return false;
         }
-        if (!window.confirm("آیا می‌خواهید یک نسخه پشتیبان آنلاین جدید ایجاد کنید؟")) return;
+        if (!window.confirm("آیا می‌خواهید یک نسخه پشتیبان آنلاین جدید ایجاد کنید؟")) return false;
         
         try {
             const backup_data = getAllData();

@@ -1,56 +1,47 @@
-const CACHE_NAME = 'hayat-cache-v1';
-// This list includes all the necessary files for the app shell to work offline.
+// Incrementing cache name for updates
+const CACHE_NAME = 'hayat-cache-v3';
+// Essential files for the app shell to be cached on install
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json',
   '/icon.png',
-  '/index.tsx',
-  '/App.tsx',
-  '/Inventory.tsx',
-  '/Sales.tsx',
-  '/Customers.tsx',
-  '/Accounting.tsx',
-  '/Reports.tsx',
-  '/Settings.tsx',
-  '/Fulfillment.tsx',
-  '/Dashboard.tsx',
-  '/CustomerAccounts.tsx',
-  '/Suppliers.tsx',
-  '/Purchasing.tsx',
-  '/SupplierAccounts.tsx',
-  '/RecycleBin.tsx',
-  // External resources
-  'https://cdn.tailwindcss.com',
-  'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
-  'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
-  'https://cdn.jsdelivr.net/npm/chart.js',
-  'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap'
 ];
 
-// Install the service worker and cache all the app's content
+// Install the service worker and cache the app shell
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('Cache opened');
+        console.log('Cache opened, caching app shell');
         return cache.addAll(urlsToCache);
       })
   );
 });
 
-// On fetch, serve from cache first, then network
+// On fetch, use a "Network falling back to cache" strategy
 self.addEventListener('fetch', (event) => {
+  // Ignore non-GET requests and chrome extension requests
+  if (event.request.method !== 'GET' || event.request.url.startsWith('chrome-extension://')) {
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // If the request is in the cache, return it
-        if (response) {
-          return response;
-        }
-        // Otherwise, fetch from the network
-        return fetch(event.request);
-      })
+    caches.open(CACHE_NAME).then((cache) => {
+      // Try to fetch from the network first
+      return fetch(event.request)
+        .then((networkResponse) => {
+          // If the fetch is successful, cache the response and return it
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(event.request, networkResponse.clone());
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          // If the network request fails (offline), try to serve from the cache
+          return cache.match(event.request);
+        });
+    })
   );
 });
 
@@ -62,6 +53,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
