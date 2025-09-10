@@ -1,7 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import Inventory, { Drug } from './Inventory';
 import Sales, { Order, OrderItem } from './Sales';
 import Customers, { Customer } from './Customers';
@@ -15,12 +14,6 @@ import Suppliers, { Supplier } from './Suppliers';
 import Purchasing, { PurchaseBill, PurchaseItem } from './Purchasing';
 import SupplierAccounts from './SupplierAccounts';
 import RecycleBin, { TrashItem, TrashableItem } from './RecycleBin';
-
-
-//=========== SUPABASE CLIENT ===========//
-const supabaseUrl = 'https://uqokruakwmqfynszaine.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxb2tydWFrd21xZnluc3phaW5lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0ODg5ODYsImV4cCI6MjA3MzA2NDk4Nn0.6hAotsw9GStdteP4NWcqvFmjCq8_81Y9IpGVkJx2dT0';
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
 
 //=========== ICONS ===========//
@@ -487,8 +480,6 @@ const HayatAssistant: React.FC<HayatAssistantProps> = ({ isOpen, onClose, messag
 const ActivationScreen = ({ onActivate }: { onActivate: () => void }) => {
     const [machineId, setMachineId] = useState<string | null>(null);
     const [activationKey, setActivationKey] = useState('');
-    const [username, setUsername] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -506,85 +497,26 @@ const ActivationScreen = ({ onActivate }: { onActivate: () => void }) => {
         setMachineId(getOrCreateMachineId());
     }, []);
 
-    const handleActivate = async (e: React.FormEvent) => {
+    const handleActivate = (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
-        setIsLoading(true);
 
         if (!machineId) {
             setError("شناسه دستگاه در حال بارگذاری است، لطفاً لحظه‌ای صبر کنید.");
-            setIsLoading(false);
             return;
         }
 
-        // 1. Local Key Validation
+        // The secret algorithm
         const reversedMachineId = machineId.split('').reverse().join('');
         const correctKey = btoa('ACTIVATED-' + reversedMachineId + '-SYS');
 
-        if (activationKey.trim() !== correctKey) {
-            setError("کلید فعال‌سازی نامعتبر است.");
-            setIsLoading(false);
-            return;
-        }
-
-        // 2. Online Activation with Supabase
-        try {
-            // Check username availability
-            const { data: existingUser, error: checkError } = await supabase
-                .from('licenses')
-                .select('username')
-                .eq('username', username.trim())
-                .single();
-
-            if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is 'not found', which is good
-                throw new Error(`خطا در بررسی نام کاربری: ${checkError.message}`);
-            }
-            if (existingUser) {
-                setError('این نام کاربری قبلاً استفاده شده است. لطفاً نام دیگری انتخاب کنید.');
-                setIsLoading(false);
-                return;
-            }
-
-            // Create Supabase Auth user
-            const email = `${username.trim().toLowerCase()}@example.com`;
-            const password = `P@ssw0rd-${machineId}-${username.trim()}`; // Simple deterministic password
-            const { data: { user, session }, error: signUpError } = await supabase.auth.signUp({ email, password });
-
-            if (signUpError) throw new Error(`خطا در ایجاد حساب کاربری: ${signUpError.message}`);
-            if (!user || !session) throw new Error('ایجاد حساب کاربری با شکست مواجه شد.');
-
-            // Insert license record
-            const { data: newLicense, error: insertError } = await supabase
-                .from('licenses')
-                .insert({
-                    username: username.trim(),
-                    machine_id: machineId,
-                    user_id: user.id
-                })
-                .select()
-                .single();
-            
-            if (insertError) {
-                console.error("Failed to insert license, but user was created:", user.id);
-                // The root cause is likely a missing RLS policy for INSERT on the 'licenses' table.
-                // We cannot delete the created auth user from the client-side due to permissions.
-                // The original error from Supabase is more descriptive.
-                throw new Error(`خطا در ثبت لایسنس: ${insertError.message}`);
-            }
-            if (!newLicense) throw new Error('ثبت لایسنس با شکست مواجه شد.');
-
+        if (activationKey.trim() === correctKey) {
             // Success
             window.localStorage.setItem('hayat_isAppActivated', 'true');
-            window.localStorage.setItem('hayat_licenseId', newLicense.id);
-            window.localStorage.setItem('hayat_session', JSON.stringify(session));
-
-            alert("برنامه با موفقیت فعال شد! برنامه مجددا راه‌اندازی می‌شود.");
+            alert("برنامه با موفقیت فعال شد!");
             onActivate();
-
-        } catch (error: any) {
-            setError(error.message || "یک خطای ناشناخته رخ داد. لطفاً اتصال اینترنت خود را بررسی کرده و دوباره تلاش کنید.");
-        } finally {
-            setIsLoading(false);
+        } else {
+            setError("کلید فعال‌سازی نامعتبر است.");
         }
     };
     
@@ -600,7 +532,7 @@ const ActivationScreen = ({ onActivate }: { onActivate: () => void }) => {
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100" dir="rtl">
-            <div className="w-full max-w-lg p-8 space-y-6 bg-white rounded-2xl shadow-2xl">
+            <div className="w-full max-w-lg p-8 space-y-8 bg-white rounded-2xl shadow-2xl">
                 <div className="flex flex-col items-center">
                     <div className="p-4 bg-teal-600 rounded-full mb-4">
                        <LogoIcon />
@@ -618,31 +550,17 @@ const ActivationScreen = ({ onActivate }: { onActivate: () => void }) => {
                     <p className="text-xs text-gray-500 mt-2 text-center">این شناسه را برای توسعه‌دهنده ارسال کنید تا کلید فعال‌سازی را دریافت نمایید.</p>
                 </div>
 
-                <form className="space-y-4" onSubmit={handleActivate}>
-                     <div>
-                        <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">۲. نام کاربری (برای پشتیبان‌گیری آنلاین)</label>
-                        <input
-                            id="username"
-                            type="text"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition disabled:bg-gray-100"
-                            placeholder="یک نام کاربری به انگلیسی انتخاب کنید"
-                            required
-                            disabled={isLoading}
-                        />
-                    </div>
+                <form className="mt-8 space-y-6" onSubmit={handleActivate}>
                     <div>
-                        <label htmlFor="activation-key" className="block text-sm font-medium text-gray-700 mb-2">۳. کلید فعال‌سازی:</label>
+                        <label htmlFor="activation-key" className="block text-sm font-medium text-gray-700 mb-2">۲. کلید فعال‌سازی:</label>
                         <input
                             id="activation-key"
                             type="text"
                             value={activationKey}
                             onChange={(e) => setActivationKey(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition disabled:bg-gray-100"
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                             placeholder="کلید دریافت شده را اینجا وارد کنید"
                             required
-                             disabled={isLoading}
                         />
                     </div>
                     
@@ -651,10 +569,9 @@ const ActivationScreen = ({ onActivate }: { onActivate: () => void }) => {
                     <div>
                         <button
                             type="submit"
-                            className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 shadow-lg disabled:bg-teal-300"
-                             disabled={isLoading}
+                            className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 shadow-lg"
                         >
-                            {isLoading ? 'در حال فعال‌سازی...' : 'فعال‌سازی برنامه'}
+                            فعال‌سازی برنامه
                         </button>
                     </div>
                 </form>
@@ -669,12 +586,7 @@ const ActivationScreen = ({ onActivate }: { onActivate: () => void }) => {
 const App: React.FC = () => {
     // Activation State
     const [isActivated, setIsActivated] = usePersistentState<boolean>('hayat_isAppActivated', false);
-    const [licenseId, setLicenseId] = usePersistentState<string | null>('hayat_licenseId', null);
-    const [session, setSession] = usePersistentState<Session | null>('hayat_session', null);
     
-    const [isDeactivated, setIsDeactivated] = useState(false);
-    const [isCheckingStatus, setIsCheckingStatus] = useState(true);
-
     // State
     const [currentUser, setCurrentUser] = usePersistentState<User | null>('hayat_currentUser', null);
     const [activeItem, setActiveItem] = usePersistentState('activeItem', 'dashboard');
@@ -702,43 +614,6 @@ const App: React.FC = () => {
     const [assistantMessages, setAssistantMessages] = useState<Message[]>([]);
     const [isAssistantLoading, setIsAssistantLoading] = useState(false);
     
-    // Effect for Supabase session and kill switch check
-    useEffect(() => {
-        if (!isActivated || !licenseId) {
-            setIsCheckingStatus(false);
-            return;
-        }
-
-        const checkStatus = async () => {
-            if (!session) {
-                setIsCheckingStatus(false);
-                return;
-            }
-
-            const { error } = await supabase.auth.setSession(session);
-            if (error) {
-                console.error("Error restoring session:", error);
-            }
-            
-            const { data, error: licenseError } = await supabase
-                .from('licenses')
-                .select('is_active')
-                .eq('id', licenseId)
-                .single();
-
-            if (licenseError && licenseError.code !== 'PGRST116') {
-                 console.error('Error checking license status:', licenseError.message);
-                 // Assume OK if offline or error, to not block user unnecessarily
-            } else if (data && data.is_active === false) {
-                 setIsDeactivated(true);
-            }
-            setIsCheckingStatus(false);
-        };
-
-        checkStatus();
-
-    }, [isActivated, licenseId, session]);
-
     // Auto-login effect to bypass user selection screen as requested.
     useEffect(() => {
         if (isActivated && !currentUser) {
@@ -777,116 +652,6 @@ const App: React.FC = () => {
                 date: order.orderDate,
             }));
     }, [orders]);
-
-    // --- Backup & Restore Handlers ---
-    const getAllData = () => ({
-        users, drugs, orders, customers, expenses, suppliers, purchaseBills, trash, companyInfo,
-        // Also include non-persistent state if needed
-    });
-
-    const setAllData = (data: any) => {
-        if (!data || typeof data !== 'object') {
-            alert('فایل پشتیبان نامعتبر است.');
-            return;
-        }
-        // Add validation for each key
-        if (data.users) setUsers(data.users);
-        if (data.drugs) setDrugs(data.drugs);
-        if (data.orders) setOrders(data.orders);
-        if (data.customers) setCustomers(data.customers);
-        if (data.expenses) setExpenses(data.expenses);
-        if (data.suppliers) setSuppliers(data.suppliers);
-        if (data.purchaseBills) setPurchaseBills(data.purchaseBills);
-        if (data.trash) setTrash(data.trash);
-        if (data.companyInfo) setCompanyInfo(data.companyInfo);
-    };
-
-    const handleBackupLocal = () => {
-        try {
-            const data = getAllData();
-            const jsonString = JSON.stringify(data, null, 2);
-            const blob = new Blob([jsonString], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `hayat-backup-${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            alert('نسخه پشتیبان با موفقیت ایجاد شد.');
-        } catch (error) {
-            console.error('Error creating local backup:', error);
-            alert('خطا در ایجاد نسخه پشتیبان.');
-        }
-    };
-
-    const handleRestoreLocal = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        if (!window.confirm("آیا مطمئن هستید؟ با بازیابی اطلاعات، تمام داده‌های فعلی شما بازنویسی خواهد شد.")) {
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const text = e.target?.result;
-                if (typeof text !== 'string') throw new Error("File content is not readable.");
-                const data = JSON.parse(text);
-                setAllData(data);
-                alert('اطلاعات با موفقیت بازیابی شد.');
-            } catch (error) {
-                console.error('Error restoring from local backup:', error);
-                alert('خطا در بازیابی اطلاعات. ممکن است فایل پشتیبان شما خراب باشد.');
-            }
-        };
-        reader.readAsText(file);
-    };
-    
-    const handleBackupOnline = async () => {
-        if (!licenseId) {
-            alert("برای پشتیبان‌گیری آنلاین، ابتدا باید برنامه را فعال کنید.");
-            return;
-        }
-        if (!window.confirm("آیا می‌خواهید یک نسخه پشتیبان آنلاین جدید ایجاد کنید؟")) return;
-        
-        try {
-            const backup_data = getAllData();
-            const { error } = await supabase.from('backups').insert({ license_id: licenseId, backup_data });
-            if (error) throw error;
-            alert('نسخه پشتیبان آنلاین با موفقیت ایجاد شد.');
-            return true; // Indicate success for UI update
-        } catch (error: any) {
-            console.error("Error creating online backup:", error);
-            alert(`خطا در ایجاد نسخه پشتیبان آنلاین: ${error.message}`);
-            return false; // Indicate failure
-        }
-    };
-
-    const handleRestoreOnline = async (backupId: string) => {
-         if (!window.confirm("آیا مطمئن هستید؟ با بازیابی اطلاعات، تمام داده‌های فعلی شما بازنویسی خواهد شد.")) {
-            return;
-        }
-        try {
-            const { data, error } = await supabase
-                .from('backups')
-                .select('backup_data')
-                .eq('id', backupId)
-                .single();
-            if (error) throw error;
-            if (data && data.backup_data) {
-                setAllData(data.backup_data);
-                alert('اطلاعات با موفقیت از نسخه پشتیبان آنلاین بازیابی شد.');
-            } else {
-                throw new Error("فایل پشتیبان یافت نشد یا خالی است.");
-            }
-        } catch (error: any) {
-            console.error("Error restoring from online backup:", error);
-            alert(`خطا در بازیابی اطلاعات: ${error.message}`);
-        }
-    };
 
 
     // --- Generic Soft Delete Handler ---
@@ -1140,34 +905,26 @@ const App: React.FC = () => {
         }
     };
     
-    const DeactivatedScreen = () => (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100" dir="rtl">
-            <div className="w-full max-w-lg p-8 space-y-6 bg-white rounded-2xl shadow-2xl text-center">
-                 <h1 className="text-3xl font-bold text-red-600">دسترسی شما به برنامه مسدود شده است</h1>
-                 <p className="text-gray-600">لایسنس شما توسط مدیر سیستم غیرفعال شده است. لطفاً برای اطلاعات بیشتر با پشتیبانی تماس بگیرید.</p>
-            </div>
-        </div>
-    );
-    
-    if (isCheckingStatus) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-100">
-                <p className="text-lg font-semibold">در حال بررسی وضعیت لایسنس...</p>
-            </div>
-        );
-    }
-    
-    if (isDeactivated) {
-        return <DeactivatedScreen />;
-    }
+    useEffect(() => {
+        // This effect ensures the machine ID is created on first load, even before activation.
+        const id = window.localStorage.getItem('hayat_machineId');
+        if (!id) {
+            const newId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16).toUpperCase();
+            });
+            window.localStorage.setItem('hayat_machineId', newId);
+        }
+    }, []);
 
     if (!isActivated) {
-        return <ActivationScreen onActivate={() => window.location.reload()} />;
+        return <ActivationScreen onActivate={() => setIsActivated(true)} />;
     }
 
+    // With auto-login, we wait for the currentUser to be set by the effect.
     if (!currentUser) {
-        // Render nothing or a loading spinner briefly until the user is auto-logged-in.
-        return null; 
+        // Render nothing or a loading spinner briefly until the user is set.
+        return null;
     }
 
     const getPageTitle = () => {
@@ -1201,19 +958,7 @@ const App: React.FC = () => {
             case 'reports':
                 return <Reports orders={orders} expenses={expenses} drugs={drugs} companyInfo={companyInfo} />;
             case 'settings':
-                return <Settings 
-                    companyInfo={companyInfo} 
-                    setCompanyInfo={setCompanyInfo} 
-                    users={users} 
-                    onSaveUser={handleSaveUser} 
-                    onDeleteUser={handleDeleteUser} 
-                    supabase={supabase}
-                    licenseId={licenseId}
-                    onBackupLocal={handleBackupLocal}
-                    onRestoreLocal={handleRestoreLocal}
-                    onBackupOnline={handleBackupOnline}
-                    onRestoreOnline={handleRestoreOnline}
-                />;
+                return <Settings companyInfo={companyInfo} setCompanyInfo={setCompanyInfo} users={users} onSaveUser={handleSaveUser} onDeleteUser={handleDeleteUser} />;
             case 'recycle_bin':
                  return <RecycleBin 
                     trashItems={trash} 
