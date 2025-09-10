@@ -982,6 +982,9 @@ const App: React.FC = () => {
                 orderDate: new Date().toISOString().split('T')[0],
                 orderNumber: `ORD-${year}${month}-${dailyCount.toString().padStart(3, '0')}`,
             };
+             if (newOrder.status === 'ارسال شده') {
+                adjustInventory(newOrder.items, 'subtract');
+            }
             setOrders(prev => [newOrder, ...prev]);
         }
     };

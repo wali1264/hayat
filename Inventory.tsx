@@ -312,7 +312,7 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
                         <div className="flex gap-2">
                              <input type="text" name="barcode" id="barcode" value={drug.barcode} onChange={handleChange} className={inputStyles} />
                              <button type="button" title="اسکن با دوربین" onClick={() => setIsScannerOpen(true)} className="p-2 border rounded-lg hover:bg-gray-100"><CameraIcon /></button>
-                             <button type="button" title="تولید بارکد داخلی" onClick={handleGenerateInternalBarcode} className="p-2 border rounded-lg hover:bg-gray-100"><QrCodeIcon /></button>
+                             {/* <button type="button" title="تولید بارکد داخلی" onClick={handleGenerateInternalBarcode} className="p-2 border rounded-lg hover:bg-gray-100"><QrCodeIcon /></button> */}
                         </div>
                     </div>
                     
@@ -529,10 +529,10 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentU
                     </div>
                     {canManageInventory && (
                         <>
-                        <button onClick={handlePrintBarcodeSheet} className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg">
+                        {/* <button onClick={handlePrintBarcodeSheet} className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg">
                            <PrintIcon />
                            <span className="mr-2">چاپ برگه بارکدها</span>
-                        </button>
+                        </button> */}
                         <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md hover:shadow-lg">
                             <PlusIcon />
                             <span className="mr-2">افزودن داروی جدید</span>

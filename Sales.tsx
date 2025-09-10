@@ -135,7 +135,7 @@ type OrderModalProps = {
 const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initialData, drugs, customers }) => {
     
     const [orderInfo, setOrderInfo] = useState({
-        customerName: '', amountPaid: '', status: 'در حال پردازش' as OrderStatus,
+        customerName: '', amountPaid: '', status: 'ارسال شده' as OrderStatus,
     });
     const [items, setItems] = useState<OrderItem[]>([]);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -168,7 +168,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                 setOrderInfo({ customerName: initialData.customerName, amountPaid: String(initialData.amountPaid), status: initialData.status });
                 setItems(initialData.items);
             } else {
-                setOrderInfo({ customerName: '', amountPaid: '', status: 'در حال پردازش' });
+                setOrderInfo({ customerName: '', amountPaid: '', status: 'ارسال شده' });
                 setItems([]);
                 setDrugSearchTerm('');
                 setDeviceScanInput('');
