@@ -704,6 +704,7 @@ const App: React.FC = () => {
     
     // Effect for Supabase session and kill switch check
     useEffect(() => {
+        // Only run the check if the app is activated and has a license ID
         if (!isActivated || !licenseId) {
             setIsCheckingStatus(false);
             return;
@@ -715,23 +716,39 @@ const App: React.FC = () => {
                 return;
             }
 
-            const { error } = await supabase.auth.setSession(session);
-            if (error) {
-                console.error("Error restoring session:", error);
+            // Restore the session to make authenticated calls
+            const { error: sessionError } = await supabase.auth.setSession(session);
+            if (sessionError) {
+                console.error("Error restoring session:", sessionError.message);
+                // Don't block the user for session errors, to allow offline use.
+                // The license check might fail, but that's handled below.
             }
             
+            // Fetch the current status of the license from the database
             const { data, error: licenseError } = await supabase
                 .from('licenses')
                 .select('is_active')
                 .eq('id', licenseId)
                 .single();
 
-            if (licenseError && licenseError.code !== 'PGRST116') {
-                 console.error('Error checking license status:', licenseError.message);
-                 // Assume OK if offline or error, to not block user unnecessarily
-            } else if (data && data.is_active === false) {
+            // Case 1: License is explicitly marked as inactive.
+            if (data && data.is_active === false) {
                  setIsDeactivated(true);
+            } 
+            // Case 2: An error occurred during the fetch.
+            else if (licenseError) {
+                // Critical Error: The license ID from localStorage was not found on the server.
+                // This indicates the license was deleted or is invalid. Deactivate immediately.
+                if (licenseError.code === 'PGRST116') { // PGRST116 means 'Not Found'
+                    console.error('License ID not found on server. Deactivating access.');
+                    setIsDeactivated(true);
+                } else {
+                    // Other errors (like network failure) should not block the user,
+                    // to ensure offline functionality is preserved.
+                    console.error('Could not verify license status (maybe offline):', licenseError.message);
+                }
             }
+            
             setIsCheckingStatus(false);
         };
 
@@ -1144,7 +1161,7 @@ const App: React.FC = () => {
         <div className="flex items-center justify-center min-h-screen bg-gray-100" dir="rtl">
             <div className="w-full max-w-lg p-8 space-y-6 bg-white rounded-2xl shadow-2xl text-center">
                  <h1 className="text-3xl font-bold text-red-600">دسترسی شما به برنامه مسدود شده است</h1>
-                 <p className="text-gray-600">لایسنس شما توسط مدیر سیستم غیرفعال شده است. لطفاً برای اطلاعات بیشتر با پشتیبانی تماس بگیرید.</p>
+                 <p className="text-gray-600">ممکن است لایسنس شما توسط مدیر سیستم غیرفعال شده باشد یا مشکلی در اعتبار آن وجود داشته باشد. لطفاً برای اطلاعات بیشتر با پشتیبانی تماس بگیرید.</p>
             </div>
         </div>
     );
@@ -1161,7 +1178,8 @@ const App: React.FC = () => {
         return <DeactivatedScreen />;
     }
 
-    if (!isActivated) {
+    // Strengthened check: App is only considered active if both flags are valid.
+    if (!isActivated || !licenseId) {
         return <ActivationScreen onActivate={() => window.location.reload()} />;
     }
 
