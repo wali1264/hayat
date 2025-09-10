@@ -1,0 +1,16 @@
+{
+  "short_name": "حیات",
+  "name": "پلتفرم مدیریت دارویی حیات",
+  "description": "یک پلتفرم یکپارچه برای مدیریت هوشمند شرکت‌های پخش دارو، با قابلیت کار آفلاین و در شبکه داخلی.",
+  "icons": [
+    {
+      "src": "/icon-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#0d9488",
+  "background_color": "#ffffff"
+}
