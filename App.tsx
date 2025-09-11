@@ -260,7 +260,7 @@ const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout }) => {
                 <LogoIcon />
                 <h1 className="text-2xl font-bold mr-3">حیات</h1>
             </div>
-            <nav className="flex-1 p-4">
+            <nav className="flex-1 p-4 overflow-y-auto">
                 <ul>
                     {allowedNavItems.map(item => (
                         <NavItem
