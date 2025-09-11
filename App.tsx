@@ -1105,16 +1105,13 @@ const App: React.FC = () => {
     const isAppReady = isDeviceActivated && currentUser;
     
     if (!isAppReady) {
-         // Default to login if device is not activated, or if it is but there's no session
-        const showLogin = !isDeviceActivated || (isDeviceActivated && !session);
-
-        if (authMode === 'activation' && !showLogin) {
-             return <ActivationScreen onActivate={handleAuthSuccess} onSwitchToLogin={() => setAuthMode('login')} />;
+        if (authMode === 'activation') {
+            return <ActivationScreen onActivate={handleAuthSuccess} onSwitchToLogin={() => setAuthMode('login')} />;
         }
         
         return <LoginScreen onLoginSuccess={handleAuthSuccess} onSwitchToActivation={() => {
             if (isDeviceActivated) {
-                alert("این دستگاه قبلا فعال‌سازی شده. اگر اطلاعات خود را فراموش کرده‌اید با پشتیبانی تماس بگیرید.");
+                alert("این دستگاه قبلا فعال‌سازی شده است. اگر اطلاعات خود را فراموش کرده‌اید با پشتیبانی تماس بگیرید.");
             } else {
                 setAuthMode('activation');
             }
