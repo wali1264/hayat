@@ -290,15 +290,6 @@ const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout }) => {
                         onClick={() => setActiveItem('settings')}
                     />
                  )}
-                 {/* Login/Logout functionality is temporarily disabled */}
-                 {/* 
-                 <NavItem
-                    icon={<LogoutIcon />}
-                    label="خروج از سیستم"
-                    isActive={false}
-                    onClick={onLogout}
-                />
-                 */}
             </div>
         </aside>
     );
@@ -317,63 +308,6 @@ const Header = ({ title, currentUser }) => (
         </div>
     </header>
 );
-
-//=========== LOGIN SCREEN ===========//
-const LoginScreen = ({ users, onLogin }) => {
-    const [selectedUserId, setSelectedUserId] = useState('');
-
-    const handleLogin = (e: React.FormEvent) => {
-        e.preventDefault();
-        const userToLogin = users.find(u => u.id === Number(selectedUserId));
-        if (userToLogin) {
-            onLogin(userToLogin);
-        } else {
-            alert('لطفاً یک کاربر را انتخاب کنید.');
-        }
-    };
-    
-    return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100" dir="rtl">
-            <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-2xl shadow-2xl">
-                <div className="flex flex-col items-center">
-                    <div className="p-4 bg-teal-600 rounded-full mb-4">
-                       <LogoIcon />
-                    </div>
-                    <h1 className="text-3xl font-bold text-gray-800">پلتفرم حیات</h1>
-                    <p className="text-gray-500">لطفاً برای ورود، کاربر خود را انتخاب کنید</p>
-                </div>
-                <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-                    <div>
-                        <label htmlFor="user-select" className="block text-sm font-medium text-gray-700 mb-2">کاربر</label>
-                        <select
-                            id="user-select"
-                            value={selectedUserId}
-                            onChange={(e) => setSelectedUserId(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
-                            required
-                        >
-                            <option value="" disabled>-- انتخاب کاربر --</option>
-                            {users.map(user => (
-                                <option key={user.id} value={user.id}>
-                                    {user.username} ({user.role})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <button
-                            type="submit"
-                            className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 shadow-lg"
-                        >
-                            ورود به سیستم
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
 
 //=========== HAYAT AI ASSISTANT ===========//
 type Message = {
@@ -482,27 +416,31 @@ const HayatAssistant: React.FC<HayatAssistantProps> = ({ isOpen, onClose, messag
     );
 };
 
+//=========== AUTH HELPER ===========//
+function getOrCreateMachineId() {
+    let id = window.localStorage.getItem('hayat_machineId');
+    if (!id) {
+        id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16).toUpperCase();
+        });
+        window.localStorage.setItem('hayat_machineId', id);
+    }
+    return id;
+}
+
 
 //=========== ACTIVATION SCREEN ===========//
-const ActivationScreen = ({ onActivate }: { onActivate: () => void }) => {
+const ActivationScreen = ({ onActivate, onSwitchToLogin }: { onActivate: () => void, onSwitchToLogin: () => void }) => {
     const [machineId, setMachineId] = useState<string | null>(null);
     const [activationKey, setActivationKey] = useState('');
     const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        function getOrCreateMachineId() {
-            let id = window.localStorage.getItem('hayat_machineId');
-            if (!id) {
-                id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-                    return v.toString(16).toUpperCase();
-                });
-                window.localStorage.setItem('hayat_machineId', id);
-            }
-            return id;
-        }
         setMachineId(getOrCreateMachineId());
     }, []);
 
@@ -517,7 +455,17 @@ const ActivationScreen = ({ onActivate }: { onActivate: () => void }) => {
             return;
         }
 
-        // 1. Local Key Validation
+        if (password !== confirmPassword) {
+            setError("رمزهای عبور وارد شده مطابقت ندارند.");
+            setIsLoading(false);
+            return;
+        }
+        if (password.length < 6) {
+            setError("رمز عبور باید حداقل ۶ کاراکتر باشد.");
+            setIsLoading(false);
+            return;
+        }
+
         const reversedMachineId = machineId.split('').reverse().join('');
         const correctKey = btoa('ACTIVATED-' + reversedMachineId + '-SYS');
 
@@ -527,53 +475,25 @@ const ActivationScreen = ({ onActivate }: { onActivate: () => void }) => {
             return;
         }
 
-        // 2. Online Activation with Supabase
         try {
-            // Check username availability
-            const { data: existingUser, error: checkError } = await supabase
-                .from('licenses')
-                .select('username')
-                .eq('username', username.trim())
-                .single();
-
-            if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is 'not found', which is good
-                throw new Error(`خطا در بررسی نام کاربری: ${checkError.message}`);
-            }
+            const { data: existingUser } = await supabase.from('licenses').select('username').eq('username', username.trim()).single();
             if (existingUser) {
                 setError('این نام کاربری قبلاً استفاده شده است. لطفاً نام دیگری انتخاب کنید.');
                 setIsLoading(false);
                 return;
             }
 
-            // Create Supabase Auth user
             const email = `${username.trim().toLowerCase()}@example.com`;
-            const password = `P@ssw0rd-${machineId}-${username.trim()}`; // Simple deterministic password
             const { data: { user, session }, error: signUpError } = await supabase.auth.signUp({ email, password });
 
             if (signUpError) throw new Error(`خطا در ایجاد حساب کاربری: ${signUpError.message}`);
             if (!user || !session) throw new Error('ایجاد حساب کاربری با شکست مواجه شد.');
 
-            // Insert license record
-            const { data: newLicense, error: insertError } = await supabase
-                .from('licenses')
-                .insert({
-                    username: username.trim(),
-                    machine_id: machineId,
-                    user_id: user.id
-                })
-                .select()
-                .single();
+            const { data: newLicense, error: insertError } = await supabase.from('licenses').insert({ username: username.trim(), machine_id: machineId, user_id: user.id }).select().single();
             
-            if (insertError) {
-                console.error("Failed to insert license, but user was created:", user.id);
-                // The root cause is likely a missing RLS policy for INSERT on the 'licenses' table.
-                // We cannot delete the created auth user from the client-side due to permissions.
-                // The original error from Supabase is more descriptive.
-                throw new Error(`خطا در ثبت لایسنس: ${insertError.message}`);
-            }
+            if (insertError) throw new Error(`خطا در ثبت لایسنس: ${insertError.message}`);
             if (!newLicense) throw new Error('ثبت لایسنس با شکست مواجه شد.');
 
-            // Success: Store items in localStorage using JSON.stringify for consistency with usePersistentState
             window.localStorage.setItem('hayat_isAppActivated', JSON.stringify(true));
             window.localStorage.setItem('hayat_licenseId', JSON.stringify(newLicense.id));
             window.localStorage.setItem('hayat_session', JSON.stringify(session));
@@ -589,88 +509,98 @@ const ActivationScreen = ({ onActivate }: { onActivate: () => void }) => {
     };
     
     const handleCopy = () => {
-        if(machineId) {
-            navigator.clipboard.writeText(machineId).then(() => {
-                alert('شناسه دستگاه کپی شد!');
-            }, () => {
-                alert('خطا در کپی کردن شناسه.');
-            });
-        }
+        if(machineId) navigator.clipboard.writeText(machineId).then(() => alert('شناسه دستگاه کپی شد!'), () => alert('خطا در کپی کردن شناسه.'));
     }
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100" dir="rtl">
             <div className="w-full max-w-lg p-8 space-y-6 bg-white rounded-2xl shadow-2xl">
-                <div className="flex flex-col items-center">
-                    <div className="p-4 bg-teal-600 rounded-full mb-4">
-                       <LogoIcon />
-                    </div>
-                    <h1 className="text-3xl font-bold text-gray-800">فعال‌سازی پلتفرم حیات</h1>
-                    <p className="text-gray-500 mt-2 text-center">برای استفاده از برنامه، لطفاً آن را فعال کنید.</p>
-                </div>
+                <div className="flex flex-col items-center"><div className="p-4 bg-teal-600 rounded-full mb-4"><LogoIcon /></div><h1 className="text-3xl font-bold text-gray-800">فعال‌سازی پلتفرم حیات</h1><p className="text-gray-500 mt-2 text-center">برای استفاده از برنامه، لطفاً آن را فعال کنید.</p></div>
                 
-                <div className="p-4 bg-gray-50 rounded-lg border">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">۱. شناسه دستگاه شما:</label>
-                    <p className="text-center font-mono text-gray-800 bg-gray-200 p-3 rounded-md break-all">{machineId || 'در حال تولید...'}</p>
-                    <button onClick={handleCopy} className="w-full mt-2 py-2 text-sm font-semibold text-teal-700 bg-teal-100 rounded-lg hover:bg-teal-200 transition-colors">
-                        کپی کردن شناسه
-                    </button>
-                    <p className="text-xs text-gray-500 mt-2 text-center">این شناسه را برای توسعه‌دهنده ارسال کنید تا کلید فعال‌سازی را دریافت نمایید.</p>
-                </div>
+                <div className="p-4 bg-gray-50 rounded-lg border"><label className="block text-sm font-medium text-gray-700 mb-2">۱. شناسه دستگاه شما:</label><p className="text-center font-mono text-gray-800 bg-gray-200 p-3 rounded-md break-all">{machineId || 'در حال تولید...'}</p><button onClick={handleCopy} className="w-full mt-2 py-2 text-sm font-semibold text-teal-700 bg-teal-100 rounded-lg hover:bg-teal-200 transition-colors">کپی کردن شناسه</button><p className="text-xs text-gray-500 mt-2 text-center">این شناسه را برای توسعه‌دهنده ارسال کنید تا کلید فعال‌سازی را دریافت نمایید.</p></div>
 
                 <form className="space-y-4" onSubmit={handleActivate}>
-                     <div>
-                        <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">۲. نام کاربری (برای پشتیبان‌گیری آنلاین)</label>
-                        <input
-                            id="username"
-                            type="text"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition disabled:bg-gray-100"
-                            placeholder="یک نام کاربری به انگلیسی انتخاب کنید"
-                            required
-                            disabled={isLoading}
-                        />
-                    </div>
-                    <div>
-                        <label htmlFor="activation-key" className="block text-sm font-medium text-gray-700 mb-2">۳. کلید فعال‌سازی:</label>
-                        <input
-                            id="activation-key"
-                            type="text"
-                            value={activationKey}
-                            onChange={(e) => setActivationKey(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition disabled:bg-gray-100"
-                            placeholder="کلید دریافت شده را اینجا وارد کنید"
-                            required
-                             disabled={isLoading}
-                        />
-                    </div>
+                     <div><label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">۲. نام کاربری (برای پشتیبان‌گیری آنلاین)</label><input id="username" type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition disabled:bg-gray-100" placeholder="یک نام کاربری به انگلیسی انتخاب کنید" required disabled={isLoading} /></div>
+                     <div className="grid grid-cols-2 gap-4">
+                         <div><label className="block text-sm font-medium text-gray-700 mb-2">رمز عبور</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="حداقل ۶ کاراکتر" required disabled={isLoading} /></div>
+                         <div><label className="block text-sm font-medium text-gray-700 mb-2">تکرار رمز عبور</label><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" required disabled={isLoading} /></div>
+                     </div>
+                     <div><label htmlFor="activation-key" className="block text-sm font-medium text-gray-700 mb-2">۳. کلید فعال‌سازی:</label><input id="activation-key" type="text" value={activationKey} onChange={(e) => setActivationKey(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition disabled:bg-gray-100" placeholder="کلید دریافت شده را اینجا وارد کنید" required disabled={isLoading} /></div>
                     
                     {error && <p className="text-sm text-red-600 text-center">{error}</p>}
                     
-                    <div>
-                        <button
-                            type="submit"
-                            className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 shadow-lg disabled:bg-teal-300"
-                             disabled={isLoading}
-                        >
-                            {isLoading ? 'در حال فعال‌سازی...' : 'فعال‌سازی برنامه'}
-                        </button>
-                    </div>
+                    <div><button type="submit" className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 shadow-lg disabled:bg-teal-300" disabled={isLoading}>{isLoading ? 'در حال فعال‌سازی...' : 'فعال‌سازی برنامه'}</button></div>
                 </form>
+                <div className="text-center"><button onClick={onSwitchToLogin} className="text-sm font-medium text-teal-600 hover:text-teal-800">حساب کاربری دارید؟ وارد شوید</button></div>
+            </div>
+        </div>
+    );
+};
+
+//=========== LOGIN SCREEN ===========//
+const LoginScreen = ({ onLoginSuccess, onSwitchToActivation }: { onLoginSuccess: () => void, onSwitchToActivation: () => void }) => {
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleLogin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError(null);
+        setIsLoading(true);
+
+        try {
+            const email = `${username.trim().toLowerCase()}@example.com`;
+            const { data: { session, user }, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+
+            if (signInError) throw new Error("نام کاربری یا رمز عبور اشتباه است.");
+            if (!session || !user) throw new Error("ورود با شکست مواجه شد.");
+
+            const { data: license, error: licenseError } = await supabase.from('licenses').select('id').eq('user_id', user.id).single();
+            if (licenseError || !license) throw new Error("لایسنس مرتبط با این کاربر یافت نشد.");
+            
+            const newMachineId = getOrCreateMachineId();
+            const { error: updateError } = await supabase.from('licenses').update({ machine_id: newMachineId }).eq('id', license.id);
+            if (updateError) console.warn("Could not update machine_id, but proceeding:", updateError.message); // Non-critical error
+
+            window.localStorage.setItem('hayat_isAppActivated', JSON.stringify(true));
+            window.localStorage.setItem('hayat_licenseId', JSON.stringify(license.id));
+            window.localStorage.setItem('hayat_session', JSON.stringify(session));
+            
+            alert("با موفقیت وارد شدید. اطلاعات شما اکنون در این دستگاه قابل دسترس است.");
+            onLoginSuccess();
+
+        } catch (error: any) {
+            setError(error.message || "یک خطای ناشناخته رخ داد. اتصال اینترنت خود را بررسی کنید.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100" dir="rtl">
+            <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-2xl shadow-2xl">
+                 <div className="flex flex-col items-center"><div className="p-4 bg-teal-600 rounded-full mb-4"><LogoIcon /></div><h1 className="text-3xl font-bold text-gray-800">ورود به پلتفرم حیات</h1><p className="text-gray-500 mt-2">برای بازیابی اطلاعات، وارد حساب کاربری خود شوید</p></div>
+                <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+                     <div><label className="block text-sm font-medium text-gray-700 mb-2">نام کاربری</label><input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" required /></div>
+                     <div><label className="block text-sm font-medium text-gray-700 mb-2">رمز عبور</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" required /></div>
+                     {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+                    <div><button type="submit" disabled={isLoading} className="w-full flex justify-center py-3 px-4 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:bg-teal-300 shadow-lg">{isLoading ? 'در حال ورود...' : 'ورود به سیستم'}</button></div>
+                </form>
+                 <div className="text-center"><button onClick={onSwitchToActivation} className="text-sm font-medium text-teal-600 hover:text-teal-800">حساب کاربری ندارید؟ فعال‌سازی کنید</button></div>
             </div>
         </div>
     );
 };
 
 
-
 //=========== MAIN APP ===========//
 const App: React.FC = () => {
-    // Activation State
+    // Auth State
     const [isActivated, setIsActivated] = usePersistentState<boolean>('hayat_isAppActivated', false);
     const [licenseId, setLicenseId] = usePersistentState<string | null>('hayat_licenseId', null);
     const [session, setSession] = usePersistentState<Session | null>('hayat_session', null);
+    const [authMode, setAuthMode] = useState<'activation' | 'login'>('activation');
     
     const [isDeactivated, setIsDeactivated] = useState(false);
     const [isCheckingStatus, setIsCheckingStatus] = useState(true);
@@ -704,47 +634,27 @@ const App: React.FC = () => {
     
     // Effect for Supabase session and kill switch check
     useEffect(() => {
-        // Only run the check if the app is activated and has a license ID
         if (!isActivated || !licenseId) {
             setIsCheckingStatus(false);
             return;
         }
 
         const checkStatus = async () => {
-            if (!session) {
-                setIsCheckingStatus(false);
-                return;
-            }
+            if (!session) { setIsCheckingStatus(false); return; }
 
-            // Restore the session to make authenticated calls
             const { error: sessionError } = await supabase.auth.setSession(session);
-            if (sessionError) {
-                console.error("Error restoring session:", sessionError.message);
-                // Don't block the user for session errors, to allow offline use.
-                // The license check might fail, but that's handled below.
-            }
+            if (sessionError) console.error("Error restoring session:", sessionError.message);
             
-            // Fetch the current status of the license from the database
-            const { data, error: licenseError } = await supabase
-                .from('licenses')
-                .select('is_active')
-                .eq('id', licenseId)
-                .single();
+            const { data, error: licenseError } = await supabase.from('licenses').select('is_active').eq('id', licenseId).single();
 
-            // Case 1: License is explicitly marked as inactive.
             if (data && data.is_active === false) {
                  setIsDeactivated(true);
             } 
-            // Case 2: An error occurred during the fetch.
             else if (licenseError) {
-                // Critical Error: The license ID from localStorage was not found on the server.
-                // This indicates the license was deleted or is invalid. Deactivate immediately.
-                if (licenseError.code === 'PGRST116') { // PGRST116 means 'Not Found'
+                if (licenseError.code === 'PGRST116') {
                     console.error('License ID not found on server. Deactivating access.');
                     setIsDeactivated(true);
                 } else {
-                    // Other errors (like network failure) should not block the user,
-                    // to ensure offline functionality is preserved.
                     console.error('Could not verify license status (maybe offline):', licenseError.message);
                 }
             }
@@ -756,7 +666,7 @@ const App: React.FC = () => {
 
     }, [isActivated, licenseId, session]);
 
-    // Auto-login effect to bypass user selection screen as requested.
+    // Auto-login effect
     useEffect(() => {
         if (isActivated && !currentUser) {
             const adminUser = users.find(u => u.role === 'مدیر کل') || users[0];
@@ -768,20 +678,6 @@ const App: React.FC = () => {
         }
     }, [isActivated, currentUser, users, setCurrentUser, setUsers]);
 
-    // Auth Handlers
-    const handleLogin = (user: User) => {
-        // NOTE: This function is currently bypassed by the auto-login effect.
-        const updatedUser = { ...user, lastLogin: new Date().toLocaleString('fa-IR') };
-        setCurrentUser(updatedUser);
-        setUsers(prevUsers => prevUsers.map(u => u.id === user.id ? updatedUser : u));
-        // Reset active item to dashboard on login
-        setActiveItem('dashboard');
-    };
-
-    const handleLogout = () => {
-        // NOTE: The logout button is currently hidden.
-        setCurrentUser(null);
-    };
 
     // Derived State for Incomes
     const incomes: Income[] = useMemo(() => {
@@ -798,7 +694,6 @@ const App: React.FC = () => {
     // --- Backup & Restore Handlers ---
     const getAllData = () => ({
         users, drugs, orders, customers, expenses, suppliers, purchaseBills, trash, companyInfo,
-        // Also include non-persistent state if needed
     });
 
     const setAllData = (data: any) => {
@@ -806,7 +701,6 @@ const App: React.FC = () => {
             alert('فایل پشتیبان نامعتبر است.');
             return;
         }
-        // Add validation for each key
         if (data.users) setUsers(data.users);
         if (data.drugs) setDrugs(data.drugs);
         if (data.orders) setOrders(data.orders);
@@ -874,11 +768,11 @@ const App: React.FC = () => {
             const { error } = await supabase.from('backups').insert({ license_id: licenseId, backup_data });
             if (error) throw error;
             alert('نسخه پشتیبان آنلاین با موفقیت ایجاد شد.');
-            return true; // Indicate success for UI update
+            return true;
         } catch (error: any) {
             console.error("Error creating online backup:", error);
             alert(`خطا در ایجاد نسخه پشتیبان آنلاین: ${error.message}`);
-            return false; // Indicate failure
+            return false;
         }
     };
 
@@ -887,11 +781,7 @@ const App: React.FC = () => {
             return;
         }
         try {
-            const { data, error } = await supabase
-                .from('backups')
-                .select('backup_data')
-                .eq('id', backupId)
-                .single();
+            const { data, error } = await supabase.from('backups').select('backup_data').eq('id', backupId).single();
             if (error) throw error;
             if (data && data.backup_data) {
                 setAllData(data.backup_data);
@@ -1181,13 +1071,13 @@ const App: React.FC = () => {
         return <DeactivatedScreen />;
     }
 
-    // Strengthened check: App is only considered active if both flags are valid.
     if (!isActivated || !licenseId) {
-        return <ActivationScreen onActivate={() => window.location.reload()} />;
+        return authMode === 'activation'
+            ? <ActivationScreen onActivate={() => window.location.reload()} onSwitchToLogin={() => setAuthMode('login')} />
+            : <LoginScreen onLoginSuccess={() => window.location.reload()} onSwitchToActivation={() => setAuthMode('activation')} />;
     }
 
     if (!currentUser) {
-        // Render nothing or a loading spinner briefly until the user is auto-logged-in.
         return null; 
     }
 
@@ -1249,7 +1139,7 @@ const App: React.FC = () => {
 
     return (
         <div className="flex h-screen bg-gray-100" dir="rtl">
-            <Sidebar activeItem={activeItem} setActiveItem={setActiveItem} userRole={currentUser.role} onLogout={handleLogout} />
+            <Sidebar activeItem={activeItem} setActiveItem={setActiveItem} userRole={currentUser.role} onLogout={() => {}} />
             <div className="flex-1 flex flex-col overflow-hidden">
                 <Header title={getPageTitle()} currentUser={currentUser} />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto">

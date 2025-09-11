@@ -87,13 +87,11 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClo
 
         const html5QrCode = new Html5Qrcode("sales-reader");
         const qrCodeSuccessCallback = (decodedText, decodedResult) => {
-            // FIX: Stop the scanner on success, then notify the parent.
-            // This ensures the camera turns off immediately.
             html5QrCode.stop().then(() => {
                 onScanSuccess(decodedText);
             }).catch(err => {
                 console.error("Failed to stop scanner on success.", err);
-                onScanSuccess(decodedText); // Notify parent anyway
+                onScanSuccess(decodedText); 
             });
         };
         const config = { fps: 10, qrbox: { width: 250, height: 250 } };
@@ -140,7 +138,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     const [items, setItems] = useState<OrderItem[]>([]);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     
-    // States for adding items
     const [drugSearchTerm, setDrugSearchTerm] = useState('');
     const [deviceScanInput, setDeviceScanInput] = useState('');
     const [addQuantity, setAddQuantity] = useState('1');
@@ -242,12 +239,11 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         const drug = drugs.find(d => d.barcode === barcode);
         if (drug) {
             if (addItemToOrder(drug, 1)) {
-                // FIX: Automatically close the scanner modal on successful scan for better UX.
                 setIsScannerOpen(false);
             }
         } else {
             alert("محصولی با این بارکد یافت نشد.");
-            setIsScannerOpen(false); // Close even if not found
+            setIsScannerOpen(false);
         }
     };
 
@@ -262,7 +258,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
             } else {
                 alert("محصولی با این بارکد یافت نشد.");
             }
-            setDeviceScanInput(''); // Clear input for next scan
+            setDeviceScanInput(''); 
         }
     };
     
@@ -274,13 +270,13 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         let newQuantity = parseInt(newQuantityStr, 10);
         
         if (isNaN(newQuantity) || newQuantity < 1) {
-             newQuantity = 1; // Default to 1 if input is invalid or less than 1
+             newQuantity = 1;
         }
 
         const drugInStock = drugs.find(d => d.id === drugId);
         if (drugInStock && newQuantity > drugInStock.quantity) {
             alert(`تعداد درخواستی (${newQuantity}) بیشتر از موجودی انبار (${drugInStock.quantity}) است.`);
-            newQuantity = drugInStock.quantity; // Cap the value at max stock
+            newQuantity = drugInStock.quantity;
         }
 
         setItems(currentItems =>
@@ -359,7 +355,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
 
                     <div className="space-y-4 rounded-lg border border-gray-200 p-4">
                         <h4 className="font-bold text-gray-700">افزودن اقلام به سفارش</h4>
-                         {/* Methods for adding items */}
                         <div className="p-2 bg-gray-50 rounded-md grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div ref={searchWrapperRef}>
                                 <label className="text-xs text-gray-600">۱. جستجوی دستی دارو</label>
@@ -504,7 +499,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
     if (!isOpen || !order) return null;
 
     const handlePrint = () => {
-        // A small delay can help ensure the browser has processed any DOM/style updates before printing.
         setTimeout(() => {
             window.print();
         }, 100);
@@ -709,7 +703,6 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                 </button>}
             </div>
 
-            {/* Advanced Filters */}
             <div className="bg-gray-50 rounded-xl shadow-md p-4 mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
                     <div className="lg:col-span-2">

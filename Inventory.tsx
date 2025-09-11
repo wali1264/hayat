@@ -152,7 +152,6 @@ const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({ isOpen, onClose, 
     if (!isOpen) return null;
 
     const handlePrint = () => {
-        // A small delay can help ensure the browser has processed any DOM/style updates before printing.
         setTimeout(() => {
             window.print();
         }, 100);
@@ -208,10 +207,6 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
 
     useEffect(() => {
         if (isOpen) {
-            // FIX: Replaced object spreading with explicit property assignment to prevent type errors.
-            // This ensures the form state matches its defined type by handling optional properties 
-            // from `initialData` (like `barcode` and `category`) with default values, converting numbers 
-            // to strings for input fields, and excluding extraneous properties like `id`.
              setDrug(initialData ? {
                  name: initialData.name,
                  barcode: initialData.barcode || '',
@@ -234,11 +229,11 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
         setDrug(prev => ({ ...prev, [name]: value }));
     };
     
-    const handleGenerateInternalBarcode = () => {
-        const timestamp = Date.now();
-        const random = Math.random().toString(36).substring(2, 8);
-        setDrug(prev => ({...prev, barcode: `HAYAT-INTERNAL-${timestamp}${random}`.toUpperCase()}));
-    }
+    // const handleGenerateInternalBarcode = () => {
+    //     const timestamp = Date.now();
+    //     const random = Math.random().toString(36).substring(2, 8);
+    //     setDrug(prev => ({...prev, barcode: `HAYAT-INTERNAL-${timestamp}${random}`.toUpperCase()}));
+    // }
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
