@@ -494,11 +494,11 @@ const ActivationScreen = ({ onActivate, onSwitchToLogin }: { onActivate: () => v
             if (insertError) throw new Error(`خطا در ثبت لایسنس: ${insertError.message}`);
             if (!newLicense) throw new Error('ثبت لایسنس با شکست مواجه شد.');
 
-            window.localStorage.setItem('hayat_isAppActivated', JSON.stringify(true));
+            window.localStorage.setItem('hayat_isDeviceActivated', JSON.stringify(true));
             window.localStorage.setItem('hayat_licenseId', JSON.stringify(newLicense.id));
             window.localStorage.setItem('hayat_session', JSON.stringify(session));
 
-            alert("برنامه با موفقیت فعال شد! برنامه مجددا راه‌اندازی می‌شود.");
+            alert("برنامه با موفقیت فعال شد!");
             onActivate();
 
         } catch (error: any) {
@@ -561,13 +561,13 @@ const LoginScreen = ({ onLoginSuccess, onSwitchToActivation }: { onLoginSuccess:
             
             const newMachineId = getOrCreateMachineId();
             const { error: updateError } = await supabase.from('licenses').update({ machine_id: newMachineId }).eq('id', license.id);
-            if (updateError) console.warn("Could not update machine_id, but proceeding:", updateError.message); // Non-critical error
+            if (updateError) console.warn("Could not update machine_id, but proceeding:", updateError.message);
 
-            window.localStorage.setItem('hayat_isAppActivated', JSON.stringify(true));
+            window.localStorage.setItem('hayat_isDeviceActivated', JSON.stringify(true));
             window.localStorage.setItem('hayat_licenseId', JSON.stringify(license.id));
             window.localStorage.setItem('hayat_session', JSON.stringify(session));
             
-            alert("با موفقیت وارد شدید. اطلاعات شما اکنون در این دستگاه قابل دسترس است.");
+            alert("با موفقیت وارد شدید. برای بازیابی اطلاعات، به بخش تنظیمات بروید.");
             onLoginSuccess();
 
         } catch (error: any) {
@@ -597,14 +597,12 @@ const LoginScreen = ({ onLoginSuccess, onSwitchToActivation }: { onLoginSuccess:
 //=========== MAIN APP ===========//
 const App: React.FC = () => {
     // Auth State
-    const [isActivated, setIsActivated] = usePersistentState<boolean>('hayat_isAppActivated', false);
+    const [isDeviceActivated, setIsDeviceActivated] = usePersistentState<boolean>('hayat_isDeviceActivated', false);
     const [licenseId, setLicenseId] = usePersistentState<string | null>('hayat_licenseId', null);
     const [session, setSession] = usePersistentState<Session | null>('hayat_session', null);
-    const [authMode, setAuthMode] = useState<'activation' | 'login'>('activation');
+    const [authMode, setAuthMode] = useState<'activation' | 'login'>('login');
+    const [isLicenseDeactivated, setIsLicenseDeactivated] = useState(false);
     
-    const [isDeactivated, setIsDeactivated] = useState(false);
-    const [isCheckingStatus, setIsCheckingStatus] = useState(true);
-
     // State
     const [currentUser, setCurrentUser] = usePersistentState<User | null>('hayat_currentUser', null);
     const [activeItem, setActiveItem] = usePersistentState('activeItem', 'dashboard');
@@ -631,44 +629,74 @@ const App: React.FC = () => {
     const [isAssistantOpen, setIsAssistantOpen] = useState(false);
     const [assistantMessages, setAssistantMessages] = useState<Message[]>([]);
     const [isAssistantLoading, setIsAssistantLoading] = useState(false);
-    
-    // Effect for Supabase session and kill switch check
+
+    // --- Auth Handlers ---
+    const handleLogout = () => {
+        console.log("Logging out and clearing local session.");
+        setIsDeviceActivated(false);
+        setLicenseId(null);
+        setSession(null);
+        setCurrentUser(null);
+        setIsLicenseDeactivated(false);
+    };
+
+    // Background license verifier for offline-first functionality
     useEffect(() => {
-        if (!isActivated || !licenseId) {
-            setIsCheckingStatus(false);
+        if (!isDeviceActivated || !licenseId || !session) {
             return;
         }
 
-        const checkStatus = async () => {
-            if (!session) { setIsCheckingStatus(false); return; }
-
-            const { error: sessionError } = await supabase.auth.setSession(session);
-            if (sessionError) console.error("Error restoring session:", sessionError.message);
-            
-            const { data, error: licenseError } = await supabase.from('licenses').select('is_active').eq('id', licenseId).single();
-
-            if (data && data.is_active === false) {
-                 setIsDeactivated(true);
-            } 
-            else if (licenseError) {
-                if (licenseError.code === 'PGRST116') {
-                    console.error('License ID not found on server. Deactivating access.');
-                    setIsDeactivated(true);
-                } else {
-                    console.error('Could not verify license status (maybe offline):', licenseError.message);
+        const verifyLicense = async () => {
+            try {
+                const { error: sessionError } = await supabase.auth.setSession(session);
+                if (sessionError) {
+                    console.error("Local session is invalid. Logging out.", sessionError.message);
+                    handleLogout();
+                    return;
                 }
+
+                const { data, error: licenseError } = await supabase.from('licenses').select('is_active').eq('id', licenseId).single();
+
+                if (licenseError) {
+                    if (licenseError.code === 'PGRST116') { // Not found on server
+                        console.error('License ID not found on server. Session is invalid.');
+                        handleLogout();
+                    } else {
+                        console.warn('Could not verify license status (maybe offline):', licenseError.message);
+                    }
+                    return;
+                }
+                
+                if (data && !data.is_active) {
+                    console.log("License is inactive. Blocking access.");
+                    setIsLicenseDeactivated(true);
+                } else {
+                    setIsLicenseDeactivated(false);
+                }
+
+            } catch (e) {
+                console.error("An unexpected error occurred during license verification:", e);
             }
-            
-            setIsCheckingStatus(false);
         };
 
-        checkStatus();
+        if (navigator.onLine) {
+            verifyLicense();
+        }
+        
+        const intervalId = setInterval(() => {
+            if (navigator.onLine) {
+                verifyLicense();
+            }
+        }, 1000 * 60 * 15);
 
-    }, [isActivated, licenseId, session]);
+        return () => clearInterval(intervalId);
 
-    // Auto-login effect
+    }, [isDeviceActivated, licenseId, session]);
+
+
+    // Auto-login/user setup effect after activation
     useEffect(() => {
-        if (isActivated && !currentUser) {
+        if (isDeviceActivated && !currentUser) {
             const adminUser = users.find(u => u.role === 'مدیر کل') || users[0];
             if (adminUser) {
                 const updatedUser = { ...adminUser, lastLogin: new Date().toLocaleString('fa-IR') };
@@ -676,7 +704,7 @@ const App: React.FC = () => {
                 setUsers(prevUsers => prevUsers.map(u => u.id === adminUser.id ? updatedUser : u));
             }
         }
-    }, [isActivated, currentUser, users, setCurrentUser, setUsers]);
+    }, [isDeviceActivated, currentUser, users, setCurrentUser, setUsers]);
 
 
     // Derived State for Incomes
@@ -1050,6 +1078,16 @@ const App: React.FC = () => {
         }
     };
     
+    const handleAuthSuccess = () => {
+        const activated = JSON.parse(window.localStorage.getItem('hayat_isDeviceActivated') || 'false');
+        const licId = JSON.parse(window.localStorage.getItem('hayat_licenseId') || 'null');
+        const sess = JSON.parse(window.localStorage.getItem('hayat_session') || 'null');
+        
+        setLicenseId(licId);
+        setSession(sess);
+        setIsDeviceActivated(activated);
+    };
+    
     const DeactivatedScreen = () => (
         <div className="flex items-center justify-center min-h-screen bg-gray-100" dir="rtl">
             <div className="w-full max-w-lg p-8 space-y-6 bg-white rounded-2xl shadow-2xl text-center">
@@ -1059,27 +1097,30 @@ const App: React.FC = () => {
         </div>
     );
     
-    if (isCheckingStatus) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-100">
-                <p className="text-lg font-semibold">در حال بررسی وضعیت لایسنس...</p>
-            </div>
-        );
-    }
-    
-    if (isDeactivated) {
+    // --- Render Logic ---
+    if (isLicenseDeactivated) {
         return <DeactivatedScreen />;
     }
 
-    if (!isActivated || !licenseId) {
-        return authMode === 'activation'
-            ? <ActivationScreen onActivate={() => window.location.reload()} onSwitchToLogin={() => setAuthMode('login')} />
-            : <LoginScreen onLoginSuccess={() => window.location.reload()} onSwitchToActivation={() => setAuthMode('activation')} />;
+    const isAppReady = isDeviceActivated && currentUser;
+    
+    if (!isAppReady) {
+         // Default to login if device is not activated, or if it is but there's no session
+        const showLogin = !isDeviceActivated || (isDeviceActivated && !session);
+
+        if (authMode === 'activation' && !showLogin) {
+             return <ActivationScreen onActivate={handleAuthSuccess} onSwitchToLogin={() => setAuthMode('login')} />;
+        }
+        
+        return <LoginScreen onLoginSuccess={handleAuthSuccess} onSwitchToActivation={() => {
+            if (isDeviceActivated) {
+                alert("این دستگاه قبلا فعال‌سازی شده. اگر اطلاعات خود را فراموش کرده‌اید با پشتیبانی تماس بگیرید.");
+            } else {
+                setAuthMode('activation');
+            }
+        }} />;
     }
 
-    if (!currentUser) {
-        return null; 
-    }
 
     const getPageTitle = () => {
         if (activeItem === 'settings') return 'تنظیمات';
