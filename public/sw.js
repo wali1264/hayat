@@ -1,55 +1,55 @@
-// Incrementing cache name for updates to ensure new assets are fetched and cached.
-const CACHE_NAME = 'hayat-cache-v4';
+// Incrementing cache name for updates.
+const CACHE_NAME = 'hayat-cache-v5';
 
 // Expanded list of URLs to cache. This includes all critical assets required
 // for the application to function correctly offline.
 const urlsToCache = [
-  // App Shell - The basic HTML, manifest, and icons.
+  // App Shell
   '/',
   '/index.html',
   '/manifest.json',
   '/icon.png',
+  '/index.css', // Added the main CSS file based on console errors.
 
-  // Main application code.
-  '/index.tsx',
-
-  // Styles and Fonts - Crucial for the UI to render correctly offline.
+  // Styles and Fonts
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap',
 
-  // External JavaScript libraries loaded via <script> tags.
+  // External JavaScript libraries
   'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js',
 
-  // Core libraries from the import map. Pre-caching these avoids network requests on startup.
+  // Core libraries from the import map
   'https://aistudiocdn.com/react@^19.1.1',
-  'https://aistudiocdn.com/react-dom@^19.1.1/client', // Correctly targets the 'react-dom/client' import.
+  'https://aistudiocdn.com/react-dom@^19.1.1/client',
   'https://aistudiocdn.com/@google/genai@^1.17.0',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm',
 ];
 
 // On install, cache the app shell and all critical assets.
 self.addEventListener('install', (event) => {
-  // Force the waiting service worker to become the active service worker.
   self.skipWaiting();
-
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Cache opened. Caching app shell and critical assets for offline use.');
-        return cache.addAll(urlsToCache);
+        // Use individual cache.add for better error handling if one asset fails.
+        const promises = urlsToCache.map(url => {
+            return cache.add(url).catch(err => {
+                console.warn(`Failed to cache ${url}:`, err);
+            });
+        });
+        return Promise.all(promises);
       })
       .catch(err => {
-        // Log any errors during the caching process.
-        console.error('Failed to cache assets during install:', err);
+        console.error('Failed to open cache during install:', err);
       })
   );
 });
 
-// On fetch, use a "Network falling back to cache" strategy.
+// On fetch, use a robust "Network falling back to cache" strategy.
 self.addEventListener('fetch', (event) => {
-  // Ignore non-GET requests and chrome extension requests.
   if (event.request.method !== 'GET' || event.request.url.startsWith('chrome-extension://')) {
     return;
   }
@@ -60,16 +60,19 @@ self.addEventListener('fetch', (event) => {
       return fetch(event.request)
         .then((networkResponse) => {
           // If the fetch is successful, cache the new response and return it.
-          // This keeps the cache up-to-date.
           if (networkResponse && networkResponse.status === 200) {
             cache.put(event.request, networkResponse.clone());
           }
           return networkResponse;
         })
         .catch(() => {
-          // 2. If the network request fails (e.g., offline), serve the response from the cache.
+          // 2. If the network request fails, serve from cache.
           console.log('Network request failed. Serving from cache for:', event.request.url);
-          return cache.match(event.request);
+          return cache.match(event.request).then(response => {
+              // If a response is found in cache, return it.
+              // If not, return a generic error. This prevents the TypeError.
+              return response || new Response('', { status: 404, statusText: 'Not Found in Cache' });
+          });
         });
     })
   );
@@ -82,7 +85,6 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          // If a cache name is not in our whitelist, delete it.
           if (cacheWhitelist.indexOf(cacheName) === -1) {
             console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
@@ -90,7 +92,6 @@ self.addEventListener('activate', (event) => {
         })
       );
     }).then(() => {
-      // Take control of all open clients immediately.
       return self.clients.claim();
     })
   );
