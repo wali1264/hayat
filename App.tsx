@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
 import Inventory, { Drug } from './Inventory';
 import Sales, { Order, OrderItem } from './Sales';
 import Customers, { Customer } from './Customers';
@@ -454,7 +454,6 @@ const ActivationScreen = ({ onActivate, onSwitchToLogin }: { onActivate: () => v
             setIsLoading(false);
             return;
         }
-
         if (password !== confirmPassword) {
             setError("رمزهای عبور وارد شده مطابقت ندارند.");
             setIsLoading(false);
@@ -476,24 +475,50 @@ const ActivationScreen = ({ onActivate, onSwitchToLogin }: { onActivate: () => v
         }
 
         try {
-            const { data: existingUser } = await supabase.from('licenses').select('username').eq('username', username.trim()).single();
-            if (existingUser) {
+            // 1. Check if username is in our public licenses table.
+            const { data: existingLicense } = await supabase.from('licenses').select('username').eq('username', username.trim()).single();
+            if (existingLicense) {
                 setError('این نام کاربری قبلاً استفاده شده است. لطفاً نام دیگری انتخاب کنید.');
                 setIsLoading(false);
                 return;
             }
 
+            // 2. Attempt to sign up the new user.
             const email = `${username.trim().toLowerCase()}@example.com`;
-            const { data: { user, session }, error: signUpError } = await supabase.auth.signUp({ email, password });
+            let user: SupabaseUser | null = null;
+            let session: Session | null = null;
+            
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
 
-            if (signUpError) throw new Error(`خطا در ایجاد حساب کاربری: ${signUpError.message}`);
-            if (!user || !session) throw new Error('ایجاد حساب کاربری با شکست مواجه شد.');
+            // 3. Handle the "User already registered" case specifically.
+            if (signUpError && signUpError.message.includes('User already registered')) {
+                // The user exists in auth, but not in our licenses table. Try to sign them in.
+                const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
+                if (signInError) {
+                    setError("این نام کاربری وجود دارد اما رمز عبور اشتباه است. لطفاً نام کاربری دیگری انتخاب کنید یا با رمز صحیح تلاش کنید.");
+                    setIsLoading(false);
+                    return;
+                }
+                user = signInData.user;
+                session = signInData.session;
+            } else if (signUpError) {
+                // Some other sign-up error occurred.
+                throw new Error(signUpError.message);
+            } else {
+                user = signUpData.user;
+                session = signUpData.session;
+            }
+
+            if (!user || !session) throw new Error('ایجاد یا ورود به حساب کاربری با شکست مواجه شد.');
+
+            // 4. Proceed to create the license record.
             const { data: newLicense, error: insertError } = await supabase.from('licenses').insert({ username: username.trim(), machine_id: machineId, user_id: user.id }).select().single();
             
             if (insertError) throw new Error(`خطا در ثبت لایسنس: ${insertError.message}`);
             if (!newLicense) throw new Error('ثبت لایسنس با شکست مواجه شد.');
 
+            // 5. Success.
             window.localStorage.setItem('hayat_isDeviceActivated', JSON.stringify(true));
             window.localStorage.setItem('hayat_licenseId', JSON.stringify(newLicense.id));
             window.localStorage.setItem('hayat_session', JSON.stringify(session));
@@ -502,7 +527,10 @@ const ActivationScreen = ({ onActivate, onSwitchToLogin }: { onActivate: () => v
             onActivate();
 
         } catch (error: any) {
-            setError(error.message || "یک خطای ناشناخته رخ داد. لطفاً اتصال اینترنت خود را بررسی کرده و دوباره تلاش کنید.");
+             const message = error.message === "User already registered" 
+                ? "این نام کاربری قبلا ثبت شده است. لطفا نام دیگری انتخاب کنید."
+                : error.message || "یک خطای ناشناخته رخ داد.";
+            setError(`خطا در ایجاد حساب کاربری: ${message}`);
         } finally {
             setIsLoading(false);
         }
@@ -638,6 +666,7 @@ const App: React.FC = () => {
         setSession(null);
         setCurrentUser(null);
         setIsLicenseDeactivated(false);
+        setAuthMode('login'); // Go back to login screen
     };
 
     // Background license verifier for offline-first functionality
@@ -1108,14 +1137,7 @@ const App: React.FC = () => {
         if (authMode === 'activation') {
             return <ActivationScreen onActivate={handleAuthSuccess} onSwitchToLogin={() => setAuthMode('login')} />;
         }
-        
-        return <LoginScreen onLoginSuccess={handleAuthSuccess} onSwitchToActivation={() => {
-            if (isDeviceActivated) {
-                alert("این دستگاه قبلا فعال‌سازی شده است. اگر اطلاعات خود را فراموش کرده‌اید با پشتیبانی تماس بگیرید.");
-            } else {
-                setAuthMode('activation');
-            }
-        }} />;
+        return <LoginScreen onLoginSuccess={handleAuthSuccess} onSwitchToActivation={() => setAuthMode('activation')} />;
     }
 
 
