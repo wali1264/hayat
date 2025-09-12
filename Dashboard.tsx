@@ -15,7 +15,7 @@ const Icon = ({ path, className = "w-6 h-6" }: { path: string, className?: strin
 );
 const SalesIcon = ({ className }: { className?: string }) => <Icon path="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" className={className} />;
 const CustomersIcon = ({ className }: { className?: string }) => <Icon path="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" className={className} />;
-const MoneyIcon = ({ className }: { className?: string }) => <Icon path="M12 8c-3.314 0-6 2.686-6 6s2.686 6 6 6 6-2.686 6-6-2.686-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4-4zm-1-5h2v2h-2v-2z" className={className} />;
+const MoneyIcon = ({ className }: { className?: string }) => <Icon path="M12 8c-3.314 0-6 2.686-6 6s2.686 6 6 6 6-2.686 6-6-2.686-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm-1-5h2v2h-2v-2z" className={className} />;
 const FulfillmentIcon = ({ className }: { className?: string }) => <Icon path="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" className={className} />;
 
 //=========== COMPONENTS ===========//
@@ -79,7 +79,6 @@ const Dashboard: React.FC<DashboardProps> = ({ drugs, orders, customers, onNavig
 
         const salesByDay = orders
             .filter(o => o.status !== 'لغو شده' && last30Days.includes(o.orderDate))
-            // FIX: Explicitly type the accumulator for the reduce function to ensure correct type inference for `salesByDay`.
             .reduce<{ [key: string]: number }>((acc, order) => {
                 acc[order.orderDate] = (acc[order.orderDate] || 0) + order.totalAmount;
                 return acc;
@@ -95,9 +94,7 @@ const Dashboard: React.FC<DashboardProps> = ({ drugs, orders, customers, onNavig
         const salesByDrug = orders
              .filter(o => o.status !== 'لغو شده')
              .flatMap(o => o.items)
-             // FIX: Explicitly type the accumulator for the reduce function. This resolves the error by ensuring `salesByDrug` is correctly typed as an object with string keys and number values, which allows the subsequent `.sort()` method to work correctly.
              .reduce<{ [key: string]: number }>((acc, item) => {
-                 // FIX: Corrected property access from `item.price` to `item.finalPrice` as `OrderItem` type does not have a `price` property. This calculates revenue based on the final price after discounts.
                  acc[item.drugName] = (acc[item.drugName] || 0) + (item.finalPrice * item.quantity);
                  return acc;
              }, {});
