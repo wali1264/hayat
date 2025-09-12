@@ -173,7 +173,14 @@ const ChecknehInvoicePrintModal = ({ isOpen, onClose, invoice, companyInfo, docu
 };
 
 // --- New Invoice Form ---
-const ChecknehInvoiceForm = ({ customers, onSave, setTab, addToast }: { customers: Customer[], onSave: (invoice: Omit<ChecknehInvoice, 'id' | 'invoiceNumber' | 'totalAmount'>) => ChecknehInvoice, setTab: (tab: Tab), addToast: (message: string, type?: 'success' | 'error' | 'info') => void }) => {
+type ChecknehInvoiceFormProps = {
+    customers: Customer[];
+    onSave: (invoice: Omit<ChecknehInvoice, 'id' | 'invoiceNumber' | 'totalAmount'>) => ChecknehInvoice;
+    setTab: (tab: Tab);
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+};
+
+const ChecknehInvoiceForm = ({ customers, onSave, setTab, addToast }: ChecknehInvoiceFormProps) => {
     const defaultInfo = { customerName: '', supplierName: '', invoiceDate: new Date().toISOString().split('T')[0] };
     const [info, setInfo] = useState(defaultInfo);
     const [items, setItems] = useState<ChecknehItem[]>([]);
