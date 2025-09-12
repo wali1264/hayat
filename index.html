@@ -47,11 +47,18 @@
       }
       
       /* --- Document Backgrounds --- */
-      #print-section {
-        position: relative;
-        background-color: white;
+      .bg-caduceus,
+      .bg-pills,
+      .bg-molecular,
+      .bg-grid {
+          position: relative;
+          background-color: white;
       }
-      #print-section::before {
+
+      .bg-caduceus::before,
+      .bg-pills::before,
+      .bg-molecular::before,
+      .bg-grid::before {
         content: '';
         position: absolute;
         top: 0;
@@ -63,6 +70,7 @@
         opacity: 0.05;
         z-index: -1;
       }
+
       .bg-caduceus::before {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 6V4m0 16v-2m4.6-9.4L18 8m-9.2 2.8L5 12m14 0h2M3 12h2m12.6-6.4L16 4m-9.2 2.8L5 8m5.05 8.13-1.59 1.59m5.08-5.08 1.59 1.59M12 16a2 2 0 0 0 2-2V8a2 2 0 0 0-4 0v6a2 2 0 0 0 2 2z'/%3E%3C/svg%3E");
         background-size: 150px;
