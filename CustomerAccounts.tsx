@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Customer } from './Customers';
 import { Order } from './Sales';
-import { CompanyInfo } from './Settings';
+import { CompanyInfo, DocumentSettings } from './Settings';
 
 //=========== ICONS ===========//
 const Icon = ({ path, className = "w-5 h-5" }) => (
@@ -148,14 +148,14 @@ type CustomerReportModalProps = {
     onClose: () => void;
     reportData: ReportData | null;
     companyInfo: CompanyInfo;
+    documentSettings: DocumentSettings;
 }
 
-const CustomerReportModal: React.FC<CustomerReportModalProps> = ({ isOpen, onClose, reportData, companyInfo }) => {
-
+const CustomerReportModal: React.FC<CustomerReportModalProps> = ({ isOpen, onClose, reportData, companyInfo, documentSettings }) => {
+    const [selectedTemplate, setSelectedTemplate] = useState('modern');
     if (!isOpen || !reportData) return null;
 
     const handlePrint = () => {
-        // A small delay can help ensure the browser has processed any DOM/style updates before printing.
         setTimeout(() => {
             window.print();
         }, 100);
@@ -164,19 +164,24 @@ const CustomerReportModal: React.FC<CustomerReportModalProps> = ({ isOpen, onClo
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-start p-4 overflow-y-auto" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl my-8" onClick={e => e.stopPropagation()}>
-                <div id="print-section" className="p-10">
-                    <header className="flex justify-between items-start pb-6 border-b">
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-800">{companyInfo.name}</h1>
+                <div 
+                    id="print-section" 
+                    className={`p-10 ${'template-' + selectedTemplate} ${'layout-logo-' + documentSettings.logoPosition}`}
+                    style={{ '--accent-color': documentSettings.accentColor } as React.CSSProperties}
+                >
+                    <header className="print-header">
+                        <div className="print-company-info">
+                            <h1 className="text-2xl font-bold text-gray-800 print-title">{companyInfo.name}</h1>
                             <p className="text-sm text-gray-500">{companyInfo.address}</p>
                             <p className="text-sm text-gray-500">{companyInfo.phone}</p>
                         </div>
-                        <div className='text-left'>
-                            <h2 className='text-xl font-bold'>گزارش تفصیلی معاملات</h2>
-                             <p className="text-sm text-gray-500">برای: {reportData.customerName}</p>
-                             <p className="text-sm text-gray-500">از {new Date(reportData.startDate).toLocaleDateString('fa-IR')} تا {new Date(reportData.endDate).toLocaleDateString('fa-IR')}</p>
-                        </div>
+                        {companyInfo.logo && <img src={companyInfo.logo} alt="Company Logo" className="print-logo" />}
                     </header>
+                    <div className="text-center my-6">
+                        <h2 className='text-xl font-bold'>گزارش تفصیلی معاملات</h2>
+                         <p className="text-sm text-gray-500">برای: {reportData.customerName}</p>
+                         <p className="text-sm text-gray-500">از {new Date(reportData.startDate).toLocaleDateString('fa-IR')} تا {new Date(reportData.endDate).toLocaleDateString('fa-IR')}</p>
+                    </div>
                     <main className='mt-6 space-y-8'>
                         {reportData.invoices.length === 0 ? (
                             <p className="text-center text-gray-500 py-10">هیچ معامله‌ای در این بازه زمانی برای این مشتری یافت نشد.</p>
@@ -189,7 +194,7 @@ const CustomerReportModal: React.FC<CustomerReportModalProps> = ({ isOpen, onClo
                                    </div>
                                     <div className="overflow-x-auto mt-2">
                                          <table className="w-full text-right text-sm">
-                                            <thead className="bg-gray-100">
+                                            <thead>
                                                 <tr>
                                                     <th className="p-2 font-semibold text-gray-600">شرح محصول</th>
                                                     <th className="p-2 font-semibold text-gray-600">تعداد</th>
@@ -231,7 +236,7 @@ const CustomerReportModal: React.FC<CustomerReportModalProps> = ({ isOpen, onClo
                            )) 
                         )}
                     </main>
-                     <footer className="mt-8 pt-6 border-t">
+                     <footer className="mt-8 pt-6 border-t print-summary">
                         <h4 className='text-lg font-bold'>خلاصه کلی گزارش</h4>
                          <div className='flex justify-end mt-2'>
                             <div className='w-full max-w-sm space-y-2'>
@@ -251,11 +256,22 @@ const CustomerReportModal: React.FC<CustomerReportModalProps> = ({ isOpen, onClo
                          </div>
                     </footer>
                 </div>
-                <div className="flex justify-end space-x-2 space-x-reverse p-4 bg-gray-50 rounded-b-xl border-t print:hidden">
-                    <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">بستن</button>
-                    <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold">
-                        <PrintIcon /> <span className="mr-2">چاپ</span>
-                    </button>
+                <div className="flex justify-between items-center space-x-2 space-x-reverse p-4 bg-gray-50 rounded-b-xl border-t print:hidden">
+                    <div>
+                        <label className="text-sm font-semibold mr-2">قالب:</label>
+                        <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="bg-white border border-gray-300 rounded-md px-2 py-1">
+                            <option value="modern">مدرن</option>
+                            <option value="classic">کلاسیک</option>
+                            <option value="minimalist">ساده</option>
+                            <option value="compact">فشرده</option>
+                        </select>
+                    </div>
+                    <div className='flex gap-2'>
+                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">بستن</button>
+                        <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold">
+                            <PrintIcon /> <span className="mr-2">چاپ</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -268,9 +284,10 @@ type CustomerAccountsProps = {
     customers: Customer[];
     orders: Order[];
     companyInfo: CompanyInfo;
+    documentSettings: DocumentSettings;
 };
 
-const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, companyInfo }) => {
+const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, companyInfo, documentSettings }) => {
     const [isLedgerOpen, setIsLedgerOpen] = useState(false);
     const [selectedCustomer, setSelectedCustomer] = useState<CustomerFinancialSummary | null>(null);
 
@@ -354,6 +371,7 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
                 onClose={() => setIsReportModalOpen(false)}
                 reportData={generatedReportData}
                 companyInfo={companyInfo}
+                documentSettings={documentSettings}
             />
             <div className="mb-8">
                 <h2 className="text-3xl font-bold text-gray-800">مدیریت حسابات مشتریان</h2>

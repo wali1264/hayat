@@ -14,10 +14,12 @@
       body {
         font-family: 'Vazirmatn', sans-serif;
       }
+
+      /* Base Print Styles */
       @media print {
         @page {
           size: A4;
-          margin: 20mm;
+          margin: 15mm;
         }
         body {
             -webkit-print-color-adjust: exact !important;
@@ -37,16 +39,136 @@
           margin: 0;
           padding: 0;
         }
-        /* Utility class for elements that should not break across pages */
-        .page-break-inside-avoid {
-            page-break-inside: avoid;
-        }
-        /* Ensure tables and rows behave well */
+        .page-break-inside-avoid { page-break-inside: avoid; }
         table { page-break-inside:auto }
         tr    { page-break-inside:avoid; page-break-after:auto }
         thead { display:table-header-group }
         tfoot { display:table-footer-group }
       }
+
+      /* Document Customization Styles */
+      #print-section {
+        --accent-color: #0d9488; /* Default accent color */
+      }
+      #print-section .print-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      #print-section .print-logo {
+        width: 6rem;
+        height: 6rem;
+        object-fit: contain;
+      }
+      #print-section .print-company-info {
+        text-align: right;
+      }
+      /* Logo Position Layouts */
+      #print-section.layout-logo-right .print-header { flex-direction: row; }
+      #print-section.layout-logo-left .print-header { flex-direction: row-reverse; }
+      #print-section.layout-logo-center .print-header { 
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      #print-section.layout-logo-center .print-company-info {
+        text-align: center;
+        margin-top: 1rem;
+      }
+      
+      /* --- TEMPLATE: MODERN --- */
+      .template-modern {
+        font-family: 'Vazirmatn', sans-serif;
+      }
+      .template-modern .print-header {
+        border-bottom: 2px solid var(--accent-color);
+      }
+      .template-modern .print-title {
+        color: var(--accent-color);
+        font-weight: 700;
+        font-size: 1.25rem;
+        margin-bottom: 0.25rem;
+      }
+      .template-modern table thead {
+        background-color: var(--accent-color) !important;
+        color: white;
+      }
+       .template-modern table thead th {
+        font-weight: 600;
+        padding: 0.75rem;
+      }
+       .template-modern table tbody tr:nth-child(even) {
+        background-color: #f9fafb;
+      }
+      .template-modern .print-summary {
+        border-top: 2px solid var(--accent-color);
+      }
+
+      /* --- TEMPLATE: CLASSIC --- */
+      .template-classic {
+        font-family: 'Times New Roman', serif;
+      }
+       .template-classic .print-header {
+        border-bottom: 2px double #333;
+      }
+       .template-classic .print-title {
+        font-size: 1.5rem;
+        font-weight: bold;
+      }
+       .template-classic table {
+        border-collapse: collapse;
+        width: 100%;
+        border: 1px solid #666;
+      }
+       .template-classic table th, .template-classic table td {
+        border: 1px solid #666;
+        padding: 0.5rem;
+      }
+      .template-classic table thead {
+        background-color: #e5e7eb !important;
+        font-weight: bold;
+      }
+      .template-classic .print-summary {
+         border-top: 2px double #333;
+      }
+      
+      /* --- TEMPLATE: MINIMALIST --- */
+      .template-minimalist {
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      .template-minimalist .print-header, .template-minimalist .print-summary, .template-minimalist table, .template-minimalist td, .template-minimalist th {
+        border-color: #e5e7eb;
+      }
+      .template-minimalist .print-logo {
+        filter: grayscale(100%);
+      }
+       .template-minimalist table thead {
+        background-color: transparent !important;
+        border-bottom: 2px solid #333;
+      }
+       .template-minimalist table td, .template-minimalist table th {
+          padding: 0.5rem;
+      }
+      .template-minimalist * {
+        color: #111827 !important;
+      }
+
+      /* --- TEMPLATE: COMPACT --- */
+      .template-compact {
+         font-size: 0.8rem;
+      }
+      .template-compact .print-header { padding-bottom: 0.75rem; }
+      .template-compact .print-logo { width: 4rem; height: 4rem; }
+      .template-compact .print-title { font-size: 1.1rem; }
+      .template-compact table th, .template-compact table td {
+        padding: 0.4rem;
+      }
+       .template-compact .print-summary {
+        font-size: 0.9rem;
+      }
+      
     </style>
   <script type="importmap">
 {

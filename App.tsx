@@ -7,7 +7,7 @@ import Sales, { Order, OrderItem } from './Sales';
 import Customers, { Customer } from './Customers';
 import Accounting, { Expense, Income } from './Accounting';
 import Reports from './Reports';
-import Settings, { CompanyInfo as CompanyInfoType, User, UserRole, mockUsers as initialMockUsers } from './Settings';
+import Settings, { CompanyInfo as CompanyInfoType, User, UserRole, mockUsers as initialMockUsers, DocumentSettings } from './Settings';
 import Fulfillment from './Fulfillment';
 import Dashboard from './Dashboard';
 import CustomerAccounts from './CustomerAccounts';
@@ -15,6 +15,7 @@ import Suppliers, { Supplier } from './Suppliers';
 import Purchasing, { PurchaseBill, PurchaseItem } from './Purchasing';
 import SupplierAccounts from './SupplierAccounts';
 import RecycleBin, { TrashItem, TrashableItem } from './RecycleBin';
+import Checkneh from './Checkneh';
 
 
 //=========== SUPABASE CLIENT ===========//
@@ -44,6 +45,8 @@ const SuppliersIcon = ({ className }: { className?: string }) => <Icon path="M13
 const PurchasingIcon = ({ className }: { className?: string }) => <Icon path="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" className={className} />;
 const SupplierAccountsIcon = ({ className }: { className?: string }) => <Icon path="M4 4h16v16H4z M4 9h16v2H4z M9 13h2v4H9z M13 13h2v4h-2z" className={className} />;
 const RecycleBinIcon = ({ className }: { className?: string }) => <Icon path="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" className={className} />;
+const ChecknehIcon = ({ className }: { className?: string }) => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m2 14h-2m2-4h-4m-2-4h6" className={className} />;
+const CloudSyncIcon = ({ className }: { className?: string }) => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a4 4 0 01-4-4V9a4 4 0 014-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V16a4 4 0 01-4 4z" className={className} />;
 
 
 const LogoIcon = () => (
@@ -92,7 +95,7 @@ type PermissionsMap = {
 };
 
 const permissions: PermissionsMap = {
-    'مدیر کل': ['dashboard', 'inventory', 'sales', 'fulfillment', 'customers', 'customer_accounts', 'suppliers', 'purchasing', 'supplier_accounts', 'finance', 'reports', 'settings', 'recycle_bin'],
+    'مدیر کل': ['dashboard', 'inventory', 'sales', 'fulfillment', 'customers', 'customer_accounts', 'suppliers', 'purchasing', 'supplier_accounts', 'finance', 'reports', 'checkneh', 'settings', 'recycle_bin'],
     'فروشنده': ['dashboard', 'sales', 'customers', 'customer_accounts'],
     'انباردار': ['dashboard', 'inventory', 'fulfillment', 'suppliers', 'purchasing'],
     'حسابدار': ['dashboard', 'customer_accounts', 'supplier_accounts', 'finance', 'reports'],
@@ -100,16 +103,16 @@ const permissions: PermissionsMap = {
 
 //=========== MOCK DATA FOR DEMO ===========//
 const initialMockDrugs: Drug[] = [
-    { id: 1, name: 'Amoxicillin 500mg', barcode: '8901234567890', code: 'AMX500', manufacturer: 'Kabul Pharma', quantity: 1500, productionDate: '2023-12-01', expiryDate: '2025-12-31', price: 120, discountPercentage: 5, category: 'آنتی‌بیوتیک' },
-    { id: 2, name: 'Panadol Extra', barcode: '8901234567891', code: 'PAN-EX', manufacturer: 'GSK', quantity: 2500, productionDate: '2024-01-01', expiryDate: '2026-06-30', price: 80, discountPercentage: 0, category: 'مسکن' },
-    { id: 3, name: 'Vitamin C 1000mg', barcode: '8901234567892', code: 'VITC1000', manufacturer: 'Bayer', quantity: 800, productionDate: '2023-05-01', expiryDate: '2024-11-30', price: 250, discountPercentage: 10, category: 'ویتامین و مکمل' },
-    { id: 4, name: 'Metformin 850mg', barcode: '8901234567893', code: 'MET850', manufacturer: 'Merck', quantity: 45, expiryDate: '2025-02-28', price: 180, discountPercentage: 0, category: 'دیابت' }, // Low stock
-    { id: 5, name: 'Aspirin 81mg', barcode: '8901234567894', code: 'ASP81', manufacturer: 'Bayer', quantity: 1200, expiryDate: '2027-01-31', price: 90, discountPercentage: 0, category: 'بیماری‌های قلبی' },
-    { id: 6, name: 'Ciprofloxacin 500mg', barcode: '8901234567895', code: 'CIP500', manufacturer: 'Kabul Pharma', quantity: 600, expiryDate: '2024-09-30', price: 300, discountPercentage: 15, category: 'آنتی‌بیوتیک' }, // Near expiry
-    { id: 7, name: 'Salbutamol Inhaler', barcode: '8901234567896', code: 'SAL-INH', manufacturer: 'GSK', quantity: 300, expiryDate: '2025-08-31', price: 450, discountPercentage: 0, category: 'تنفسی' },
-    { id: 8, name: 'Paracetamol Syrup', barcode: '8901234567897', code: 'PARA-SYP', manufacturer: 'Herat Medica', quantity: 950, expiryDate: '2025-10-31', price: 60, discountPercentage: 0, category: 'مسکن' },
-    { id: 9, name: 'Loratadine 10mg', barcode: '8901234567898', code: 'LOR10', manufacturer: 'Bayer', quantity: 0, expiryDate: '2024-05-31', price: 150, discountPercentage: 0, category: 'ضد حساسیت' }, // Out of stock & expired
-    { id: 10, name: 'Omeprazole 20mg', barcode: '8901234567899', code: 'OME20', manufacturer: 'Herat Medica', quantity: 700, expiryDate: '2026-04-30', price: 220, discountPercentage: 5, category: 'گوارشی' },
+    { id: 1, name: 'Amoxicillin 500mg', barcode: '8901234567890', code: 'AMX500', manufacturer: 'Kabul Pharma', quantity: 1500, productionDate: '2023-12-01', expiryDate: '2025-12-31', price: 120, purchasePrice: 95, discountPercentage: 5, category: 'آنتی‌بیوتیک' },
+    { id: 2, name: 'Panadol Extra', barcode: '8901234567891', code: 'PAN-EX', manufacturer: 'GSK', quantity: 2500, productionDate: '2024-01-01', expiryDate: '2026-06-30', price: 80, purchasePrice: 60, discountPercentage: 0, category: 'مسکن' },
+    { id: 3, name: 'Vitamin C 1000mg', barcode: '8901234567892', code: 'VITC1000', manufacturer: 'Bayer', quantity: 800, productionDate: '2023-05-01', expiryDate: '2024-11-30', price: 250, purchasePrice: 190, discountPercentage: 10, category: 'ویتامین و مکمل' },
+    { id: 4, name: 'Metformin 850mg', barcode: '8901234567893', code: 'MET850', manufacturer: 'Merck', quantity: 45, expiryDate: '2025-02-28', price: 180, purchasePrice: 145, discountPercentage: 0, category: 'دیابت' }, // Low stock
+    { id: 5, name: 'Aspirin 81mg', barcode: '8901234567894', code: 'ASP81', manufacturer: 'Bayer', quantity: 1200, expiryDate: '2027-01-31', price: 90, purchasePrice: 70, discountPercentage: 0, category: 'بیماری‌های قلبی' },
+    { id: 6, name: 'Ciprofloxacin 500mg', barcode: '8901234567895', code: 'CIP500', manufacturer: 'Kabul Pharma', quantity: 600, expiryDate: '2024-09-30', price: 300, purchasePrice: 240, discountPercentage: 15, category: 'آنتی‌بیوتیک' }, // Near expiry
+    { id: 7, name: 'Salbutamol Inhaler', barcode: '8901234567896', code: 'SAL-INH', manufacturer: 'GSK', quantity: 300, expiryDate: '2025-08-31', price: 450, purchasePrice: 380, discountPercentage: 0, category: 'تنفسی' },
+    { id: 8, name: 'Paracetamol Syrup', barcode: '8901234567897', code: 'PARA-SYP', manufacturer: 'Herat Medica', quantity: 950, expiryDate: '2025-10-31', price: 60, purchasePrice: 45, discountPercentage: 0, category: 'مسکن' },
+    { id: 9, name: 'Loratadine 10mg', barcode: '8901234567898', code: 'LOR10', manufacturer: 'Bayer', quantity: 0, expiryDate: '2024-05-31', price: 150, purchasePrice: 110, discountPercentage: 0, category: 'ضد حساسیت' }, // Out of stock & expired
+    { id: 10, name: 'Omeprazole 20mg', barcode: '8901234567899', code: 'OME20', manufacturer: 'Herat Medica', quantity: 700, expiryDate: '2026-04-30', price: 220, purchasePrice: 175, discountPercentage: 5, category: 'گوارشی' },
 ];
 
 const initialMockCustomers: Customer[] = [
@@ -124,8 +127,8 @@ const initialMockOrders: Order[] = [
     {
         id: 1, orderNumber: 'ORD-2407-001', customerName: 'داروخانه مرکزی کابل', orderDate: '2024-07-25',
         items: [
-            { drugId: 1, drugName: 'Amoxicillin 500mg', quantity: 50, originalPrice: 120, discountPercentage: 5, finalPrice: 114 },
-            { drugId: 2, drugName: 'Panadol Extra', quantity: 100, originalPrice: 80, discountPercentage: 0, finalPrice: 80 },
+            { drugId: 1, drugName: 'Amoxicillin 500mg', quantity: 50, bonusQuantity: 0, originalPrice: 120, discountPercentage: 5, finalPrice: 114 },
+            { drugId: 2, drugName: 'Panadol Extra', quantity: 100, bonusQuantity: 0, originalPrice: 80, discountPercentage: 0, finalPrice: 80 },
         ],
         totalAmount: 13700,
         amountPaid: 13700, status: 'تکمیل شده', paymentStatus: 'پرداخت شده'
@@ -133,7 +136,7 @@ const initialMockOrders: Order[] = [
     {
         id: 2, orderNumber: 'ORD-2407-002', customerName: 'شفاخانه صحت', orderDate: '2024-07-26',
         items: [
-            { drugId: 3, drugName: 'Vitamin C 1000mg', quantity: 20, originalPrice: 250, discountPercentage: 10, finalPrice: 225 },
+            { drugId: 3, drugName: 'Vitamin C 1000mg', quantity: 20, bonusQuantity: 0, originalPrice: 250, discountPercentage: 10, finalPrice: 225 },
         ],
         totalAmount: 4500,
         amountPaid: 2000, status: 'ارسال شده', paymentStatus: 'قسمتی پرداخت شده'
@@ -141,8 +144,8 @@ const initialMockOrders: Order[] = [
     {
         id: 3, orderNumber: 'ORD-2407-003', customerName: 'کلینیک آریانا', orderDate: '2024-07-28',
         items: [
-            { drugId: 7, drugName: 'Salbutamol Inhaler', quantity: 10, originalPrice: 450, discountPercentage: 0, finalPrice: 450 },
-            { drugId: 5, drugName: 'Aspirin 81mg', quantity: 200, originalPrice: 90, discountPercentage: 0, finalPrice: 90 },
+            { drugId: 7, drugName: 'Salbutamol Inhaler', quantity: 10, bonusQuantity: 2, originalPrice: 450, discountPercentage: 0, finalPrice: 450 },
+            { drugId: 5, drugName: 'Aspirin 81mg', quantity: 200, bonusQuantity: 0, originalPrice: 90, discountPercentage: 0, finalPrice: 90 },
         ],
         totalAmount: 22500,
         amountPaid: 0, status: 'ارسال شده', paymentStatus: 'پرداخت نشده'
@@ -150,7 +153,7 @@ const initialMockOrders: Order[] = [
     {
         id: 4, orderNumber: 'ORD-2407-004', customerName: 'شفاخانه امیری', orderDate: new Date().toISOString().split('T')[0], // Today's order
         items: [
-            { drugId: 8, drugName: 'Paracetamol Syrup', quantity: 60, originalPrice: 60, discountPercentage: 0, finalPrice: 60 },
+            { drugId: 8, drugName: 'Paracetamol Syrup', quantity: 60, bonusQuantity: 0, originalPrice: 60, discountPercentage: 0, finalPrice: 60 },
         ],
         totalAmount: 3600,
         amountPaid: 0, status: 'در حال پردازش', paymentStatus: 'پرداخت نشده'
@@ -158,8 +161,8 @@ const initialMockOrders: Order[] = [
      {
         id: 5, orderNumber: 'ORD-2407-005', customerName: 'داروخانه مرکزی کابل', orderDate: new Date().toISOString().split('T')[0], // Today's order
         items: [
-            { drugId: 4, drugName: 'Metformin 850mg', quantity: 15, originalPrice: 180, discountPercentage: 0, finalPrice: 180 },
-            { drugId: 10, drugName: 'Omeprazole 20mg', quantity: 30, originalPrice: 220, discountPercentage: 5, finalPrice: 209 },
+            { drugId: 4, drugName: 'Metformin 850mg', quantity: 15, bonusQuantity: 0, originalPrice: 180, discountPercentage: 0, finalPrice: 180 },
+            { drugId: 10, drugName: 'Omeprazole 20mg', quantity: 30, bonusQuantity: 0, originalPrice: 220, discountPercentage: 5, finalPrice: 209 },
         ],
         totalAmount: 8970,
         amountPaid: 0, status: 'در حال پردازش', paymentStatus: 'پرداخت نشده'
@@ -167,7 +170,7 @@ const initialMockOrders: Order[] = [
     {
         id: 6, orderNumber: 'ORD-2406-015', customerName: 'شفاخانه صحت', orderDate: '2024-06-20',
         items: [
-            { drugId: 2, drugName: 'Panadol Extra', quantity: 200, originalPrice: 80, discountPercentage: 0, finalPrice: 80 },
+            { drugId: 2, drugName: 'Panadol Extra', quantity: 200, bonusQuantity: 0, originalPrice: 80, discountPercentage: 0, finalPrice: 80 },
         ],
         totalAmount: 16000,
         amountPaid: 16000, status: 'تکمیل شده', paymentStatus: 'پرداخت شده'
@@ -247,6 +250,7 @@ const navItems = [
     { id: 'supplier_accounts', label: 'حسابات شرکت‌ها', icon: <SupplierAccountsIcon /> },
     { id: 'finance', label: 'مالی و هزینه‌ها', icon: <AccountingIcon /> },
     { id: 'reports', label: 'گزارشات', icon: <ReportsIcon /> },
+    { id: 'checkneh', label: 'بخش چکنه', icon: <ChecknehIcon /> },
 ];
 
 const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout }) => {
@@ -475,7 +479,6 @@ const ActivationScreen = ({ onActivate, onSwitchToLogin }: { onActivate: () => v
         }
 
         try {
-            // 1. Check if username is in our public licenses table.
             const { data: existingLicense } = await supabase.from('licenses').select('username').eq('username', username.trim()).single();
             if (existingLicense) {
                 setError('این نام کاربری قبلاً استفاده شده است. لطفاً نام دیگری انتخاب کنید.');
@@ -483,51 +486,27 @@ const ActivationScreen = ({ onActivate, onSwitchToLogin }: { onActivate: () => v
                 return;
             }
 
-            // 2. Attempt to sign up the new user.
             const email = `${username.trim().toLowerCase()}@example.com`;
-            let user: SupabaseUser | null = null;
-            let session: Session | null = null;
-            
             const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
 
-            // 3. Handle the "User already registered" case specifically.
-            if (signUpError && signUpError.message.includes('User already registered')) {
-                // The user exists in auth, but not in our licenses table. Try to sign them in.
-                const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+            if (signUpError) throw new Error(signUpError.message);
+            if (!signUpData.user || !signUpData.session) throw new Error('ایجاد حساب کاربری با شکست مواجه شد.');
 
-                if (signInError) {
-                    setError("این نام کاربری وجود دارد اما رمز عبور اشتباه است. لطفاً نام کاربری دیگری انتخاب کنید یا با رمز صحیح تلاش کنید.");
-                    setIsLoading(false);
-                    return;
-                }
-                user = signInData.user;
-                session = signInData.session;
-            } else if (signUpError) {
-                // Some other sign-up error occurred.
-                throw new Error(signUpError.message);
-            } else {
-                user = signUpData.user;
-                session = signUpData.session;
-            }
-
-            if (!user || !session) throw new Error('ایجاد یا ورود به حساب کاربری با شکست مواجه شد.');
-
-            // 4. Proceed to create the license record.
-            const { data: newLicense, error: insertError } = await supabase.from('licenses').insert({ username: username.trim(), machine_id: machineId, user_id: user.id }).select().single();
+            const { data: newLicense, error: insertError } = await supabase.from('licenses').insert({ username: username.trim(), machine_id: machineId, user_id: signUpData.user.id }).select().single();
             
             if (insertError) throw new Error(`خطا در ثبت لایسنس: ${insertError.message}`);
             if (!newLicense) throw new Error('ثبت لایسنس با شکست مواجه شد.');
 
-            // 5. Success.
             window.localStorage.setItem('hayat_isDeviceActivated', JSON.stringify(true));
             window.localStorage.setItem('hayat_licenseId', JSON.stringify(newLicense.id));
-            window.localStorage.setItem('hayat_session', JSON.stringify(session));
+            window.localStorage.setItem('hayat_session', JSON.stringify(signUpData.session));
+            window.localStorage.setItem('hayat_lastLicenseCheck', JSON.stringify(new Date().toISOString()));
 
             alert("برنامه با موفقیت فعال شد!");
             onActivate();
 
         } catch (error: any) {
-             const message = error.message === "User already registered" 
+             const message = error.message.includes("User already registered") 
                 ? "این نام کاربری قبلا ثبت شده است. لطفا نام دیگری انتخاب کنید."
                 : error.message || "یک خطای ناشناخته رخ داد.";
             setError(`خطا در ایجاد حساب کاربری: ${message}`);
@@ -572,6 +551,10 @@ const LoginScreen = ({ onLoginSuccess, onSwitchToActivation }: { onLoginSuccess:
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // State for license transfer modal
+    const [showTransferModal, setShowTransferModal] = useState(false);
+    const [pendingLoginData, setPendingLoginData] = useState<{ session: Session, license: any } | null>(null);
+
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
@@ -584,19 +567,18 @@ const LoginScreen = ({ onLoginSuccess, onSwitchToActivation }: { onLoginSuccess:
             if (signInError) throw new Error("نام کاربری یا رمز عبور اشتباه است.");
             if (!session || !user) throw new Error("ورود با شکست مواجه شد.");
 
-            const { data: license, error: licenseError } = await supabase.from('licenses').select('id').eq('user_id', user.id).single();
+            const { data: license, error: licenseError } = await supabase.from('licenses').select('id, machine_id').eq('user_id', user.id).single();
             if (licenseError || !license) throw new Error("لایسنس مرتبط با این کاربر یافت نشد.");
             
-            const newMachineId = getOrCreateMachineId();
-            const { error: updateError } = await supabase.from('licenses').update({ machine_id: newMachineId }).eq('id', license.id);
-            if (updateError) console.warn("Could not update machine_id, but proceeding:", updateError.message);
-
-            window.localStorage.setItem('hayat_isDeviceActivated', JSON.stringify(true));
-            window.localStorage.setItem('hayat_licenseId', JSON.stringify(license.id));
-            window.localStorage.setItem('hayat_session', JSON.stringify(session));
-            
-            alert("با موفقیت وارد شدید. برای بازیابی اطلاعات، به بخش تنظیمات بروید.");
-            onLoginSuccess();
+            const currentMachineId = getOrCreateMachineId();
+            if (license.machine_id === currentMachineId) {
+                // Machine ID matches, proceed with login
+                finalizeLogin(session, license.id);
+            } else {
+                // Machine ID mismatch, show transfer modal
+                setPendingLoginData({ session, license });
+                setShowTransferModal(true);
+            }
 
         } catch (error: any) {
             setError(error.message || "یک خطای ناشناخته رخ داد. اتصال اینترنت خود را بررسی کنید.");
@@ -604,9 +586,52 @@ const LoginScreen = ({ onLoginSuccess, onSwitchToActivation }: { onLoginSuccess:
             setIsLoading(false);
         }
     };
+    
+    const handleConfirmTransfer = async () => {
+        if (!pendingLoginData) return;
+        setIsLoading(true);
+        setShowTransferModal(false);
+        
+        try {
+            const newMachineId = getOrCreateMachineId();
+            const { error: updateError } = await supabase.from('licenses').update({ machine_id: newMachineId }).eq('id', pendingLoginData.license.id);
+            if (updateError) throw new Error(`خطا در انتقال لایسنس: ${updateError.message}`);
+
+            finalizeLogin(pendingLoginData.session, pendingLoginData.license.id);
+        } catch (error: any) {
+            setError(error.message);
+        } finally {
+            setIsLoading(false);
+            setPendingLoginData(null);
+        }
+    };
+
+    const finalizeLogin = (session: Session, licenseId: string) => {
+        window.localStorage.setItem('hayat_isDeviceActivated', JSON.stringify(true));
+        window.localStorage.setItem('hayat_licenseId', JSON.stringify(licenseId));
+        window.localStorage.setItem('hayat_session', JSON.stringify(session));
+        window.localStorage.setItem('hayat_lastLicenseCheck', JSON.stringify(new Date().toISOString()));
+        
+        alert("با موفقیت وارد شدید. برای بازیابی اطلاعات، به بخش تنظیمات بروید.");
+        onLoginSuccess();
+    };
+
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100" dir="rtl">
+            {showTransferModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4">
+                    <div className="bg-white rounded-xl p-8 max-w-md w-full text-center space-y-4">
+                        <h2 className="text-xl font-bold text-gray-800">انتقال لایسنس</h2>
+                        <p className="text-gray-600">این حساب کاربری روی دستگاه دیگری فعال است. آیا می‌خواهید لایسنس خود را به این دستگاه جدید منتقل کنید؟</p>
+                        <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">توجه: با این کار، دسترسی از دستگاه قبلی به محض اتصال به اینترنت مسدود خواهد شد.</p>
+                        <div className="flex justify-center gap-4 pt-4">
+                            <button onClick={() => { setShowTransferModal(false); setPendingLoginData(null); }} className="px-6 py-2 rounded-lg bg-gray-200 font-semibold" disabled={isLoading}>انصراف</button>
+                            <button onClick={handleConfirmTransfer} className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold" disabled={isLoading}>{isLoading ? 'در حال انتقال...' : 'بله، انتقال بده'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-2xl shadow-2xl">
                  <div className="flex flex-col items-center"><div className="p-4 bg-teal-600 rounded-full mb-4"><LogoIcon /></div><h1 className="text-3xl font-bold text-gray-800">ورود به پلتفرم حیات</h1><p className="text-gray-500 mt-2">برای بازیابی اطلاعات، وارد حساب کاربری خود شوید</p></div>
                 <form className="mt-8 space-y-6" onSubmit={handleLogin}>
@@ -630,6 +655,7 @@ const App: React.FC = () => {
     const [session, setSession] = usePersistentState<Session | null>('hayat_session', null);
     const [authMode, setAuthMode] = useState<'activation' | 'login'>('login');
     const [isLicenseDeactivated, setIsLicenseDeactivated] = useState(false);
+    const [isUpdateRequired, setIsUpdateRequired] = useState(false);
     
     // State
     const [currentUser, setCurrentUser] = usePersistentState<User | null>('hayat_currentUser', null);
@@ -653,6 +679,11 @@ const App: React.FC = () => {
         logo: null
     });
 
+    const [documentSettings, setDocumentSettings] = usePersistentState<DocumentSettings>('hayat_documentSettings', {
+        logoPosition: 'right',
+        accentColor: '#0d9488',
+    });
+
     // AI Assistant State
     const [isAssistantOpen, setIsAssistantOpen] = useState(false);
     const [assistantMessages, setAssistantMessages] = useState<Message[]>([]);
@@ -660,68 +691,71 @@ const App: React.FC = () => {
 
     // --- Auth Handlers ---
     const handleLogout = () => {
-        console.log("Logging out and clearing local session.");
+        window.localStorage.clear(); // Clear everything for a clean logout
         setIsDeviceActivated(false);
         setLicenseId(null);
         setSession(null);
         setCurrentUser(null);
         setIsLicenseDeactivated(false);
-        setAuthMode('login'); // Go back to login screen
+        setIsUpdateRequired(false);
+        setAuthMode('login'); 
     };
-
-    // Background license verifier for offline-first functionality
-    useEffect(() => {
-        if (!isDeviceActivated || !licenseId || !session) {
-            return;
-        }
-
-        const verifyLicense = async () => {
-            try {
-                const { error: sessionError } = await supabase.auth.setSession(session);
-                if (sessionError) {
-                    console.error("Local session is invalid. Logging out.", sessionError.message);
-                    handleLogout();
-                    return;
-                }
-
-                const { data, error: licenseError } = await supabase.from('licenses').select('is_active').eq('id', licenseId).single();
-
-                if (licenseError) {
-                    if (licenseError.code === 'PGRST116') { // Not found on server
-                        console.error('License ID not found on server. Session is invalid.');
-                        handleLogout();
-                    } else {
-                        console.warn('Could not verify license status (maybe offline):', licenseError.message);
-                    }
-                    return;
-                }
-                
-                if (data && !data.is_active) {
-                    console.log("License is inactive. Blocking access.");
-                    setIsLicenseDeactivated(true);
-                } else {
-                    setIsLicenseDeactivated(false);
-                }
-
-            } catch (e) {
-                console.error("An unexpected error occurred during license verification:", e);
-            }
-        };
-
-        if (navigator.onLine) {
-            verifyLicense();
-        }
+    
+    const verifyLicense = async (isManualTrigger = false) => {
+        if (!isDeviceActivated || !licenseId || !session) return;
         
+        try {
+            const { error: sessionError } = await supabase.auth.setSession(session);
+            if (sessionError) throw new Error("Session محلی نامعتبر است.");
+
+            const localMachineId = getOrCreateMachineId();
+            const { data, error: licenseError } = await supabase.from('licenses').select('is_active, machine_id').eq('id', licenseId).single();
+
+            if (licenseError) throw new Error(`خطا در ارتباط با سرور: ${licenseError.message}`);
+            
+            if (!data.is_active || data.machine_id !== localMachineId) {
+                if (isManualTrigger) alert("اعتبارسنجی لایسنس ناموفق بود. دسترسی شما مسدود شد.");
+                setIsLicenseDeactivated(true);
+            } else {
+                setIsLicenseDeactivated(false);
+                if (isUpdateRequired) setIsUpdateRequired(false);
+                window.localStorage.setItem('hayat_lastLicenseCheck', JSON.stringify(new Date().toISOString()));
+                if (isManualTrigger) alert("برنامه با موفقیت به‌روزرسانی و تایید شد!");
+            }
+        } catch (error: any) {
+            console.error("License verification failed:", error.message);
+            if (isManualTrigger) alert(`خطا در اعتبارسنجی: ${error.message}. لطفاً اتصال اینترنت خود را بررسی کنید.`);
+            // Don't deactivate on network error, only on explicit server response.
+        }
+    };
+    
+    // Background license verifier
+    useEffect(() => {
         const intervalId = setInterval(() => {
-            if (navigator.onLine) {
+            if (navigator.onLine && isDeviceActivated) {
                 verifyLicense();
             }
-        }, 1000 * 60 * 15);
+        }, 1000 * 60 * 15); // Every 15 minutes
 
         return () => clearInterval(intervalId);
-
     }, [isDeviceActivated, licenseId, session]);
 
+    // 30-day offline check
+    useEffect(() => {
+        if (isDeviceActivated) {
+            const lastCheckString = window.localStorage.getItem('hayat_lastLicenseCheck');
+            if (lastCheckString) {
+                const lastCheckDate = new Date(JSON.parse(lastCheckString));
+                const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+                if (Date.now() - lastCheckDate.getTime() > thirtyDaysInMs) {
+                    setIsUpdateRequired(true);
+                }
+            } else {
+                // If it never existed, force a check on first run after update.
+                setIsUpdateRequired(true);
+            }
+        }
+    }, [isDeviceActivated]);
 
     // Auto-login/user setup effect after activation
     useEffect(() => {
@@ -750,7 +784,7 @@ const App: React.FC = () => {
 
     // --- Backup & Restore Handlers ---
     const getAllData = () => ({
-        users, drugs, orders, customers, expenses, suppliers, purchaseBills, trash, companyInfo,
+        users, drugs, orders, customers, expenses, suppliers, purchaseBills, trash, companyInfo, documentSettings
     });
 
     const setAllData = (data: any) => {
@@ -767,6 +801,7 @@ const App: React.FC = () => {
         if (data.purchaseBills) setPurchaseBills(data.purchaseBills);
         if (data.trash) setTrash(data.trash);
         if (data.companyInfo) setCompanyInfo(data.companyInfo);
+        if (data.documentSettings) setDocumentSettings(data.documentSettings);
     };
 
     const handleBackupLocal = () => {
@@ -818,13 +853,19 @@ const App: React.FC = () => {
             alert("برای پشتیبان‌گیری آنلاین، ابتدا باید برنامه را فعال کنید.");
             return false;
         }
-        if (!window.confirm("آیا می‌خواهید یک نسخه پشتیبان آنلاین جدید ایجاد کنید؟")) return false;
+        if (!window.confirm("این کار نسخه پشتیبان آنلاین قبلی شما را بازنویسی می‌کند. آیا می‌خواهید ادامه دهید؟")) return false;
         
         try {
             const backup_data = getAllData();
-            const { error } = await supabase.from('backups').insert({ license_id: licenseId, backup_data });
-            if (error) throw error;
-            alert('نسخه پشتیبان آنلاین با موفقیت ایجاد شد.');
+            // Delete old backups first to ensure only one exists
+            const { error: deleteError } = await supabase.from('backups').delete().eq('license_id', licenseId);
+            if (deleteError) console.warn("Could not delete old backups, proceeding anyway:", deleteError.message);
+            
+            // Insert the new backup
+            const { error: insertError } = await supabase.from('backups').insert({ license_id: licenseId, backup_data });
+            if (insertError) throw insertError;
+            
+            alert('نسخه پشتیبان آنلاین با موفقیت ایجاد و جایگزین شد.');
             return true;
         } catch (error: any) {
             console.error("Error creating online backup:", error);
@@ -833,12 +874,16 @@ const App: React.FC = () => {
         }
     };
 
-    const handleRestoreOnline = async (backupId: string) => {
+    const handleRestoreOnline = async () => {
          if (!window.confirm("آیا مطمئن هستید؟ با بازیابی اطلاعات، تمام داده‌های فعلی شما بازنویسی خواهد شد.")) {
             return;
         }
+        if (!licenseId) {
+            alert("لایسنس یافت نشد.");
+            return;
+        }
         try {
-            const { data, error } = await supabase.from('backups').select('backup_data').eq('id', backupId).single();
+            const { data, error } = await supabase.from('backups').select('backup_data').eq('license_id', licenseId).single();
             if (error) throw error;
             if (data && data.backup_data) {
                 setAllData(data.backup_data);
@@ -850,6 +895,23 @@ const App: React.FC = () => {
             console.error("Error restoring from online backup:", error);
             alert(`خطا در بازیابی اطلاعات: ${error.message}`);
         }
+    };
+    
+    const handlePurgeData = (startDate: string, endDate: string) => {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+
+        const isWithinRange = (dateStr: string) => {
+            const date = new Date(dateStr);
+            return date >= start && date <= end;
+        };
+
+        setOrders(prev => prev.filter(o => !isWithinRange(o.orderDate)));
+        setExpenses(prev => prev.filter(e => !isWithinRange(e.date)));
+        setPurchaseBills(prev => prev.filter(p => !isWithinRange(p.purchaseDate)));
+        
+        alert("داده‌های تاریخی در بازه مشخص شده با موفقیت حذف شدند.");
     };
 
 
@@ -875,10 +937,11 @@ const App: React.FC = () => {
                 const drugId = 'drugId' in item ? item.drugId : 0;
                 const drug = drugsMap.get(drugId);
                 if (drug) {
+                    const totalQuantity = 'bonusQuantity' in item ? item.quantity + (item.bonusQuantity || 0) : item.quantity;
                     if (operation === 'subtract') {
-                        drug.quantity -= item.quantity;
+                        drug.quantity -= totalQuantity;
                     } else {
-                        drug.quantity += item.quantity;
+                        drug.quantity += totalQuantity;
                     }
                     drugsMap.set(drugId, drug);
                 }
@@ -1121,12 +1184,42 @@ const App: React.FC = () => {
         <div className="flex items-center justify-center min-h-screen bg-gray-100" dir="rtl">
             <div className="w-full max-w-lg p-8 space-y-6 bg-white rounded-2xl shadow-2xl text-center">
                  <h1 className="text-3xl font-bold text-red-600">دسترسی شما به برنامه مسدود شده است</h1>
-                 <p className="text-gray-600">ممکن است لایسنس شما توسط مدیر سیستم غیرفعال شده باشد یا مشکلی در اعتبار آن وجود داشته باشد. لطفاً برای اطلاعات بیشتر با پشتیبانی تماس بگیرید.</p>
+                 <p className="text-gray-600">ممکن است لایسنس شما به دستگاه دیگری منتقل شده باشد یا توسط مدیر سیستم غیرفعال شده باشد. لطفاً برای اطلاعات بیشتر با پشتیبانی تماس بگیرید.</p>
+                 <button onClick={handleLogout} className="mt-4 px-6 py-2 bg-gray-600 text-white font-semibold rounded-lg">خروج</button>
             </div>
         </div>
     );
+
+    const UpdateRequiredScreen = () => {
+        const [isVerifying, setIsVerifying] = useState(false);
+        const handleVerify = async () => {
+            if (!navigator.onLine) {
+                alert("لطفاً به اینترنت متصل شوید و دوباره تلاش کنید.");
+                return;
+            }
+            setIsVerifying(true);
+            await verifyLicense(true);
+            setIsVerifying(false);
+        }
+
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-100" dir="rtl">
+                 <div className="w-full max-w-lg p-8 space-y-6 bg-white rounded-2xl shadow-2xl text-center">
+                    <div className="flex justify-center"><CloudSyncIcon className="w-16 h-16 text-teal-500" /></div>
+                    <h1 className="text-3xl font-bold text-gray-800">نیاز به همگام‌سازی</h1>
+                    <p className="text-gray-600">برای دریافت آخرین به‌روزرسانی‌ها و اطمینان از عملکرد صحیح برنامه، لطفاً برای چند لحظه به اینترنت متصل شوید.</p>
+                    <button onClick={handleVerify} disabled={isVerifying} className="w-full mt-4 px-6 py-3 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 disabled:bg-teal-300">
+                        {isVerifying ? 'در حال بررسی...' : 'بررسی برای آپدیت'}
+                    </button>
+                 </div>
+            </div>
+        );
+    };
     
     // --- Render Logic ---
+    if (isUpdateRequired) {
+        return <UpdateRequiredScreen />;
+    }
     if (isLicenseDeactivated) {
         return <DeactivatedScreen />;
     }
@@ -1154,13 +1247,13 @@ const App: React.FC = () => {
             case 'inventory':
                 return <Inventory drugs={drugs} onSave={handleSaveDrug} onDelete={handleDeleteDrug} currentUser={currentUser} />;
             case 'sales':
-                return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser}/>;
+                return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} documentSettings={documentSettings}/>;
             case 'fulfillment':
                 return <Fulfillment orders={orders} onUpdateOrder={handleSaveOrder} />;
             case 'customers':
                 return <Customers customers={customers} onSave={handleSaveCustomer} onDelete={handleDeleteCustomer} currentUser={currentUser} />;
             case 'customer_accounts':
-                return <CustomerAccounts customers={customers} orders={orders} companyInfo={companyInfo} />;
+                return <CustomerAccounts customers={customers} orders={orders} companyInfo={companyInfo} documentSettings={documentSettings} />;
             case 'suppliers':
                 return <Suppliers suppliers={suppliers} onSave={handleSaveSupplier} onDelete={handleDeleteSupplier} currentUser={currentUser} />;
             case 'purchasing':
@@ -1170,7 +1263,9 @@ const App: React.FC = () => {
             case 'finance':
                 return <Accounting incomes={incomes} expenses={expenses} onSave={handleSaveExpense} onDelete={handleDeleteExpense} currentUser={currentUser} />;
             case 'reports':
-                return <Reports orders={orders} expenses={expenses} drugs={drugs} companyInfo={companyInfo} />;
+                return <Reports orders={orders} expenses={expenses} drugs={drugs} companyInfo={companyInfo} documentSettings={documentSettings} />;
+             case 'checkneh':
+                return <Checkneh customers={customers} companyInfo={companyInfo} documentSettings={documentSettings} />;
             case 'settings':
                 return <Settings 
                     companyInfo={companyInfo} 
@@ -1184,6 +1279,9 @@ const App: React.FC = () => {
                     onRestoreLocal={handleRestoreLocal}
                     onBackupOnline={handleBackupOnline}
                     onRestoreOnline={handleRestoreOnline}
+                    onPurgeData={handlePurgeData}
+                    documentSettings={documentSettings}
+                    setDocumentSettings={setDocumentSettings}
                 />;
             case 'recycle_bin':
                  return <RecycleBin 

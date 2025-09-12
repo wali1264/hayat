@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Drug, drugCategories } from './Inventory';
 import { Customer } from './Customers';
-import { CompanyInfo, User } from './Settings';
+import { CompanyInfo, User, DocumentSettings } from './Settings';
 
 // Declare global libraries
 declare var Html5Qrcode: any;
@@ -36,6 +36,7 @@ export type OrderItem = {
     drugId: number;
     drugName: string;
     quantity: number;
+    bonusQuantity: number;
     originalPrice: number;
     discountPercentage: number;
     finalPrice: number;
@@ -148,7 +149,10 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     const isEditMode = initialData !== null;
 
     const totalAmount = useMemo(() => {
-        return items.reduce((sum, item) => sum + item.quantity * item.finalPrice, 0);
+        return items.reduce((sum, item) => {
+            const pricePerUnit = item.bonusQuantity > 0 ? item.originalPrice : item.finalPrice;
+            return sum + (item.quantity * pricePerUnit);
+        }, 0);
     }, [items]);
 
     const availableDrugs = useMemo(() => {
@@ -163,7 +167,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         if (isOpen) {
              if (initialData) {
                 setOrderInfo({ customerName: initialData.customerName, amountPaid: String(initialData.amountPaid), status: initialData.status });
-                setItems(initialData.items);
+                setItems(initialData.items.map(item => ({...item, bonusQuantity: item.bonusQuantity || 0}))); // Ensure bonusQuantity exists
             } else {
                 setOrderInfo({ customerName: '', amountPaid: '', status: 'ارسال شده' });
                 setItems([]);
@@ -195,25 +199,24 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
 
     const addItemToOrder = (drug: Drug, quantity: number) => {
          const existingItemIndex = items.findIndex(item => item.drugId === drug.id);
+         const totalRequired = existingItemIndex > -1 ? items[existingItemIndex].quantity + quantity + (items[existingItemIndex].bonusQuantity || 0) : quantity;
+
+         if (totalRequired > drug.quantity) {
+            alert(`تعداد درخواستی (${totalRequired}) بیشتر از موجودی انبار (${drug.quantity}) است.`);
+            return false;
+         }
+
         if (existingItemIndex > -1) {
             const updatedItems = [...items];
-            const newQuantity = updatedItems[existingItemIndex].quantity + quantity;
-            if (newQuantity > drug.quantity) {
-                alert(`تعداد درخواستی (${newQuantity}) بیشتر از موجودی انبار (${drug.quantity}) است.`);
-                return false;
-            }
-            updatedItems[existingItemIndex].quantity = newQuantity;
+            updatedItems[existingItemIndex].quantity += quantity;
             setItems(updatedItems);
         } else {
-            if (quantity > drug.quantity) {
-                 alert(`تعداد درخواستی (${quantity}) بیشتر از موجودی انبار (${drug.quantity}) است.`);
-                 return false;
-            }
             const finalPrice = drug.price * (1 - drug.discountPercentage / 100);
             setItems(prev => [...prev, {
                 drugId: drug.id,
                 drugName: drug.name,
                 quantity: quantity,
+                bonusQuantity: 0,
                 originalPrice: drug.price,
                 discountPercentage: drug.discountPercentage,
                 finalPrice: finalPrice,
@@ -267,22 +270,34 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     };
 
     const handleQuantityChange = (drugId: number, newQuantityStr: string) => {
-        let newQuantity = parseInt(newQuantityStr, 10);
-        
-        if (isNaN(newQuantity) || newQuantity < 1) {
-             newQuantity = 1;
-        }
+        const newQuantity = parseInt(newQuantityStr, 10) || 0;
+        const item = items.find(i => i.drugId === drugId);
+        if (!item) return;
 
         const drugInStock = drugs.find(d => d.id === drugId);
-        if (drugInStock && newQuantity > drugInStock.quantity) {
-            alert(`تعداد درخواستی (${newQuantity}) بیشتر از موجودی انبار (${drugInStock.quantity}) است.`);
-            newQuantity = drugInStock.quantity;
+        if (drugInStock && (newQuantity + item.bonusQuantity) > drugInStock.quantity) {
+            alert(`مجموع تعداد فروش و بونس (${newQuantity + item.bonusQuantity}) بیشتر از موجودی انبار (${drugInStock.quantity}) است.`);
+            return;
         }
 
         setItems(currentItems =>
-            currentItems.map(item =>
-                item.drugId === drugId ? { ...item, quantity: newQuantity } : item
-            )
+            currentItems.map(it => it.drugId === drugId ? { ...it, quantity: newQuantity } : it)
+        );
+    };
+    
+    const handleBonusQuantityChange = (drugId: number, newBonusQuantityStr: string) => {
+        const newBonusQuantity = parseInt(newBonusQuantityStr, 10) || 0;
+        const item = items.find(i => i.drugId === drugId);
+        if (!item) return;
+
+        const drugInStock = drugs.find(d => d.id === drugId);
+        if (drugInStock && (item.quantity + newBonusQuantity) > drugInStock.quantity) {
+            alert(`مجموع تعداد فروش و بونس (${item.quantity + newBonusQuantity}) بیشتر از موجودی انبار (${drugInStock.quantity}) است.`);
+            return;
+        }
+
+        setItems(currentItems =>
+            currentItems.map(it => it.drugId === drugId ? { ...it, bonusQuantity: newBonusQuantity } : it)
         );
     };
 
@@ -295,8 +310,13 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
             return;
         }
 
-        if (items.some(item => item.quantity <= 0)) {
-            alert("تعداد تمام اقلام باید بیشتر از صفر باشد.");
+        if (items.some(item => item.quantity < 0 || item.bonusQuantity < 0)) {
+            alert("تعداد فروش یا بونس نمی‌تواند منفی باشد.");
+            return;
+        }
+        
+         if (items.some(item => item.quantity === 0 && item.bonusQuantity > 0)) {
+            alert("نمی‌توان برای محصولی که فروخته نشده، بونس ثبت کرد. لطفاً حداقل یک عدد در تعداد فروش وارد کنید.");
             return;
         }
 
@@ -418,29 +438,47 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                     <thead className="text-right">
                                         <tr className="border-b">
                                             <th className="p-2 font-semibold">نام دارو</th>
-                                            <th className="p-2 font-semibold text-center w-28">تعداد</th>
+                                            <th className="p-2 font-semibold text-center w-48">تعداد (فروش / بونس)</th>
                                             <th className="p-2 font-semibold">قیمت واحد</th>
                                             <th className="p-2 font-semibold">مبلغ جزء</th>
                                             <th className="p-2"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {items.map(item => (
+                                        {items.map(item => {
+                                            const pricePerUnit = item.bonusQuantity > 0 ? item.originalPrice : item.finalPrice;
+                                            return (
                                             <tr key={item.drugId} className="border-b last:border-0 hover:bg-gray-50">
                                                 <td className="p-2">{item.drugName}</td>
                                                 <td className="p-2">
-                                                    <input
-                                                        type="number"
-                                                        value={item.quantity}
-                                                        onChange={(e) => handleQuantityChange(item.drugId, e.target.value)}
-                                                        className="w-20 text-center border rounded-md py-1 mx-auto block"
-                                                        min="1"
-                                                        max={drugs.find(d => d.id === item.drugId)?.quantity}
-                                                        aria-label={`تعداد برای ${item.drugName}`}
-                                                    />
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <input
+                                                            type="number"
+                                                            value={item.quantity}
+                                                            onChange={(e) => handleQuantityChange(item.drugId, e.target.value)}
+                                                            className="w-20 text-center border rounded-md py-1"
+                                                            min="0"
+                                                            aria-label={`تعداد فروش برای ${item.drugName}`}
+                                                        />
+                                                        <span className="text-gray-400">/</span>
+                                                         <input
+                                                            type="number"
+                                                            value={item.bonusQuantity}
+                                                            onChange={(e) => handleBonusQuantityChange(item.drugId, e.target.value)}
+                                                            className="w-20 text-center border rounded-md py-1 bg-yellow-50"
+                                                            min="0"
+                                                            placeholder="بونس"
+                                                            aria-label={`تعداد بونس برای ${item.drugName}`}
+                                                        />
+                                                    </div>
                                                 </td>
                                                 <td className="p-2">
-                                                    {item.discountPercentage > 0 ? (
+                                                    {item.bonusQuantity > 0 ? (
+                                                         <div className="flex items-center gap-2">
+                                                            <span className="font-bold text-gray-800">{item.originalPrice.toLocaleString()}</span>
+                                                            <span className="text-xs font-bold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full" title="چون بونس اعمال شده، تخفیف نادیده گرفته شد">بونس</span>
+                                                        </div>
+                                                    ) : item.discountPercentage > 0 ? (
                                                         <div className="flex items-center gap-2">
                                                             <span className="text-gray-500 line-through">{item.originalPrice.toLocaleString()}</span>
                                                             <span className="font-bold text-teal-600">{item.finalPrice.toLocaleString()}</span>
@@ -450,12 +488,12 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                                         <span>{item.originalPrice.toLocaleString()}</span>
                                                     )}
                                                 </td>
-                                                <td className="p-2 font-semibold">{(item.quantity * item.finalPrice).toLocaleString()}</td>
+                                                <td className="p-2 font-semibold">{(item.quantity * pricePerUnit).toLocaleString()}</td>
                                                 <td className="p-2 text-center">
                                                     <button type="button" onClick={() => handleRemoveItem(item.drugId)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
                                                 </td>
                                             </tr>
-                                        ))}
+                                        )})}
                                     </tbody>
                                 </table>
                             }
@@ -493,9 +531,11 @@ type InvoiceModalProps = {
     order: Order | null;
     customer: Customer | null;
     companyInfo: CompanyInfo;
+    documentSettings: DocumentSettings;
 };
 
-const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, customer, companyInfo }) => {
+const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, customer, companyInfo, documentSettings }) => {
+    const [selectedTemplate, setSelectedTemplate] = useState('modern');
     if (!isOpen || !order) return null;
 
     const handlePrint = () => {
@@ -503,25 +543,30 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
             window.print();
         }, 100);
     };
-
-    const totalDiscount = order.items.reduce((sum, item) => {
-        const itemDiscount = (item.originalPrice - item.finalPrice) * item.quantity;
-        return sum + itemDiscount;
+    
+    const subtotal = order.items.reduce((sum, item) => {
+        const pricePerUnit = item.bonusQuantity > 0 ? item.originalPrice : item.finalPrice;
+        return sum + (item.quantity * item.originalPrice) // Subtotal should be based on original price before discounts
     }, 0);
-    const subtotal = order.totalAmount + totalDiscount;
+
+    const totalDiscount = subtotal - order.totalAmount;
 
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start p-4 overflow-y-auto" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl mt-8 mb-8 w-full max-w-4xl" onClick={e => e.stopPropagation()}>
-                <div id="print-section" className="p-10">
-                    <header className="flex justify-between items-start pb-6 border-b">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-800">{companyInfo.name}</h1>
+                <div 
+                    id="print-section" 
+                    className={`p-10 ${'template-' + selectedTemplate} ${'layout-logo-' + documentSettings.logoPosition}`}
+                    style={{ '--accent-color': documentSettings.accentColor } as React.CSSProperties}
+                >
+                    <header className="print-header">
+                        <div className="print-company-info">
+                            <h1 className="text-3xl font-bold text-gray-800 print-title">{companyInfo.name}</h1>
                             <p className="text-gray-500">{companyInfo.address}</p>
                             <p className="text-gray-500">{companyInfo.phone}</p>
                         </div>
-                        {companyInfo.logo && <img src={companyInfo.logo} alt="Company Logo" className="w-24 h-24 object-contain" />}
+                        {companyInfo.logo && <img src={companyInfo.logo} alt="Company Logo" className="print-logo" />}
                     </header>
                     <div className="grid grid-cols-3 gap-8 my-8">
                         <div>
@@ -541,32 +586,38 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
                     </div>
                     <div className="overflow-x-auto">
                          <table className="w-full text-right">
-                            <thead className="bg-gray-100">
+                            <thead>
                                 <tr>
-                                    <th className="p-3 text-sm font-semibold text-gray-600">#</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-600">شرح محصول</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-600">تعداد</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-600">قیمت واحد</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-600">تخفیف</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-600">مبلغ نهایی</th>
+                                    <th className="p-3 text-sm font-semibold">#</th>
+                                    <th className="p-3 text-sm font-semibold">شرح محصول</th>
+                                    <th className="p-3 text-sm font-semibold">تعداد</th>
+                                    <th className="p-3 text-sm font-semibold">قیمت واحد</th>
+                                    <th className="p-3 text-sm font-semibold">تخفیف</th>
+                                    <th className="p-3 text-sm font-semibold">مبلغ نهایی</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {order.items.map((item, index) => (
-                                    <tr key={item.drugId}>
-                                        <td className="p-3">{index + 1}</td>
-                                        <td className="p-3 font-medium text-gray-800">{item.drugName}</td>
-                                        <td className="p-3">{item.quantity.toLocaleString()}</td>
-                                        <td className="p-3">{item.originalPrice.toLocaleString()}</td>
-                                        <td className="p-3">{item.discountPercentage > 0 ? `${item.discountPercentage}%` : '-'}</td>
-                                        <td className="p-3 font-semibold text-gray-800">{(item.finalPrice * item.quantity).toLocaleString()}</td>
-                                    </tr>
-                                ))}
+                                {order.items.map((item, index) => {
+                                    const hasBonus = item.bonusQuantity > 0;
+                                    const pricePerUnit = hasBonus ? item.originalPrice : item.finalPrice;
+                                    const displayDiscount = hasBonus ? 'بونس' : (item.discountPercentage > 0 ? `${item.discountPercentage}%` : '-');
+                                    
+                                    return (
+                                        <tr key={item.drugId}>
+                                            <td className="p-3">{index + 1}</td>
+                                            <td className="p-3 font-medium text-gray-800">{item.drugName}</td>
+                                            <td className="p-3">{item.quantity.toLocaleString()}</td>
+                                            <td className="p-3">{item.originalPrice.toLocaleString()}</td>
+                                            <td className="p-3">{displayDiscount}</td>
+                                            <td className="p-3 font-semibold text-gray-800">{(pricePerUnit * item.quantity).toLocaleString()}</td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
                     <div className="flex justify-end mt-8">
-                        <div className="w-full max-w-sm space-y-3">
+                        <div className="w-full max-w-sm space-y-3 print-summary pt-4">
                             <div className="flex justify-between">
                                 <span className="text-gray-600">جمع جزء:</span>
                                 <span className="font-semibold">{subtotal.toLocaleString()}</span>
@@ -582,11 +633,22 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
                         </div>
                     </div>
                 </div>
-                <div className="flex justify-end space-x-2 space-x-reverse p-4 bg-gray-50 rounded-b-xl border-t print:hidden">
-                    <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">بستن</button>
-                    <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold">
-                        <PrintIcon /> <span className="mr-2">چاپ</span>
-                    </button>
+                <div className="flex justify-between items-center space-x-2 space-x-reverse p-4 bg-gray-50 rounded-b-xl border-t print:hidden">
+                    <div>
+                        <label htmlFor="template-select" className="text-sm font-semibold mr-2">قالب:</label>
+                        <select id="template-select" value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="bg-white border border-gray-300 rounded-md px-2 py-1">
+                            <option value="modern">مدرن</option>
+                            <option value="classic">کلاسیک</option>
+                            <option value="minimalist">ساده</option>
+                            <option value="compact">فشرده</option>
+                        </select>
+                    </div>
+                    <div className="flex gap-2">
+                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">بستن</button>
+                        <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold">
+                            <PrintIcon /> <span className="mr-2">چاپ</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -603,9 +665,10 @@ type SalesProps = {
     onSave: (order: Order) => void;
     onDelete: (id: number) => void;
     currentUser: User;
+    documentSettings: DocumentSettings;
 };
 
-const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser }) => {
+const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser, documentSettings }) => {
     const initialFilters = {
         searchTerm: '', status: 'all', paymentStatus: 'all', startDate: '', endDate: '',
     };
@@ -691,6 +754,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                 order={orderToPrint}
                 customer={customers.find(c => c.name === orderToPrint?.customerName) || null}
                 companyInfo={companyInfo}
+                documentSettings={documentSettings}
             />
             <div className="flex justify-between items-center mb-6">
                 <div>

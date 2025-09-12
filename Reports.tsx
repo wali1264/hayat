@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Order, OrderItem } from './Sales';
 import { Expense } from './Accounting';
 import { Drug } from './Inventory';
-import { CompanyInfo } from './Settings';
+import { CompanyInfo, DocumentSettings } from './Settings';
 
 //=========== ICONS ===========//
 const Icon = ({ path, className = "w-8 h-8" }: { path: string, className?: string }) => (
@@ -20,6 +20,7 @@ const CloseIcon = ({ className = "w-6 h-6" }: { className?: string}) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
 );
+const InventoryValueIcon = () => <Icon path="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />;
 
 
 //=========== TYPES ===========//
@@ -28,6 +29,8 @@ type ReportData = {
     summary: {
         totalSales: number;
         totalExpenses: number;
+        totalCOGS: number;
+        inventoryValue: number;
         netProfit: number;
         totalOrders: number;
     };
@@ -52,11 +55,11 @@ const SummaryCard = ({ title, value, icon, colorClass, isCurrency = true }) => (
 );
 
 
-const ReportPrintView = ({ reportData, companyInfo, onClose }) => {
+const ReportPrintView = ({ reportData, companyInfo, onClose, documentSettings }) => {
+    const [selectedTemplate, setSelectedTemplate] = useState('modern');
     if (!reportData) return null;
 
     const handlePrint = () => {
-        // A small delay can help ensure the browser has processed any DOM/style updates before printing.
         setTimeout(() => {
             window.print();
         }, 100);
@@ -67,27 +70,37 @@ const ReportPrintView = ({ reportData, companyInfo, onClose }) => {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-start p-4 overflow-y-auto" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl my-8" onClick={e => e.stopPropagation()}>
-                <div id="print-section" className="p-10">
-                    <header className="flex justify-between items-start pb-6 border-b">
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-800">{companyInfo.name}</h1>
+                <div 
+                    id="print-section"
+                    className={`p-10 ${'template-' + selectedTemplate} ${'layout-logo-' + documentSettings.logoPosition}`}
+                    style={{ '--accent-color': documentSettings.accentColor } as React.CSSProperties}
+                >
+                    <header className="print-header">
+                        <div className="print-company-info">
+                            <h1 className="text-2xl font-bold text-gray-800 print-title">{companyInfo.name}</h1>
                             <p className="text-sm text-gray-500 mt-1">{companyInfo.address}</p>
                             <p className="text-sm text-gray-500">{companyInfo.phone}</p>
                         </div>
-                        <div className='text-left'>
-                            <h2 className='text-xl font-bold'>گزارش مالی جامع</h2>
-                             <p className="text-sm text-gray-500">
-                                از {new Date(filters.startDate).toLocaleDateString('fa-IR')} تا {new Date(filters.endDate).toLocaleDateString('fa-IR')}
-                            </p>
-                        </div>
+                        {companyInfo.logo && <img src={companyInfo.logo} alt="Company Logo" className="print-logo" />}
                     </header>
+                    
+                    <div className='text-center my-6'>
+                        <h2 className='text-xl font-bold print-title'>گزارش مالی جامع</h2>
+                         <p className="text-sm text-gray-500">
+                            از {new Date(filters.startDate).toLocaleDateString('fa-IR')} تا {new Date(filters.endDate).toLocaleDateString('fa-IR')}
+                        </p>
+                    </div>
                     
                     <section className="my-8 page-break-inside-avoid">
                         <h3 className="text-lg font-bold text-gray-800 mb-4">خلاصه وضعیت مالی</h3>
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                        <div className="grid grid-cols-2 gap-4 text-center">
+                             <div className="bg-green-50 p-4 rounded-lg border border-green-200">
                                 <p className="text-sm text-green-800">مجموع فروش</p>
                                 <p className="font-bold text-lg text-green-900">{summary.totalSales.toLocaleString()} افغانی</p>
+                            </div>
+                            <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                                <p className="text-sm text-orange-800">بهای تمام شده کالا</p>
+                                <p className="font-bold text-lg text-orange-900">{summary.totalCOGS.toLocaleString()} افغانی</p>
                             </div>
                             <div className="bg-red-50 p-4 rounded-lg border border-red-200">
                                 <p className="text-sm text-red-800">مجموع مصارف</p>
@@ -98,13 +111,17 @@ const ReportPrintView = ({ reportData, companyInfo, onClose }) => {
                                 <p className="font-bold text-lg text-blue-900">{summary.netProfit.toLocaleString()} افغانی</p>
                             </div>
                         </div>
+                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200 mt-4 text-center">
+                            <p className="text-sm text-purple-800">ارزش فعلی انبار (بر اساس قیمت خرید)</p>
+                            <p className="font-bold text-lg text-purple-900">{summary.inventoryValue.toLocaleString()} افغانی</p>
+                        </div>
                     </section>
 
                     <section className="my-8 page-break-inside-avoid">
                         <h3 className="text-lg font-bold text-gray-800 mb-4">فروشات تفصیلی</h3>
                         <div className="border rounded-lg overflow-hidden">
                            <table className="w-full text-sm text-right">
-                                <thead className="bg-gray-100"><tr><th className="p-2 font-semibold">تاریخ</th><th className="p-2 font-semibold">مشتری</th><th className="p-2 font-semibold">شماره سفارش</th><th className="p-2 font-semibold">مبلغ</th></tr></thead>
+                                <thead><tr><th className="p-2 font-semibold">تاریخ</th><th className="p-2 font-semibold">مشتری</th><th className="p-2 font-semibold">شماره سفارش</th><th className="p-2 font-semibold">مبلغ</th></tr></thead>
                                 <tbody>
                                     {sales.map(order => <tr key={order.id} className="border-t"><td className="p-2">{new Date(order.orderDate).toLocaleDateString('fa-IR')}</td><td className="p-2">{order.customerName}</td><td className="p-2">{order.orderNumber}</td><td className="p-2 font-semibold">{order.totalAmount.toLocaleString()}</td></tr>)}
                                 </tbody>
@@ -116,7 +133,7 @@ const ReportPrintView = ({ reportData, companyInfo, onClose }) => {
                         <h3 className="text-lg font-bold text-gray-800 mb-4">مصارف تفصیلی</h3>
                         <div className="border rounded-lg overflow-hidden">
                            <table className="w-full text-sm text-right">
-                                <thead className="bg-gray-100"><tr><th className="p-2 font-semibold">تاریخ</th><th className="p-2 font-semibold">شرح</th><th className="p-2 font-semibold">دسته‌بندی</th><th className="p-2 font-semibold">مبلغ</th></tr></thead>
+                                <thead><tr><th className="p-2 font-semibold">تاریخ</th><th className="p-2 font-semibold">شرح</th><th className="p-2 font-semibold">دسته‌بندی</th><th className="p-2 font-semibold">مبلغ</th></tr></thead>
                                 <tbody>
                                     {expenses.map(exp => <tr key={exp.id} className="border-t"><td className="p-2">{new Date(exp.date).toLocaleDateString('fa-IR')}</td><td className="p-2">{exp.description}</td><td className="p-2">{exp.category}</td><td className="p-2 font-semibold">{exp.amount.toLocaleString()}</td></tr>)}
                                 </tbody>
@@ -128,7 +145,7 @@ const ReportPrintView = ({ reportData, companyInfo, onClose }) => {
                         <h3 className="text-lg font-bold text-gray-800 mb-4">پرفروش‌ترین داروها</h3>
                          <div className="border rounded-lg overflow-hidden">
                            <table className="w-full text-sm text-right">
-                                <thead className="bg-gray-100"><tr><th className="p-2 font-semibold">نام دارو</th><th className="p-2 font-semibold">تعداد فروش</th><th className="p-2 font-semibold">درآمد حاصله</th></tr></thead>
+                                <thead><tr><th className="p-2 font-semibold">نام دارو</th><th className="p-2 font-semibold">تعداد فروش</th><th className="p-2 font-semibold">درآمد حاصله</th></tr></thead>
                                 <tbody>
                                     {topProducts.map(prod => <tr key={prod.name} className="border-t"><td className="p-2">{prod.name}</td><td className="p-2">{prod.quantity.toLocaleString()}</td><td className="p-2 font-semibold">{prod.revenue.toLocaleString()}</td></tr>)}
                                 </tbody>
@@ -137,11 +154,22 @@ const ReportPrintView = ({ reportData, companyInfo, onClose }) => {
                     </section>
 
                 </div>
-                 <div className="flex justify-end space-x-2 space-x-reverse p-4 bg-gray-50 rounded-b-xl border-t print:hidden">
-                    <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">بستن</button>
-                    <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold">
-                        <PrintIcon /> <span className="mr-2">چاپ</span>
-                    </button>
+                 <div className="flex justify-between items-center space-x-2 space-x-reverse p-4 bg-gray-50 rounded-b-xl border-t print:hidden">
+                    <div>
+                        <label className="text-sm font-semibold mr-2">قالب:</label>
+                        <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="bg-white border border-gray-300 rounded-md px-2 py-1">
+                            <option value="modern">مدرن</option>
+                            <option value="classic">کلاسیک</option>
+                            <option value="minimalist">ساده</option>
+                            <option value="compact">فشرده</option>
+                        </select>
+                    </div>
+                    <div className='flex gap-2'>
+                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">بستن</button>
+                        <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold">
+                            <PrintIcon /> <span className="mr-2">چاپ</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -154,9 +182,10 @@ type ReportsProps = {
     expenses: Expense[];
     drugs: Drug[];
     companyInfo: CompanyInfo;
+    documentSettings: DocumentSettings;
 }
 
-const Reports: React.FC<ReportsProps> = ({ orders, expenses, drugs, companyInfo }) => {
+const Reports: React.FC<ReportsProps> = ({ orders, expenses, drugs, companyInfo, documentSettings }) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -186,7 +215,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, expenses, drugs, companyInfo 
 
         const filteredSales = orders.filter(o => {
             const orderDate = new Date(o.orderDate);
-            return orderDate >= start && orderDate <= end;
+            return orderDate >= start && orderDate <= end && o.status !== 'لغو شده';
         });
 
         const filteredExpenses = expenses.filter(exp => {
@@ -196,6 +225,18 @@ const Reports: React.FC<ReportsProps> = ({ orders, expenses, drugs, companyInfo 
 
         const totalSales = filteredSales.reduce((sum, order) => sum + order.totalAmount, 0);
         const totalExpenses = filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+
+        const totalCOGS = filteredSales.reduce((cogsSum, order) => {
+            const orderCost = order.items.reduce((itemSum, item) => {
+                const drugInfo = drugs.find(d => d.id === item.drugId);
+                const purchasePrice = drugInfo ? drugInfo.purchasePrice : item.originalPrice;
+                const totalQuantity = item.quantity + (item.bonusQuantity || 0);
+                return itemSum + (totalQuantity * purchasePrice);
+            }, 0);
+            return cogsSum + orderCost;
+        }, 0);
+
+        const inventoryValue = drugs.reduce((sum, drug) => sum + (drug.quantity * drug.purchasePrice), 0);
         
         const productsSold: { [key: string]: { quantity: number, revenue: number } } = {};
         filteredSales.forEach(order => {
@@ -203,8 +244,9 @@ const Reports: React.FC<ReportsProps> = ({ orders, expenses, drugs, companyInfo 
                 if (!productsSold[item.drugName]) {
                     productsSold[item.drugName] = { quantity: 0, revenue: 0 };
                 }
+                const pricePerUnit = item.bonusQuantity > 0 ? item.originalPrice : item.finalPrice;
                 productsSold[item.drugName].quantity += item.quantity;
-                productsSold[item.drugName].revenue += item.quantity * item.finalPrice;
+                productsSold[item.drugName].revenue += item.quantity * pricePerUnit;
             });
         });
         
@@ -218,7 +260,9 @@ const Reports: React.FC<ReportsProps> = ({ orders, expenses, drugs, companyInfo 
             summary: {
                 totalSales,
                 totalExpenses,
-                netProfit: totalSales - totalExpenses,
+                totalCOGS,
+                inventoryValue,
+                netProfit: totalSales - totalCOGS - totalExpenses,
                 totalOrders: filteredSales.length,
             },
             sales: filteredSales.sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()),
@@ -228,9 +272,11 @@ const Reports: React.FC<ReportsProps> = ({ orders, expenses, drugs, companyInfo 
     };
     
     // Auto-generate report on initial load for the default period
-    React.useEffect(() => {
-        handleGenerateReport();
-    }, [orders, expenses]);
+    useEffect(() => {
+        if(orders.length > 0 || expenses.length > 0 || drugs.length > 0) {
+            handleGenerateReport();
+        }
+    }, [orders, expenses, drugs]);
 
     return (
         <div className="p-8 space-y-8">
@@ -239,6 +285,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, expenses, drugs, companyInfo 
                     reportData={reportData}
                     companyInfo={companyInfo}
                     onClose={() => setIsPrintModalOpen(false)}
+                    documentSettings={documentSettings}
                 />
             )}
             <div>
@@ -273,10 +320,12 @@ const Reports: React.FC<ReportsProps> = ({ orders, expenses, drugs, companyInfo 
                             <span className="mr-2">چاپ گزارش تفصیلی</span>
                         </button>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
                         <SummaryCard title="مجموع فروش" value={reportData.summary.totalSales} icon={<SalesIcon/>} colorClass="bg-green-100 text-green-600" />
+                        <SummaryCard title="بهای تمام شده کالا" value={reportData.summary.totalCOGS} icon={<ExpenseIcon/>} colorClass="bg-orange-100 text-orange-600" />
                         <SummaryCard title="مجموع مصارف" value={reportData.summary.totalExpenses} icon={<ExpenseIcon/>} colorClass="bg-red-100 text-red-600" />
                         <SummaryCard title="سود خالص" value={reportData.summary.netProfit} icon={<ProfitIcon/>} colorClass="bg-blue-100 text-blue-600" />
+                        <SummaryCard title="ارزش موجودی انبار" value={reportData.summary.inventoryValue} icon={<InventoryValueIcon/>} colorClass="bg-purple-100 text-purple-600" />
                     </div>
                 </div>
             ) : (

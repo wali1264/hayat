@@ -47,6 +47,7 @@ export type Drug = {
     expiryDate: string;
     productionDate?: string;
     price: number;
+    purchasePrice: number;
     discountPercentage: number;
     category?: string;
 };
@@ -200,7 +201,7 @@ type DrugModalProps = {
 };
 
 const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
-    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', quantity: '', expiryDate: '', productionDate: '', price: '', discountPercentage: '', category: 'سایر' };
+    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', quantity: '', expiryDate: '', productionDate: '', price: '', purchasePrice: '', discountPercentage: '', category: 'سایر' };
     const [drug, setDrug] = useState(defaultState);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const isEditMode = initialData !== null;
@@ -216,6 +217,7 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
                  expiryDate: initialData.expiryDate,
                  productionDate: initialData.productionDate || '',
                  price: String(initialData.price),
+                 purchasePrice: String(initialData.purchasePrice),
                  discountPercentage: String(initialData.discountPercentage),
                  category: initialData.category || 'سایر'
              } : defaultState);
@@ -228,18 +230,13 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
         const { name, value } = e.target;
         setDrug(prev => ({ ...prev, [name]: value }));
     };
-    
-    // const handleGenerateInternalBarcode = () => {
-    //     const timestamp = Date.now();
-    //     const random = Math.random().toString(36).substring(2, 8);
-    //     setDrug(prev => ({...prev, barcode: `HAYAT-INTERNAL-${timestamp}${random}`.toUpperCase()}));
-    // }
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const priceValue = Number(drug.price) || 0;
-        if (!drug.name || !drug.expiryDate || priceValue <= 0) {
-            alert("لطفاً نام دارو، تاریخ انقضا و قیمت معتبر را وارد کنید.");
+        const purchasePriceValue = Number(drug.purchasePrice) || 0;
+        if (!drug.name || !drug.expiryDate || priceValue <= 0 || purchasePriceValue <= 0) {
+            alert("لطفاً نام دارو، تاریخ انقضا، قیمت خرید و قیمت فروش معتبر را وارد کنید.");
             return;
         }
 
@@ -254,6 +251,7 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
             productionDate: drug.productionDate,
             quantity: Number(drug.quantity) || 0,
             price: priceValue,
+            purchasePrice: purchasePriceValue,
             discountPercentage: Number(drug.discountPercentage) || 0,
         };
         
@@ -307,17 +305,16 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
                         <div className="flex gap-2">
                              <input type="text" name="barcode" id="barcode" value={drug.barcode} onChange={handleChange} className={inputStyles} />
                              <button type="button" title="اسکن با دوربین" onClick={() => setIsScannerOpen(true)} className="p-2 border rounded-lg hover:bg-gray-100"><CameraIcon /></button>
-                             {/* <button type="button" title="تولید بارکد داخلی" onClick={handleGenerateInternalBarcode} className="p-2 border rounded-lg hover:bg-gray-100"><QrCodeIcon /></button> */}
                         </div>
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                          <div>
-                            <label htmlFor="quantity" className={labelStyles}>تعداد</label>
-                            <input type="number" name="quantity" id="quantity" value={drug.quantity} onChange={handleChange} className={inputStyles} min="0" placeholder="مثلا: 100" />
+                            <label htmlFor="purchasePrice" className={labelStyles}>قیمت خرید (ضروری)</label>
+                            <input type="number" name="purchasePrice" id="purchasePrice" value={drug.purchasePrice} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 120" />
                         </div>
                          <div>
-                            <label htmlFor="price" className={labelStyles}>قیمت واحد (ضروری)</label>
+                            <label htmlFor="price" className={labelStyles}>قیمت فروش (ضروری)</label>
                             <input type="number" name="price" id="price" value={drug.price} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 150" />
                         </div>
                     </div>
@@ -334,6 +331,10 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div>
+                            <label htmlFor="quantity" className={labelStyles}>تعداد</label>
+                            <input type="number" name="quantity" id="quantity" value={drug.quantity} onChange={handleChange} className={inputStyles} min="0" placeholder="مثلا: 100" />
+                        </div>
                         <div>
                             <label htmlFor="discountPercentage" className={labelStyles}>تخفیف (٪)</label>
                             <input type="number" name="discountPercentage" id="discountPercentage" value={drug.discountPercentage} onChange={handleChange} className={inputStyles} min="0" max="100" placeholder="مثلا: 5"/>
@@ -544,7 +545,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentU
                             <tr>
                                 <SortableHeader label="نام دارو" columnKey="name" />
                                 <SortableHeader label="دسته‌بندی" columnKey="category" />
-                                <SortableHeader label="قیمت واحد" columnKey="price" />
+                                <SortableHeader label="قیمت فروش" columnKey="price" />
                                 <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">تخفیف</th>
                                 <SortableHeader label="تعداد موجود" columnKey="quantity" />
                                 <SortableHeader label="تاریخ انقضا" columnKey="expiryDate" />

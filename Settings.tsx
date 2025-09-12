@@ -35,6 +35,11 @@ export type CompanyInfo = {
     logo: string | null;
 };
 
+export type DocumentSettings = {
+    logoPosition: 'left' | 'center' | 'right';
+    accentColor: string;
+};
+
 //=========== MOCK DATA ===========//
 export const mockUsers: User[] = [
     { id: 1, username: 'admin', role: 'مدیر کل', lastLogin: '1403/05/01 10:30' },
@@ -181,6 +186,66 @@ const CompanyInfoSection = ({ companyInfo, setCompanyInfo }) => {
     );
 };
 
+const DocumentCustomizerSection = ({ settings, setSettings, companyInfo }) => {
+    const [localSettings, setLocalSettings] = useState(settings);
+
+    const handleSettingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setLocalSettings(prev => ({ ...prev, [name]: value }));
+    };
+    
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setSettings(localSettings);
+        alert('تنظیمات اسناد با موفقیت ذخیره شد.');
+    };
+    
+    return (
+         <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                {/* Controls */}
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-bold mb-2">موقعیت لوگو در سربرگ</label>
+                        <div className="flex gap-4">
+                            {(['right', 'center', 'left'] as const).map(pos => (
+                                <label key={pos} className="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="logoPosition" value={pos} checked={localSettings.logoPosition === pos} onChange={handleSettingChange} className="form-radio text-teal-600" />
+                                    <span>{pos === 'right' ? 'راست' : pos === 'center' ? 'وسط' : 'چپ'}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold mb-2">رنگ اصلی</label>
+                         <div className="flex items-center gap-2">
+                             <input type="color" name="accentColor" value={localSettings.accentColor} onChange={handleSettingChange} className="w-10 h-10 border-none cursor-pointer" />
+                             <span className="font-mono text-sm">{localSettings.accentColor}</span>
+                         </div>
+                    </div>
+                </div>
+                 {/* Live Preview */}
+                <div className="border-2 border-dashed rounded-lg p-4">
+                    <h4 className="text-center font-semibold text-gray-500 text-sm mb-2">پیش‌نمایش زنده سربرگ</h4>
+                     <div 
+                        className={`print-header layout-logo-${localSettings.logoPosition}`} 
+                        style={{ borderColor: localSettings.accentColor }}
+                    >
+                        <div className="print-company-info">
+                            <h1 className="font-bold text-gray-800" style={{ color: localSettings.accentColor }}>{companyInfo.name || 'نام شرکت شما'}</h1>
+                            <p className="text-xs text-gray-500">{companyInfo.address || 'آدرس شما'}</p>
+                        </div>
+                        {companyInfo.logo && <img src={companyInfo.logo} alt="Logo" className="w-12 h-12 object-contain" />}
+                    </div>
+                </div>
+            </div>
+             <div className="flex justify-end pt-4 border-t mt-4">
+                <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold">ذخیره تنظیمات اسناد</button>
+            </div>
+         </form>
+    );
+};
+
 const UserManagementSection = ({ users, onSaveUser, onDeleteUser }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -228,11 +293,11 @@ const UserManagementSection = ({ users, onSaveUser, onDeleteUser }) => {
 
 const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, onBackupOnline, onRestoreOnline, supabase, licenseId }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [onlineBackups, setOnlineBackups] = useState<any[]>([]);
+    const [onlineBackup, setOnlineBackup] = useState<{ id: string, created_at: string } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
 
-    const fetchBackups = async () => {
+    const fetchBackup = async () => {
         setIsLoading(true);
         try {
             if (!licenseId) return;
@@ -240,26 +305,26 @@ const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, onBackupOnline
                 .from('backups')
                 .select('id, created_at')
                 .eq('license_id', licenseId)
-                .order('created_at', { ascending: false });
-            if (error) throw error;
-            setOnlineBackups(data || []);
+                .single();
+            if (error && error.code !== 'PGRST116') throw error; // Ignore "exactly one row" error
+            setOnlineBackup(data || null);
         } catch (error: any) {
-            console.error("Error fetching backups:", error);
-            alert(`خطا در دریافت لیست پشتیبان‌ها: ${error.message}`);
+            console.error("Error fetching backup:", error);
+            alert(`خطا در دریافت اطلاعات پشتیبان: ${error.message}`);
         } finally {
             setIsLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchBackups();
+        fetchBackup();
     }, [licenseId, supabase]);
     
     const handleCreateOnlineBackup = async () => {
         setIsUploading(true);
         const success = await onBackupOnline();
         if (success) {
-            await fetchBackups(); // Refresh the list
+            await fetchBackup(); // Refresh the backup info
         }
         setIsUploading(false);
     };
@@ -282,29 +347,107 @@ const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, onBackupOnline
             <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
                  <div className="flex justify-between items-center">
                     <h4 className="font-bold text-lg">پشتیبان‌گیری ابری</h4>
-                    <button onClick={fetchBackups} title="بارگذاری مجدد لیست" className="p-1 text-gray-500 hover:text-gray-800"><RefreshIcon /></button>
+                    <button onClick={fetchBackup} title="بارگذاری مجدد" className="p-1 text-gray-500 hover:text-gray-800"><RefreshIcon /></button>
                 </div>
                 <p className="text-sm text-gray-600">یک نسخه امن از اطلاعات شما در فضای ابری ذخیره می‌شود تا از هر سیستمی قابل دسترس باشد.</p>
                 <button onClick={handleCreateOnlineBackup} disabled={isUploading} className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition disabled:bg-teal-300">
-                    <CloudUploadIcon /> {isUploading ? 'در حال آپلود...' : 'ایجاد پشتیبان آنلاین جدید'}
+                    <CloudUploadIcon /> {isUploading ? 'در حال آپلود...' : 'ایجاد / به‌روزرسانی پشتیبان آنلاین'}
                 </button>
                 <div className="space-y-2 pt-2 border-t">
-                     <h5 className="font-semibold text-sm">نسخه‌های موجود:</h5>
-                     {isLoading ? <p>در حال بارگذاری...</p> : (
-                         onlineBackups.length > 0 ? (
-                            <div className="max-h-32 overflow-y-auto pr-2">
-                            {onlineBackups.map(backup => (
-                                <div key={backup.id} className="flex justify-between items-center text-sm py-1">
-                                    <span>{new Date(backup.created_at).toLocaleString('fa-IR')}</span>
-                                    <button onClick={() => onRestoreOnline(backup.id)} className="font-semibold text-blue-600 hover:underline">بازیابی</button>
-                                </div>
-                            ))}
+                     <h5 className="font-semibold text-sm">وضعیت پشتیبان ابری:</h5>
+                     {isLoading ? <p className="text-sm">در حال بارگذاری...</p> : (
+                         onlineBackup ? (
+                            <div className="flex justify-between items-center text-sm py-1">
+                                <span>آخرین پشتیبان: {new Date(onlineBackup.created_at).toLocaleString('fa-IR')}</span>
+                                <button onClick={() => onRestoreOnline()} className="font-semibold text-blue-600 hover:underline">بازیابی</button>
                             </div>
-                         ) : <p className="text-xs text-gray-500">هیچ نسخه پشتیبان آنلاینی یافت نشد.</p>
+                         ) : <p className="text-sm text-gray-500">هیچ نسخه پشتیبان آنلاینی یافت نشد.</p>
                      )}
                 </div>
             </div>
         </div>
+    );
+};
+
+const DataPurgeSection = ({ onPurgeData }) => {
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [confirmText, setConfirmText] = useState('');
+
+    const handleOpenModal = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!startDate || !endDate) {
+            alert('لطفا تاریخ شروع و پایان را انتخاب کنید.');
+            return;
+        }
+        if (new Date(startDate) > new Date(endDate)) {
+            alert('تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.');
+            return;
+        }
+        setIsModalOpen(true);
+    };
+
+    const handleConfirmPurge = () => {
+        onPurgeData(startDate, endDate);
+        setIsModalOpen(false);
+        setConfirmText('');
+        setStartDate('');
+        setEndDate('');
+    };
+
+    return (
+        <>
+            {isModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4">
+                    <div className="bg-white rounded-xl p-8 max-w-lg w-full text-center space-y-4">
+                        <h2 className="text-xl font-bold text-red-700">تایید حذف دائمی داده‌ها</h2>
+                        <p className="text-gray-600">
+                            شما در حال حذف دائمی تمام فاکتورهای فروش، فاکتورهای خرید و هزینه‌ها از تاریخ
+                            <span className="font-bold mx-1">{new Date(startDate).toLocaleDateString('fa-IR')}</span>
+                            تا
+                            <span className="font-bold mx-1">{new Date(endDate).toLocaleDateString('fa-IR')}</span>
+                            هستید.
+                        </p>
+                        <p className="text-lg font-bold text-red-600 bg-red-50 p-3 rounded-lg">این عمل به هیچ عنوان قابل بازگشت نیست.</p>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">برای تایید، لطفاً کلمه «<span className="font-mono">حذف</span>» را در کادر زیر تایپ کنید.</label>
+                            <input
+                                type="text"
+                                value={confirmText}
+                                onChange={(e) => setConfirmText(e.target.value)}
+                                className="w-full text-center px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                            />
+                        </div>
+                        <div className="flex justify-center gap-4 pt-4">
+                            <button onClick={() => { setIsModalOpen(false); setConfirmText(''); }} className="px-6 py-2 rounded-lg bg-gray-200 font-semibold">انصراف</button>
+                            <button 
+                                onClick={handleConfirmPurge} 
+                                className="px-6 py-2 rounded-lg bg-red-600 text-white font-semibold disabled:bg-red-300 disabled:cursor-not-allowed" 
+                                disabled={confirmText !== 'حذف'}
+                            >
+                                حذف دائمی
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            <form onSubmit={handleOpenModal} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div>
+                        <label className="block text-sm font-bold mb-1">حذف داده‌ها از تاریخ</label>
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full p-2 border rounded-lg" required />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold mb-1">تا تاریخ</label>
+                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full p-2 border rounded-lg" required />
+                    </div>
+                    <button type="submit" className="w-full py-2.5 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 shadow-md">
+                        پاک‌سازی داده‌ها
+                    </button>
+                </div>
+            </form>
+        </>
     );
 };
 
@@ -320,7 +463,10 @@ type SettingsProps = {
     onBackupLocal: () => void;
     onRestoreLocal: (event: React.ChangeEvent<HTMLInputElement>) => void;
     onBackupOnline: () => Promise<boolean>;
-    onRestoreOnline: (backupId: string) => void;
+    onRestoreOnline: () => void;
+    onPurgeData: (startDate: string, endDate: string) => void;
+    documentSettings: DocumentSettings;
+    setDocumentSettings: React.Dispatch<React.SetStateAction<DocumentSettings>>;
 };
 
 const Settings: React.FC<SettingsProps> = (props) => {
@@ -328,6 +474,10 @@ const Settings: React.FC<SettingsProps> = (props) => {
         <div className="p-8 space-y-8">
             <SettingsCard title="اطلاعات شرکت" description="تنظیمات اولیه و اطلاعات تماس شرکت خود را مدیریت کنید.">
                 <CompanyInfoSection companyInfo={props.companyInfo} setCompanyInfo={props.setCompanyInfo} />
+            </SettingsCard>
+
+            <SettingsCard title="شخصی‌سازی فاکتور و گزارشات" description="ظاهر و چیدمان اسناد چاپی خود را مطابق با سلیقه و برند خود تنظیم کنید.">
+                <DocumentCustomizerSection settings={props.documentSettings} setSettings={props.setDocumentSettings} companyInfo={props.companyInfo} />
             </SettingsCard>
 
             <SettingsCard title="مدیریت کاربران" description="کاربران جدید تعریف کرده و سطح دسترسی آن‌ها را مشخص کنید.">
@@ -343,6 +493,10 @@ const Settings: React.FC<SettingsProps> = (props) => {
                     supabase={props.supabase}
                     licenseId={props.licenseId}
                 />
+            </SettingsCard>
+
+            <SettingsCard title="مدیریت پیشرفته داده‌ها" description="حذف دائمی داده‌های قدیمی برای سبک‌سازی برنامه و بهبود عملکرد.">
+                <DataPurgeSection onPurgeData={props.onPurgeData} />
             </SettingsCard>
         </div>
     );
