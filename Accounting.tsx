@@ -151,9 +151,7 @@ const FinanceAndExpenses: React.FC<AccountingProps> = ({ incomes, expenses, onSa
     };
 
     const handleDeleteExpense = (id: number) => {
-        if (window.confirm("آیا از حذف این هزینه اطمینان دارید؟")) {
-            onDelete(id);
-        }
+        onDelete(id);
     };
     
     const filteredExpenses = expenses.filter(expense =>

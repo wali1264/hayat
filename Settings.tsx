@@ -133,7 +133,7 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSave, initialD
 };
 
 
-const CompanyInfoSection = ({ companyInfo, setCompanyInfo }) => {
+const CompanyInfoSection = ({ companyInfo, onSetCompanyInfo }) => {
     const [info, setInfo] = useState(companyInfo);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -153,7 +153,7 @@ const CompanyInfoSection = ({ companyInfo, setCompanyInfo }) => {
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        setCompanyInfo(info);
+        onSetCompanyInfo(info);
         alert('اطلاعات شرکت با موفقیت ذخیره شد.');
     };
 
@@ -187,7 +187,7 @@ const CompanyInfoSection = ({ companyInfo, setCompanyInfo }) => {
     );
 };
 
-const DocumentCustomizerSection = ({ settings, setSettings, companyInfo }) => {
+const DocumentCustomizerSection = ({ settings, onSetSettings, companyInfo }) => {
     const [localSettings, setLocalSettings] = useState(settings);
 
     useEffect(() => {
@@ -216,7 +216,7 @@ const DocumentCustomizerSection = ({ settings, setSettings, companyInfo }) => {
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        setSettings(localSettings);
+        onSetSettings(localSettings);
         alert('تنظیمات اسناد با موفقیت ذخیره شد.');
     };
     
@@ -324,7 +324,7 @@ const UserManagementSection = ({ users, onSaveUser, onDeleteUser }) => {
 };
 
 
-const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, onBackupOnline, onRestoreOnline, supabase, licenseId }) => {
+const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, onBackupOnline, onRestoreOnline, supabase, licenseId, hasUnsavedChanges }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [onlineBackup, setOnlineBackup] = useState<{ id: string, created_at: string } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -368,7 +368,13 @@ const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, onBackupOnline
             <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
                 <h4 className="font-bold text-lg">پشتیبان‌گیری محلی</h4>
                 <p className="text-sm text-gray-600">یک فایل از تمام اطلاعات برنامه روی کامپیوتر شما ذخیره می‌شود. این فایل برای بازیابی در آینده ضروری است.</p>
-                <button onClick={onBackupLocal} className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                <button onClick={onBackupLocal} className="relative w-full flex items-center justify-center gap-2 py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                    {hasUnsavedChanges && (
+                        <span className="absolute top-2 right-2 flex h-3 w-3" title="تغییرات ذخیره نشده وجود دارد">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                        </span>
+                    )}
                     <DownloadIcon /> تهیه نسخه پشتیبان
                 </button>
                 <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition">
@@ -487,7 +493,7 @@ const DataPurgeSection = ({ onPurgeData }) => {
 //=========== MAIN COMPONENT ===========//
 type SettingsProps = {
     companyInfo: CompanyInfo;
-    setCompanyInfo: React.Dispatch<React.SetStateAction<CompanyInfo>>;
+    onSetCompanyInfo: (info: CompanyInfo) => void;
     users: User[];
     onSaveUser: (user: Omit<User, 'lastLogin'>) => void;
     onDeleteUser: (id: number) => void;
@@ -499,18 +505,19 @@ type SettingsProps = {
     onRestoreOnline: () => void;
     onPurgeData: (startDate: string, endDate: string) => void;
     documentSettings: DocumentSettings;
-    setDocumentSettings: React.Dispatch<React.SetStateAction<DocumentSettings>>;
+    onSetDocumentSettings: (settings: DocumentSettings) => void;
+    hasUnsavedChanges: boolean;
 };
 
 const Settings: React.FC<SettingsProps> = (props) => {
     return (
         <div className="p-8 space-y-8">
             <SettingsCard title="اطلاعات شرکت" description="تنظیمات اولیه و اطلاعات تماس شرکت خود را مدیریت کنید.">
-                <CompanyInfoSection companyInfo={props.companyInfo} setCompanyInfo={props.setCompanyInfo} />
+                <CompanyInfoSection companyInfo={props.companyInfo} onSetCompanyInfo={props.onSetCompanyInfo} />
             </SettingsCard>
 
             <SettingsCard title="شخصی‌سازی فاکتور و گزارشات" description="ظاهر و چیدمان اسناد چاپی خود را مطابق با سلیقه و برند خود تنظیم کنید.">
-                <DocumentCustomizerSection settings={props.documentSettings} setSettings={props.setDocumentSettings} companyInfo={props.companyInfo} />
+                <DocumentCustomizerSection settings={props.documentSettings} onSetSettings={props.onSetDocumentSettings} companyInfo={props.companyInfo} />
             </SettingsCard>
 
             <SettingsCard title="مدیریت کاربران" description="کاربران جدید تعریف کرده و سطح دسترسی آن‌ها را مشخص کنید.">
@@ -525,6 +532,7 @@ const Settings: React.FC<SettingsProps> = (props) => {
                     onRestoreOnline={props.onRestoreOnline}
                     supabase={props.supabase}
                     licenseId={props.licenseId}
+                    hasUnsavedChanges={props.hasUnsavedChanges}
                 />
             </SettingsCard>
 

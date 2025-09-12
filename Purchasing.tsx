@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Drug } from './Inventory';
 import { Supplier } from './Suppliers';
@@ -245,9 +247,7 @@ const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs
     [currentUser.role]);
 
     const handleDelete = (id: number) => {
-        if (window.confirm("آیا از حذف این فاکتور خرید اطمینان دارید؟ موجودی انبار به حالت قبل بازگردانده خواهد شد.")) {
-            onDelete(id);
-        }
+        onDelete(id);
     };
 
     return (
@@ -272,35 +272,52 @@ const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs
             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-right">
-                        <thead className="bg-gray-50 border-b-2">
+                        <thead className="bg-gray-50 border-b-2 border-gray-200">
                             <tr>
-                                <th className="p-4 text-sm font-semibold text-gray-600">شماره فاکتور</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600">تامین کننده</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600">تاریخ خرید</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600">مبلغ کل</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600">مانده بدهی</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600">عملیات</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">شماره فاکتور</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">تامین کننده</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">تاریخ خرید</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">مبلغ کل</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">مبلغ باقی‌مانده</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">وضعیت</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">عملیات</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y">
-                             {purchaseBills.length === 0 ? (
-                                <tr><td colSpan={6} className="text-center p-8 text-gray-500">هیچ فاکتور خریدی ثبت نشده است.</td></tr>
+                        <tbody className="divide-y divide-gray-200">
+                            {purchaseBills.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="text-center p-8 text-gray-500">
+                                        هیچ فاکتور خریدی ثبت نشده است.
+                                    </td>
+                                </tr>
                             ) : (
                                 purchaseBills.map(bill => {
-                                    const remaining = bill.totalAmount - bill.amountPaid;
+                                    const remainingAmount = bill.totalAmount - bill.amountPaid;
+                                    const statusStyles = {
+                                        'دریافت شده': 'bg-green-100 text-green-700',
+                                        'در انتظار': 'bg-yellow-100 text-yellow-700',
+                                        'لغو شده': 'bg-gray-100 text-gray-700',
+                                    };
+                                    const statusStyle = statusStyles[bill.status] || statusStyles['در انتظار'];
+
                                     return (
                                         <tr key={bill.id} className="hover:bg-gray-50">
-                                            <td className="p-4 font-medium text-gray-800">{bill.billNumber}</td>
-                                            <td className="p-4 text-gray-500">{bill.supplierName}</td>
-                                            <td className="p-4 text-gray-500">{new Date(bill.purchaseDate).toLocaleDateString('fa-IR')}</td>
-                                            <td className="p-4 font-semibold text-gray-800">{bill.totalAmount.toLocaleString()}</td>
-                                            <td className={`p-4 font-semibold ${remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>{remaining.toLocaleString()}</td>
-                                            <td className="p-4">
-                                                {canManage && (
-                                                    <button onClick={() => handleDelete(bill.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1">
-                                                        <TrashIcon />
-                                                    </button>
-                                                )}
+                                            <td className="p-4 whitespace-nowrap text-gray-800 font-medium">{bill.billNumber}</td>
+                                            <td className="p-4 whitespace-nowrap text-gray-500">{bill.supplierName}</td>
+                                            <td className="p-4 whitespace-nowrap text-gray-500">{new Date(bill.purchaseDate).toLocaleDateString('fa-IR')}</td>
+                                            <td className="p-4 whitespace-nowrap text-gray-800 font-semibold">{bill.totalAmount.toLocaleString()}</td>
+                                            <td className={`p-4 whitespace-nowrap font-semibold ${remainingAmount > 0 ? 'text-red-600' : 'text-green-600'}`}>{remainingAmount.toLocaleString()}</td>
+                                            <td className="p-4 whitespace-nowrap">
+                                                <span className={`px-3 py-1 text-xs font-bold rounded-full ${statusStyle}`}>
+                                                    {bill.status}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 whitespace-nowrap">
+                                                <div className="flex items-center space-x-2 space-x-reverse">
+                                                    {canManage && (
+                                                        <button onClick={() => handleDelete(bill.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     );

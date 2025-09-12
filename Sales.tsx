@@ -706,9 +706,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
     };
     
     const handleDeleteOrder = (id: number) => {
-        if (window.confirm("آیا از حذف این سفارش اطمینان دارید؟ اگر سفارش ارسال شده باشد، موجودی کالاها به انبار باز خواهد گشت.")) {
-             onDelete(id);
-        }
+        onDelete(id);
     };
     
     const filteredOrders = useMemo(() => {

@@ -165,9 +165,7 @@ const Suppliers: React.FC<SuppliersProps> = ({ suppliers, onSave, onDelete, curr
     };
 
     const handleDelete = (id: number) => {
-        if (window.confirm("آیا از حذف این تامین کننده اطمینان دارید؟")) {
-            onDelete(id);
-        }
+        onDelete(id);
     };
 
     return (

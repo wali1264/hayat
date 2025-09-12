@@ -390,9 +390,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentU
     };
 
     const handleDeleteDrug = (id: number) => {
-        if (window.confirm("آیا از حذف این دارو اطمینان دارید؟ این عمل قابل بازگشت نیست.")) {
-             onDelete(id);
-        }
+        onDelete(id);
     };
     
     const filteredDrugs = useMemo(() => {

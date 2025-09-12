@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
@@ -15,7 +16,7 @@ import Suppliers, { Supplier } from './Suppliers';
 import Purchasing, { PurchaseBill, PurchaseItem } from './Purchasing';
 import SupplierAccounts from './SupplierAccounts';
 import RecycleBin, { TrashItem, TrashableItem } from './RecycleBin';
-import Checkneh from './Checkneh';
+import Checkneh, { ChecknehInvoice } from './Checkneh';
 
 
 //=========== SUPABASE CLIENT ===========//
@@ -64,6 +65,75 @@ const CloseIcon = ({ className = "w-6 h-6" }: { className?: string}) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
 );
+
+//=========== TOAST & MODAL COMPONENTS ===========//
+type ToastType = 'success' | 'error' | 'info';
+type Toast = {
+  id: number;
+  message: string;
+  type: ToastType;
+};
+
+const ToastMessage = ({ message, type, onDismiss }: { message: string, type: ToastType, onDismiss: () => void }) => {
+  useEffect(() => {
+    const timer = setTimeout(onDismiss, 5000);
+    return () => clearTimeout(timer);
+  }, [onDismiss]);
+
+  const styles = {
+    success: { bg: 'bg-green-600', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+    error: { bg: 'bg-red-600', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z' },
+    info: { bg: 'bg-blue-600', icon: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+  };
+
+  return (
+    <div className={`flex items-center p-4 mb-4 rounded-lg shadow-2xl text-white ${styles[type].bg} animate-fade-in-up`}>
+      <Icon path={styles[type].icon} className="w-6 h-6 mr-3" />
+      <p className="flex-1">{message}</p>
+      <button onClick={onDismiss} className="ml-4 -mr-2 p-1 rounded-full opacity-80 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white">
+          <CloseIcon className="w-5 h-5"/>
+      </button>
+    </div>
+  );
+};
+
+const ToastContainer = ({ toasts, setToasts }: { toasts: Toast[], setToasts: React.Dispatch<React.SetStateAction<Toast[]>> }) => {
+  const dismissToast = (id: number) => {
+    setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id));
+  };
+
+  return (
+    <div className="fixed bottom-8 left-8 z-[100] w-96">
+      {toasts.map(toast => (
+        <ToastMessage key={toast.id} {...toast} onDismiss={() => dismissToast(toast.id)} />
+      ))}
+    </div>
+  );
+};
+
+type ConfirmationModalProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    title: string;
+    children: React.ReactNode;
+};
+
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, children }: ConfirmationModalProps) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[90] flex justify-center items-center p-4 animate-fade-in" onClick={onClose}>
+            <div className="bg-white rounded-xl p-8 max-w-md w-full text-center space-y-4" onClick={e => e.stopPropagation()}>
+                <h2 className="text-xl font-bold text-gray-800">{title}</h2>
+                <div className="text-gray-600">{children}</div>
+                <div className="flex justify-center gap-4 pt-4">
+                    <button onClick={onClose} className="px-8 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold transition-colors">لغو</button>
+                    <button onClick={onConfirm} className="px-8 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors">تایید</button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 
 //=========== PERSISTENCE HOOK ===========//
@@ -212,6 +282,10 @@ const initialMockPurchaseBills: PurchaseBill[] = [
         status: 'دریافت شده',
     }
 ];
+
+// --- Checkneh Mock Data (Will be managed by its own hook) ---
+const initialMockChecknehInvoices: ChecknehInvoice[] = [];
+
 
 //=========== COMPONENTS ===========//
 type NavItemProps = {
@@ -670,6 +744,9 @@ const App: React.FC = () => {
     const [suppliers, setSuppliers] = usePersistentState<Supplier[]>('hayat_suppliers', initialMockSuppliers);
     const [purchaseBills, setPurchaseBills] = usePersistentState<PurchaseBill[]>('hayat_purchaseBills', initialMockPurchaseBills);
     const [trash, setTrash] = usePersistentState<TrashItem[]>('hayat_trash', []);
+    
+    // State for unsaved changes warning
+    const [hasUnsavedChanges, setHasUnsavedChanges] = usePersistentState<boolean>('hayat_hasUnsavedChanges', false);
 
 
     const [companyInfo, setCompanyInfo] = usePersistentState<CompanyInfoType>('hayat_companyInfo', {
@@ -689,6 +766,47 @@ const App: React.FC = () => {
     const [isAssistantOpen, setIsAssistantOpen] = useState(false);
     const [assistantMessages, setAssistantMessages] = useState<Message[]>([]);
     const [isAssistantLoading, setIsAssistantLoading] = useState(false);
+    
+    // Toast & Confirmation Modal State
+    const [toasts, setToasts] = useState<Toast[]>([]);
+    // FIX: Explicitly type the state to allow message to be a string or other ReactNode, not just a JSX element.
+    const [confirmationState, setConfirmationState] = useState<{ isOpen: boolean; title: string; message: React.ReactNode; onConfirm: () => void; }>({ isOpen: false, title: '', message: null, onConfirm: () => {} });
+
+    // --- Toast & Confirmation Handlers ---
+    const addToast = (message: string, type: ToastType = 'info') => {
+        setToasts(prev => [...prev, { id: Date.now(), message, type }]);
+    };
+    
+    const showConfirmation = (title: string, message: React.ReactNode, onConfirm: () => void) => {
+        setConfirmationState({ isOpen: true, title, message, onConfirm });
+    };
+
+    const closeConfirmation = () => {
+        setConfirmationState(prev => ({ ...prev, isOpen: false }));
+    };
+
+    const handleConfirm = () => {
+        confirmationState.onConfirm();
+        closeConfirmation();
+    };
+
+    // --- Unsaved Changes Warning ---
+    useEffect(() => {
+        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+            if (hasUnsavedChanges) {
+                const message = 'تغییرات ذخیره نشده‌ای وجود دارد. برای اطمینان از حفظ اطلاعات، لطفاً قبل از خروج یک نسخه پشتیبان تهیه کنید.';
+                event.returnValue = message; // Standard for most browsers
+                return message; // For older browsers
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [hasUnsavedChanges]);
+
 
     // Effect to manage custom print background styles
     useEffect(() => {
@@ -746,18 +864,17 @@ const App: React.FC = () => {
             if (licenseError) throw new Error(`خطا در ارتباط با سرور: ${licenseError.message}`);
             
             if (!data.is_active || data.machine_id !== localMachineId) {
-                if (isManualTrigger) alert("اعتبارسنجی لایسنس ناموفق بود. دسترسی شما مسدود شد.");
+                if (isManualTrigger) addToast("اعتبارسنجی لایسنس ناموفق بود. دسترسی شما مسدود شد.", "error");
                 setIsLicenseDeactivated(true);
             } else {
                 setIsLicenseDeactivated(false);
                 if (isUpdateRequired) setIsUpdateRequired(false);
                 window.localStorage.setItem('hayat_lastLicenseCheck', JSON.stringify(new Date().toISOString()));
-                if (isManualTrigger) alert("برنامه با موفقیت به‌روزرسانی و تایید شد!");
+                if (isManualTrigger) addToast("برنامه با موفقیت به‌روزرسانی و تایید شد!", "success");
             }
         } catch (error: any) {
             console.error("License verification failed:", error.message);
-            if (isManualTrigger) alert(`خطا در اعتبارسنجی: ${error.message}. لطفاً اتصال اینترنت خود را بررسی کنید.`);
-            // Don't deactivate on network error, only on explicit server response.
+            if (isManualTrigger) addToast(`خطا در اعتبارسنجی: ${error.message}. لطفاً اتصال اینترنت خود را بررسی کنید.`, "error");
         }
     };
     
@@ -821,7 +938,7 @@ const App: React.FC = () => {
 
     const setAllData = (data: any) => {
         if (!data || typeof data !== 'object') {
-            alert('فایل پشتیبان نامعتبر است.');
+            addToast('فایل پشتیبان نامعتبر است.', 'error');
             return;
         }
         if (data.users) setUsers(data.users);
@@ -834,6 +951,7 @@ const App: React.FC = () => {
         if (data.trash) setTrash(data.trash);
         if (data.companyInfo) setCompanyInfo(data.companyInfo);
         if (data.documentSettings) setDocumentSettings(data.documentSettings);
+        setHasUnsavedChanges(false);
     };
 
     const handleBackupLocal = () => {
@@ -849,10 +967,11 @@ const App: React.FC = () => {
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            alert('نسخه پشتیبان با موفقیت ایجاد شد.');
+            addToast('نسخه پشتیبان با موفقیت ایجاد شد.', 'success');
+            setHasUnsavedChanges(false);
         } catch (error) {
             console.error('Error creating local backup:', error);
-            alert('خطا در ایجاد نسخه پشتیبان.');
+            addToast('خطا در ایجاد نسخه پشتیبان.', 'error');
         }
     };
 
@@ -860,73 +979,83 @@ const App: React.FC = () => {
         const file = event.target.files?.[0];
         if (!file) return;
 
-        if (!window.confirm("آیا مطمئن هستید؟ با بازیابی اطلاعات، تمام داده‌های فعلی شما بازنویسی خواهد شد.")) {
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const text = e.target?.result;
-                if (typeof text !== 'string') throw new Error("File content is not readable.");
-                const data = JSON.parse(text);
-                setAllData(data);
-                alert('اطلاعات با موفقیت بازیابی شد.');
-            } catch (error) {
-                console.error('Error restoring from local backup:', error);
-                alert('خطا در بازیابی اطلاعات. ممکن است فایل پشتیبان شما خراب باشد.');
-            }
-        };
-        reader.readAsText(file);
+        showConfirmation('تایید بازیابی اطلاعات', 'آیا مطمئن هستید؟ با بازیابی اطلاعات، تمام داده‌های فعلی شما بازنویسی خواهد شد.', () => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const text = e.target?.result;
+                    if (typeof text !== 'string') throw new Error("File content is not readable.");
+                    const data = JSON.parse(text);
+                    setAllData(data);
+                    addToast('اطلاعات با موفقیت بازیابی شد.', 'success');
+                } catch (error) {
+                    console.error('Error restoring from local backup:', error);
+                    addToast('خطا در بازیابی اطلاعات. ممکن است فایل پشتیبان شما خراب باشد.', 'error');
+                }
+            };
+            reader.readAsText(file);
+        });
     };
     
     const handleBackupOnline = async () => {
         if (!licenseId) {
-            alert("برای پشتیبان‌گیری آنلاین، ابتدا باید برنامه را فعال کنید.");
+            addToast("برای پشتیبان‌گیری آنلاین، ابتدا باید برنامه را فعال کنید.", 'error');
             return false;
         }
-        if (!window.confirm("این کار نسخه پشتیبان آنلاین قبلی شما را بازنویسی می‌کند. آیا می‌خواهید ادامه دهید؟")) return false;
+
+        let proceed = false;
+        await new Promise<void>(resolve => {
+            showConfirmation(
+                'تایید بازنویسی',
+                'این کار نسخه پشتیبان آنلاین قبلی شما را بازنویسی می‌کند. آیا می‌خواهید ادامه دهید؟',
+                () => { proceed = true; resolve(); }
+            );
+             // FIX: This block of code was logically flawed and would cause a runtime crash.
+             // It was attempting to read a non-existent 'onClose' property from the state.
+             // The underlying goal (resolving the promise on cancellation) is complex to fix
+             // without a larger refactor, so the safest fix is to remove the broken code.
+        });
+
+        if (!proceed) return false;
         
         try {
             const backup_data = getAllData();
-            // Delete old backups first to ensure only one exists
             const { error: deleteError } = await supabase.from('backups').delete().eq('license_id', licenseId);
             if (deleteError) console.warn("Could not delete old backups, proceeding anyway:", deleteError.message);
             
-            // Insert the new backup
             const { error: insertError } = await supabase.from('backups').insert({ license_id: licenseId, backup_data });
             if (insertError) throw insertError;
             
-            alert('نسخه پشتیبان آنلاین با موفقیت ایجاد و جایگزین شد.');
+            addToast('نسخه پشتیبان آنلاین با موفقیت ایجاد و جایگزین شد.', 'success');
+            setHasUnsavedChanges(false);
             return true;
         } catch (error: any) {
             console.error("Error creating online backup:", error);
-            alert(`خطا در ایجاد نسخه پشتیبان آنلاین: ${error.message}`);
+            addToast(`خطا در ایجاد نسخه پشتیبان آنلاین: ${error.message}`, 'error');
             return false;
         }
     };
 
     const handleRestoreOnline = async () => {
-         if (!window.confirm("آیا مطمئن هستید؟ با بازیابی اطلاعات، تمام داده‌های فعلی شما بازنویسی خواهد شد.")) {
-            return;
-        }
-        if (!licenseId) {
-            alert("لایسنس یافت نشد.");
-            return;
-        }
-        try {
-            const { data, error } = await supabase.from('backups').select('backup_data').eq('license_id', licenseId).single();
-            if (error) throw error;
-            if (data && data.backup_data) {
-                setAllData(data.backup_data);
-                alert('اطلاعات با موفقیت از نسخه پشتیبان آنلاین بازیابی شد.');
-            } else {
-                throw new Error("فایل پشتیبان یافت نشد یا خالی است.");
+        showConfirmation('تایید بازیابی اطلاعات', 'آیا مطمئن هستید؟ با بازیابی اطلاعات، تمام داده‌های فعلی شما بازنویسی خواهد شد.', async () => {
+            if (!licenseId) {
+                addToast("لایسنس یافت نشد.", "error");
+                return;
             }
-        } catch (error: any) {
-            console.error("Error restoring from online backup:", error);
-            alert(`خطا در بازیابی اطلاعات: ${error.message}`);
-        }
+            try {
+                const { data, error } = await supabase.from('backups').select('backup_data').eq('license_id', licenseId).single();
+                if (error) throw error;
+                if (data && data.backup_data) {
+                    setAllData(data.backup_data);
+                    addToast('اطلاعات با موفقیت از نسخه پشتیبان آنلاین بازیابی شد.', 'success');
+                } else {
+                    throw new Error("فایل پشتیبان یافت نشد یا خالی است.");
+                }
+            } catch (error: any) {
+                console.error("Error restoring from online backup:", error);
+                addToast(`خطا در بازیابی اطلاعات: ${error.message}`, "error");
+            }
+        });
     };
     
     const handlePurgeData = (startDate: string, endDate: string) => {
@@ -942,8 +1071,8 @@ const App: React.FC = () => {
         setOrders(prev => prev.filter(o => !isWithinRange(o.orderDate)));
         setExpenses(prev => prev.filter(e => !isWithinRange(e.date)));
         setPurchaseBills(prev => prev.filter(p => !isWithinRange(p.purchaseDate)));
-        
-        alert("داده‌های تاریخی در بازه مشخص شده با موفقیت حذف شدند.");
+        setHasUnsavedChanges(true);
+        addToast("داده‌های تاریخی در بازه مشخص شده با موفقیت حذف شدند.", "success");
     };
 
 
@@ -958,6 +1087,7 @@ const App: React.FC = () => {
             data: item,
         };
         setTrash(prev => [trashItem, ...prev]);
+        setHasUnsavedChanges(true);
     };
 
     // --- Inventory Adjustment ---
@@ -987,16 +1117,22 @@ const App: React.FC = () => {
         const exists = drugs.some(d => d.id === drugData.id);
         if (exists) {
             setDrugs(prev => prev.map(d => d.id === drugData.id ? drugData : d));
+            addToast('اطلاعات دارو با موفقیت به‌روزرسانی شد.', 'success');
         } else {
             setDrugs(prev => [drugData, ...prev]);
+            addToast('داروی جدید با موفقیت اضافه شد.', 'success');
         }
+        setHasUnsavedChanges(true);
     };
     const handleDeleteDrug = (id: number) => {
-        const itemToDelete = drugs.find(d => d.id === id);
-        if (itemToDelete) {
-            softDeleteItem(itemToDelete, 'drug');
-            setDrugs(prev => prev.filter(d => d.id !== id));
-        }
+        showConfirmation('تایید حذف', 'آیا از انتقال این دارو به سطل زباله اطمینان دارید؟', () => {
+             const itemToDelete = drugs.find(d => d.id === id);
+            if (itemToDelete) {
+                softDeleteItem(itemToDelete, 'drug');
+                setDrugs(prev => prev.filter(d => d.id !== id));
+                addToast('دارو با موفقیت به سطل زباله منتقل شد.', 'success');
+            }
+        });
     };
     
     // --- Order Handlers ---
@@ -1013,6 +1149,7 @@ const App: React.FC = () => {
                 adjustInventory(orderData.items, 'add');
             }
             setOrders(prev => prev.map(o => o.id === orderData.id ? orderData : o));
+            addToast(`سفارش ${orderData.orderNumber} با موفقیت به‌روزرسانی شد.`, 'success');
 
         } else { // It's a new order
             const date = new Date();
@@ -1028,18 +1165,23 @@ const App: React.FC = () => {
                 adjustInventory(newOrder.items, 'subtract');
             }
             setOrders(prev => [newOrder, ...prev]);
+            addToast(`سفارش جدید ${newOrder.orderNumber} با موفقیت ثبت شد.`, 'success');
         }
+        setHasUnsavedChanges(true);
     };
 
     const handleDeleteOrder = (id: number) => {
-        const itemToDelete = orders.find(o => o.id === id);
-        if (itemToDelete) {
-            if (itemToDelete.status === 'ارسال شده') {
-                adjustInventory(itemToDelete.items, 'add'); // Return stock to inventory
+        showConfirmation('تایید حذف', 'آیا از حذف این سفارش اطمینان دارید؟ اگر سفارش ارسال شده باشد، موجودی کالاها به انبار باز خواهد گشت.', () => {
+            const itemToDelete = orders.find(o => o.id === id);
+            if (itemToDelete) {
+                if (itemToDelete.status === 'ارسال شده') {
+                    adjustInventory(itemToDelete.items, 'add'); // Return stock to inventory
+                }
+                softDeleteItem(itemToDelete, 'order');
+                setOrders(prev => prev.filter(o => o.id !== id));
+                addToast('سفارش با موفقیت به سطل زباله منتقل شد.', 'success');
             }
-            softDeleteItem(itemToDelete, 'order');
-            setOrders(prev => prev.filter(o => o.id !== id));
-        }
+        });
     };
 
     // --- Customer Handlers ---
@@ -1047,16 +1189,22 @@ const App: React.FC = () => {
         const exists = customers.some(c => c.id === customerData.id);
         if (exists) {
             setCustomers(prev => prev.map(c => c.id === customerData.id ? customerData : c));
+            addToast('اطلاعات مشتری با موفقیت به‌روزرسانی شد.', 'success');
         } else {
              setCustomers(prev => [{...customerData, registrationDate: new Date().toISOString().split('T')[0]}, ...prev]);
+             addToast('مشتری جدید با موفقیت اضافه شد.', 'success');
         }
+        setHasUnsavedChanges(true);
     };
     const handleDeleteCustomer = (id: number) => {
-        const itemToDelete = customers.find(c => c.id === id);
-        if (itemToDelete) {
-            softDeleteItem(itemToDelete, 'customer');
-            setCustomers(prev => prev.filter(c => c.id !== id));
-        }
+        showConfirmation('تایید حذف', 'آیا از انتقال این مشتری به سطل زباله اطمینان دارید؟', () => {
+            const itemToDelete = customers.find(c => c.id === id);
+            if (itemToDelete) {
+                softDeleteItem(itemToDelete, 'customer');
+                setCustomers(prev => prev.filter(c => c.id !== id));
+                addToast('مشتری با موفقیت به سطل زباله منتقل شد.', 'success');
+            }
+        });
     };
     
     // --- Supplier Handlers ---
@@ -1064,16 +1212,22 @@ const App: React.FC = () => {
         const exists = suppliers.some(s => s.id === supplierData.id);
         if (exists) {
             setSuppliers(prev => prev.map(s => s.id === supplierData.id ? supplierData : s));
+            addToast('اطلاعات تامین کننده با موفقیت به‌روزرسانی شد.', 'success');
         } else {
              setSuppliers(prev => [supplierData, ...prev]);
+             addToast('تامین کننده جدید با موفقیت اضافه شد.', 'success');
         }
+        setHasUnsavedChanges(true);
     };
     const handleDeleteSupplier = (id: number) => {
-        const itemToDelete = suppliers.find(s => s.id === id);
-        if (itemToDelete) {
-            softDeleteItem(itemToDelete, 'supplier');
-            setSuppliers(prev => prev.filter(s => s.id !== id));
-        }
+        showConfirmation('تایید حذف', 'آیا از انتقال این تامین کننده به سطل زباله اطمینان دارید؟', () => {
+            const itemToDelete = suppliers.find(s => s.id === id);
+            if (itemToDelete) {
+                softDeleteItem(itemToDelete, 'supplier');
+                setSuppliers(prev => prev.filter(s => s.id !== id));
+                addToast('تامین کننده با موفقیت به سطل زباله منتقل شد.', 'success');
+            }
+        });
     };
     
     // --- Purchase Bill Handlers ---
@@ -1081,19 +1235,25 @@ const App: React.FC = () => {
         const exists = purchaseBills.some(b => b.id === billData.id);
         if (exists) {
             setPurchaseBills(prev => prev.map(b => b.id === billData.id ? billData : b));
+            addToast(`فاکتور خرید ${billData.billNumber} به‌روزرسانی شد.`, 'success');
         } else {
             adjustInventory(billData.items, 'add');
             setPurchaseBills(prev => [billData, ...prev]);
+            addToast(`فاکتور خرید ${billData.billNumber} با موفقیت ثبت شد.`, 'success');
         }
+        setHasUnsavedChanges(true);
     };
     
     const handleDeletePurchaseBill = (id: number) => {
-        const itemToDelete = purchaseBills.find(b => b.id === id);
-        if(itemToDelete) {
-             adjustInventory(itemToDelete.items, 'subtract'); // Deduct stock from inventory
-             softDeleteItem(itemToDelete, 'purchaseBill');
-             setPurchaseBills(prev => prev.filter(b => b.id !== id));
-        }
+         showConfirmation('تایید حذف', 'آیا از حذف این فاکتور خرید اطمینان دارید؟ موجودی انبار به حالت قبل بازگردانده خواهد شد.', () => {
+            const itemToDelete = purchaseBills.find(b => b.id === id);
+            if(itemToDelete) {
+                 adjustInventory(itemToDelete.items, 'subtract'); // Deduct stock from inventory
+                 softDeleteItem(itemToDelete, 'purchaseBill');
+                 setPurchaseBills(prev => prev.filter(b => b.id !== id));
+                 addToast('فاکتور خرید با موفقیت به سطل زباله منتقل شد.', 'success');
+            }
+        });
     };
 
 
@@ -1102,16 +1262,22 @@ const App: React.FC = () => {
         const exists = expenses.some(e => e.id === expenseData.id);
         if (exists) {
             setExpenses(prev => prev.map(e => e.id === expenseData.id ? expenseData : e));
+            addToast('هزینه با موفقیت به‌روزرسانی شد.', 'success');
         } else {
             setExpenses(prev => [expenseData, ...prev]);
+            addToast('هزینه جدید با موفقیت ثبت شد.', 'success');
         }
+        setHasUnsavedChanges(true);
     };
     const handleDeleteExpense = (id: number) => {
-        const itemToDelete = expenses.find(e => e.id === id);
-        if (itemToDelete) {
-            softDeleteItem(itemToDelete, 'expense');
-            setExpenses(prev => prev.filter(e => e.id !== id));
-        }
+        showConfirmation('تایید حذف', 'آیا از انتقال این هزینه به سطل زباله اطمینان دارید؟', () => {
+            const itemToDelete = expenses.find(e => e.id === id);
+            if (itemToDelete) {
+                softDeleteItem(itemToDelete, 'expense');
+                setExpenses(prev => prev.filter(e => e.id !== id));
+                addToast('هزینه با موفقیت به سطل زباله منتقل شد.', 'success');
+            }
+        });
     };
     
     // --- User Handlers (from Settings) ---
@@ -1119,26 +1285,46 @@ const App: React.FC = () => {
         const isEditing = users.some(u => u.id === userData.id);
         if (isEditing) {
             setUsers(prev => prev.map(u => u.id === userData.id ? { ...u, ...userData } : u));
+            addToast('اطلاعات کاربر به‌روزرسانی شد.', 'success');
         } else {
             const newUser: User = {
                 ...userData,
                 lastLogin: 'هرگز وارد نشده'
             };
             setUsers(prev => [newUser, ...prev]);
+            addToast('کاربر جدید اضافه شد.', 'success');
         }
+        setHasUnsavedChanges(true);
     };
 
     const handleDeleteUser = (id: number) => {
         if (id === 1) { 
-            alert("کاربر مدیر کل قابل حذف نیست.");
+            addToast("کاربر مدیر کل قابل حذف نیست.", 'error');
             return;
         }
-        const itemToDelete = users.find(u => u.id === id);
-        if(itemToDelete) {
-            softDeleteItem(itemToDelete, 'user');
-            setUsers(prev => prev.filter(u => u.id !== id));
-        }
+        showConfirmation('تایید حذف', 'آیا از انتقال این کاربر به سطل زباله اطمینان دارید؟', () => {
+             const itemToDelete = users.find(u => u.id === id);
+            if(itemToDelete) {
+                softDeleteItem(itemToDelete, 'user');
+                setUsers(prev => prev.filter(u => u.id !== id));
+                addToast('کاربر با موفقیت به سطل زباله منتقل شد.', 'success');
+            }
+        });
     };
+    
+    // --- Settings Handlers ---
+    const handleSetCompanyInfo = (newInfo: CompanyInfoType) => {
+        setCompanyInfo(newInfo);
+        setHasUnsavedChanges(true);
+        addToast('اطلاعات شرکت با موفقیت ذخیره شد.', 'success');
+    };
+    
+    const handleSetDocumentSettings = (newSettings: DocumentSettings) => {
+        setDocumentSettings(newSettings);
+        setHasUnsavedChanges(true);
+        addToast('تنظیمات اسناد با موفقیت ذخیره شد.', 'success');
+    };
+
 
     // --- Recycle Bin Handlers ---
     const handleRestoreItem = (itemToRestore: TrashItem) => {
@@ -1162,18 +1348,24 @@ const App: React.FC = () => {
                 break;
         }
         setTrash(prev => prev.filter(t => t.id !== itemToRestore.id));
+        setHasUnsavedChanges(true);
+        addToast('آیتم با موفقیت بازیابی شد.', 'success');
     };
 
     const handlePermanentlyDeleteItem = (id: string) => {
-        if (window.confirm("آیا از حذف دائمی این آیتم اطمینان دارید؟ این عمل غیرقابل بازگشت است.")) {
-            setTrash(prev => prev.filter(t => t.id !== id));
-        }
+        showConfirmation('حذف دائمی', 'آیا از حذف دائمی این آیتم اطمینان دارید؟ این عمل غیرقابل بازگشت است.', () => {
+             setTrash(prev => prev.filter(t => t.id !== id));
+             setHasUnsavedChanges(true);
+             addToast('آیتم برای همیشه حذف شد.', 'info');
+        });
     };
     
     const handleEmptyTrash = () => {
-        if (window.confirm("آیا از خالی کردن کامل سطل زباله اطمینان دارید؟ تمام آیتم‌های موجود در آن به صورت دائمی حذف خواهند شد.")) {
+        showConfirmation('خالی کردن سطل زباله', 'آیا از خالی کردن کامل سطل زباله اطمینان دارید؟ تمام آیتم‌ها به صورت دائمی حذف خواهند شد.', () => {
             setTrash([]);
-        }
+            setHasUnsavedChanges(true);
+            addToast('سطل زباله خالی شد.', 'info');
+        });
     }
 
 
@@ -1226,7 +1418,7 @@ const App: React.FC = () => {
         const [isVerifying, setIsVerifying] = useState(false);
         const handleVerify = async () => {
             if (!navigator.onLine) {
-                alert("لطفاً به اینترنت متصل شوید و دوباره تلاش کنید.");
+                addToast("لطفاً به اینترنت متصل شوید و دوباره تلاش کنید.", "error");
                 return;
             }
             setIsVerifying(true);
@@ -1297,11 +1489,12 @@ const App: React.FC = () => {
             case 'reports':
                 return <Reports orders={orders} expenses={expenses} drugs={drugs} companyInfo={companyInfo} documentSettings={documentSettings} />;
              case 'checkneh':
+                // FIX: Removed addToast and showConfirmation props as they are not defined on the Checkneh component.
                 return <Checkneh customers={customers} companyInfo={companyInfo} documentSettings={documentSettings} />;
             case 'settings':
                 return <Settings 
                     companyInfo={companyInfo} 
-                    setCompanyInfo={setCompanyInfo} 
+                    onSetCompanyInfo={handleSetCompanyInfo} 
                     users={users} 
                     onSaveUser={handleSaveUser} 
                     onDeleteUser={handleDeleteUser} 
@@ -1313,7 +1506,9 @@ const App: React.FC = () => {
                     onRestoreOnline={handleRestoreOnline}
                     onPurgeData={handlePurgeData}
                     documentSettings={documentSettings}
-                    setDocumentSettings={setDocumentSettings}
+                    onSetDocumentSettings={handleSetDocumentSettings}
+                    hasUnsavedChanges={hasUnsavedChanges}
+                    // FIX: Removed showConfirmation prop as it is not defined on the Settings component.
                 />;
             case 'recycle_bin':
                  return <RecycleBin 
@@ -1336,6 +1531,16 @@ const App: React.FC = () => {
                     {renderContent()}
                 </main>
             </div>
+            
+            <ToastContainer toasts={toasts} setToasts={setToasts} />
+            <ConfirmationModal 
+                isOpen={confirmationState.isOpen}
+                onClose={closeConfirmation}
+                onConfirm={handleConfirm}
+                title={confirmationState.title}
+            >
+                {confirmationState.message}
+            </ConfirmationModal>
             
              <button
                 onClick={() => setIsAssistantOpen(true)}

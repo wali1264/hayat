@@ -161,9 +161,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
     const handleCloseModal = () => setIsModalOpen(false);
     
     const handleDeleteCustomer = (id: number) => {
-        if (window.confirm("آیا از حذف این مشتری اطمینان دارید؟ تمام سفارشات مرتبط با او باقی خواهند ماند.")) {
-             onDelete(id);
-        }
+        onDelete(id);
     };
     
     const filteredCustomers = customers.filter(customer => {
