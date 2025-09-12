@@ -1,5 +1,5 @@
 // Incrementing cache name for updates.
-const CACHE_NAME = 'hayat-cache-v7';
+const CACHE_NAME = 'hayat-cache-v8';
 
 // List of essential files for the app shell to work offline.
 const urlsToCache = [
@@ -7,9 +7,6 @@ const urlsToCache = [
   '/index.html',
   '/manifest.json',
   '/icon.png',
-  // The console showed an error for this, so we must ensure it's cached.
-  // If the build process generates a different name, our dynamic caching will handle it.
-  '/index.css', 
 
   // Third-party scripts and styles from index.html
   'https://cdn.tailwindcss.com',
@@ -95,12 +92,19 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       }).catch(error => {
         // This will happen if the network request fails and the resource is not in the cache.
-        console.warn(`Fetch failed for: ${event.request.url}. This resource is not available offline.`);
+        console.warn(`[SW] Fetch failed for: ${event.request.url}. This resource is not available offline.`);
+        
         // For navigation requests, you could return an offline fallback page.
         if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
+          return caches.match('/'); // Use '/' which is cached and points to index.html
         }
-        // For other assets, let the browser handle the failed request.
+        
+        // For other assets, return a synthetic error response to avoid the crash.
+        // This is a valid Response object, which satisfies `event.respondWith`.
+        return new Response('Network error', {
+          status: 408,
+          headers: { 'Content-Type': 'text/plain' },
+        });
       });
     })
   );
