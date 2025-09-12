@@ -13,7 +13,8 @@ import Dashboard from './Dashboard';
 import CustomerAccounts from './CustomerAccounts';
 import Suppliers, { Supplier } from './Suppliers';
 import Purchasing, { PurchaseBill, PurchaseItem } from './Purchasing';
-import SupplierAccounts from './SupplierAccounts';
+// FIX: Changed import to named import to resolve potential default export detection issues, which might be caused by syntax errors in the imported file.
+import { SupplierAccounts } from './SupplierAccounts';
 import RecycleBin, { TrashItem, TrashableItem } from './RecycleBin';
 import Checkneh from './Checkneh';
 
@@ -682,6 +683,7 @@ const App: React.FC = () => {
     const [documentSettings, setDocumentSettings] = usePersistentState<DocumentSettings>('hayat_documentSettings', {
         logoPosition: 'right',
         accentColor: '#0d9488',
+        documentBackground: 'none',
     });
 
     // AI Assistant State
@@ -857,15 +859,11 @@ const App: React.FC = () => {
         
         try {
             const backup_data = getAllData();
-            // Delete old backups first to ensure only one exists
-            const { error: deleteError } = await supabase.from('backups').delete().eq('license_id', licenseId);
-            if (deleteError) console.warn("Could not delete old backups, proceeding anyway:", deleteError.message);
+            // Upsert operation: update if exists, insert if not.
+            const { error } = await supabase.from('backups').upsert({ license_id: licenseId, backup_data }, { onConflict: 'license_id' });
+            if (error) throw error;
             
-            // Insert the new backup
-            const { error: insertError } = await supabase.from('backups').insert({ license_id: licenseId, backup_data });
-            if (insertError) throw insertError;
-            
-            alert('نسخه پشتیبان آنلاین با موفقیت ایجاد و جایگزین شد.');
+            alert('نسخه پشتیبان آنلاین با موفقیت ایجاد / به‌روزرسانی شد.');
             return true;
         } catch (error: any) {
             console.error("Error creating online backup:", error);
@@ -1259,7 +1257,7 @@ const App: React.FC = () => {
             case 'purchasing':
                 return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={drugs} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={currentUser} />;
             case 'supplier_accounts':
-                return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} />;
+                return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} documentSettings={documentSettings} />;
             case 'finance':
                 return <Accounting incomes={incomes} expenses={expenses} onSave={handleSaveExpense} onDelete={handleDeleteExpense} currentUser={currentUser} />;
             case 'reports':

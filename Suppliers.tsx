@@ -51,8 +51,7 @@ const SupplierModal: React.FC<SupplierModalProps> = ({ isOpen, onClose, onSave, 
 
     React.useEffect(() => {
         if (isOpen) {
-            // FIX: Explicitly map properties to handle optional 'email' and avoid adding 'id' to state.
-            // This ensures the state object matches its defined type.
+            // FIX: Explicitly map properties to avoid spreading `id` into the state object, ensuring type safety.
             setSupplier(initialData ? {
                 name: initialData.name,
                 representative: initialData.representative,

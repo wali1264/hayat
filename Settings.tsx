@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { SupabaseClient } from '@supabase/supabase-js';
 
@@ -35,9 +34,12 @@ export type CompanyInfo = {
     logo: string | null;
 };
 
+export type DocumentBackground = 'none' | 'caduceus' | 'pills' | 'molecular' | 'grid';
+
 export type DocumentSettings = {
     logoPosition: 'left' | 'center' | 'right';
     accentColor: string;
+    documentBackground: DocumentBackground;
 };
 
 //=========== MOCK DATA ===========//
@@ -188,6 +190,14 @@ const CompanyInfoSection = ({ companyInfo, setCompanyInfo }) => {
 
 const DocumentCustomizerSection = ({ settings, setSettings, companyInfo }) => {
     const [localSettings, setLocalSettings] = useState(settings);
+    
+    const backgroundPreviews: { id: DocumentBackground, name: string, className: string }[] = [
+        { id: 'none', name: 'بدون پس‌زمینه', className: 'bg-white' },
+        { id: 'caduceus', name: 'پزشکی', className: 'bg-caduceus' },
+        { id: 'pills', name: 'قرص‌ها', className: 'bg-pills' },
+        { id: 'molecular', name: 'مولکولی', className: 'bg-molecular' },
+        { id: 'grid', name: 'شبکه‌ای', className: 'bg-grid' },
+    ];
 
     const handleSettingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -204,7 +214,7 @@ const DocumentCustomizerSection = ({ settings, setSettings, companyInfo }) => {
          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                 {/* Controls */}
-                <div className="space-y-4">
+                <div className="space-y-6">
                     <div>
                         <label className="block text-sm font-bold mb-2">موقعیت لوگو در سربرگ</label>
                         <div className="flex gap-4">
@@ -223,20 +233,36 @@ const DocumentCustomizerSection = ({ settings, setSettings, companyInfo }) => {
                              <span className="font-mono text-sm">{localSettings.accentColor}</span>
                          </div>
                     </div>
+                    <div>
+                         <label className="block text-sm font-bold mb-2">پس‌زمینه اسناد</label>
+                         <div className="flex flex-wrap gap-2">
+                            {backgroundPreviews.map(bg => (
+                                <label key={bg.id} className="cursor-pointer">
+                                    <input type="radio" name="documentBackground" value={bg.id} checked={localSettings.documentBackground === bg.id} onChange={handleSettingChange} className="sr-only" />
+                                    <div className={`w-20 h-16 rounded-md border-2 flex items-center justify-center text-xs text-center p-1 ${localSettings.documentBackground === bg.id ? 'border-teal-500 ring-2 ring-teal-500' : 'border-gray-300'}`}>
+                                        <div className={`w-full h-full ${bg.className} rounded`}></div>
+                                    </div>
+                                    <span className="block text-center text-xs mt-1">{bg.name}</span>
+                                </label>
+                            ))}
+                         </div>
+                    </div>
                 </div>
                  {/* Live Preview */}
-                <div className="border-2 border-dashed rounded-lg p-4">
-                    <h4 className="text-center font-semibold text-gray-500 text-sm mb-2">پیش‌نمایش زنده سربرگ</h4>
-                     <div 
-                        className={`print-header layout-logo-${localSettings.logoPosition}`} 
-                        style={{ borderColor: localSettings.accentColor }}
-                    >
-                        <div className="print-company-info">
-                            <h1 className="font-bold text-gray-800" style={{ color: localSettings.accentColor }}>{companyInfo.name || 'نام شرکت شما'}</h1>
-                            <p className="text-xs text-gray-500">{companyInfo.address || 'آدرس شما'}</p>
+                <div className="border-2 border-dashed rounded-lg p-4 relative overflow-hidden">
+                    <h4 className="text-center font-semibold text-gray-500 text-sm mb-2">پیش‌نمایش زنده</h4>
+                     <div className={`relative z-10 p-2 rounded-md ${localSettings.documentBackground !== 'none' ? `bg-${localSettings.documentBackground}` : ''}`}>
+                         <div 
+                            className={`print-header layout-logo-${localSettings.logoPosition}`} 
+                            style={{ borderColor: localSettings.accentColor }}
+                        >
+                            <div className="print-company-info">
+                                <h1 className="font-bold text-gray-800" style={{ color: localSettings.accentColor }}>{companyInfo.name || 'نام شرکت شما'}</h1>
+                                <p className="text-xs text-gray-500">{companyInfo.address || 'آدرس شما'}</p>
+                            </div>
+                            {companyInfo.logo && <img src={companyInfo.logo} alt="Logo" className="w-12 h-12 object-contain" />}
                         </div>
-                        {companyInfo.logo && <img src={companyInfo.logo} alt="Logo" className="w-12 h-12 object-contain" />}
-                    </div>
+                     </div>
                 </div>
             </div>
              <div className="flex justify-end pt-4 border-t mt-4">

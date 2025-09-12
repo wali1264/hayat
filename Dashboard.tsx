@@ -79,7 +79,7 @@ const Dashboard: React.FC<DashboardProps> = ({ drugs, orders, customers, onNavig
 
         const salesByDay = orders
             .filter(o => o.status !== 'لغو شده' && last30Days.includes(o.orderDate))
-            // FIX: Explicitly type the accumulator for the reduce function to ensure correct type inference for `salesByDay`.
+            // FIX: Explicitly type the accumulator and provide an initial value `{}` to the reduce function to prevent errors on empty arrays and ensure correct type inference.
             .reduce<{ [key: string]: number }>((acc, order) => {
                 acc[order.orderDate] = (acc[order.orderDate] || 0) + order.totalAmount;
                 return acc;
@@ -95,9 +95,8 @@ const Dashboard: React.FC<DashboardProps> = ({ drugs, orders, customers, onNavig
         const salesByDrug = orders
              .filter(o => o.status !== 'لغو شده')
              .flatMap(o => o.items)
-             // FIX: Explicitly type the accumulator for the reduce function. This resolves the error by ensuring `salesByDrug` is correctly typed as an object with string keys and number values, which allows the subsequent `.sort()` method to work correctly.
+             // FIX: Explicitly type the accumulator, provide an initial value `{}`, and use `item.finalPrice` to correctly calculate revenue.
              .reduce<{ [key: string]: number }>((acc, item) => {
-                 // FIX: Corrected property access from `item.price` to `item.finalPrice` as `OrderItem` type does not have a `price` property. This calculates revenue based on the final price after discounts.
                  acc[item.drugName] = (acc[item.drugName] || 0) + (item.finalPrice * item.quantity);
                  return acc;
              }, {});

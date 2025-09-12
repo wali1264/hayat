@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Customer } from './Customers';
 import { Order } from './Sales';
@@ -166,7 +165,7 @@ const CustomerReportModal: React.FC<CustomerReportModalProps> = ({ isOpen, onClo
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl my-8" onClick={e => e.stopPropagation()}>
                 <div 
                     id="print-section" 
-                    className={`p-10 ${'template-' + selectedTemplate} ${'layout-logo-' + documentSettings.logoPosition}`}
+                    className={`p-10 ${'template-' + selectedTemplate} ${'layout-logo-' + documentSettings.logoPosition} ${documentSettings.documentBackground !== 'none' ? 'bg-' + documentSettings.documentBackground : ''}`}
                     style={{ '--accent-color': documentSettings.accentColor } as React.CSSProperties}
                 >
                     <header className="print-header">
