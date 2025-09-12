@@ -197,9 +197,10 @@ type DrugModalProps = {
     onClose: () => void;
     onSave: (drug: Drug) => void;
     initialData: Drug | null;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
+const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
     const defaultState = { name: '', barcode: '', code: '', manufacturer: '', quantity: '', expiryDate: '', productionDate: '', price: '', purchasePrice: '', discountPercentage: '', category: 'سایر' };
     const [drug, setDrug] = useState(defaultState);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -235,7 +236,7 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
         const priceValue = Number(drug.price) || 0;
         const purchasePriceValue = Number(drug.purchasePrice) || 0;
         if (!drug.name || !drug.expiryDate || priceValue <= 0 || purchasePriceValue <= 0) {
-            // Parent will show the error toast
+            addToast("لطفا تمام فیلدهای ضروری (نام، تاریخ انقضا، قیمت خرید و فروش) را با مقادیر معتبر پر کنید.", 'error');
             return;
         }
 
@@ -359,9 +360,10 @@ type InventoryProps = {
     onSave: (drug: Drug) => void;
     onDelete: (id: number) => void;
     currentUser: User;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentUser }) => {
+const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentUser, addToast }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingDrug, setEditingDrug] = useState<Drug | null>(null);
     const [isSheetModalOpen, setIsSheetModalOpen] = useState(false);
@@ -432,7 +434,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentU
     const handlePrintBarcodeSheet = () => {
         const drugsWithBarcodes = sortedAndFilteredDrugs.filter(d => d.barcode && d.barcode.trim() !== '');
         if (drugsWithBarcodes.length === 0) {
-            // This alert will be replaced in App.tsx
+            addToast("هیچ دارویی با بارکد برای چاپ یافت نشد.", "info");
             return;
         }
         setDrugsToPrint(drugsWithBarcodes);
@@ -470,6 +472,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentU
                 onClose={() => setIsModalOpen(false)}
                 onSave={onSave}
                 initialData={editingDrug}
+                addToast={addToast}
             />}
             <BarcodeSheetModal
                 isOpen={isSheetModalOpen}

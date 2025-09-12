@@ -176,7 +176,7 @@ const ChecknehInvoicePrintModal = ({ isOpen, onClose, invoice, companyInfo, docu
 type ChecknehInvoiceFormProps = {
     customers: Customer[];
     onSave: (invoice: Omit<ChecknehInvoice, 'id' | 'invoiceNumber' | 'totalAmount'>) => ChecknehInvoice;
-    setTab: (tab: Tab);
+    setTab: (tab: Tab) => void;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 

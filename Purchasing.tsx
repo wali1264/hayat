@@ -12,6 +12,7 @@ const Icon = ({ path, className = "w-5 h-5" }) => (
 );
 const PlusIcon = () => <Icon path="M12 4v16m8-8H4" />;
 const TrashIcon = ({ className }: { className?: string }) => <Icon path="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" className={className} />;
+const SearchIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" className="w-5 h-5 text-gray-400" />;
 
 
 //=========== TYPES ===========//
@@ -42,9 +43,10 @@ type PurchaseModalProps = {
     onSave: (bill: PurchaseBill) => void;
     suppliers: Supplier[];
     drugs: Drug[];
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, suppliers, drugs }) => {
+const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, suppliers, drugs, addToast }) => {
     const [billInfo, setBillInfo] = useState({
         supplierName: '', billNumber: '', purchaseDate: new Date().toISOString().split('T')[0], amountPaid: '', status: 'دریافت شده' as PurchaseStatus
     });
@@ -91,13 +93,13 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
         const quantity = Number(addQuantity);
         const price = Number(addPrice);
         if (!quantity || quantity <= 0 || !price || price <= 0) {
-            alert("لطفاً تعداد و قیمت خرید معتبر وارد کنید.");
+            addToast("لطفاً تعداد و قیمت خرید معتبر وارد کنید.", 'error');
             return;
         }
 
         const existingItem = items.find(item => item.drugId === drug.id);
         if (existingItem) {
-            alert("این دارو قبلا به لیست اضافه شده است. می‌توانید تعداد آن را ویرایش کنید.");
+            addToast("این دارو قبلا به لیست اضافه شده است. می‌توانید تعداد آن را ویرایش کنید.", 'error');
             return;
         }
         
@@ -115,7 +117,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!billInfo.supplierName || !billInfo.billNumber || items.length === 0) {
-            alert("لطفاً تامین کننده، شماره فاکتور و حداقل یک قلم دارو را وارد کنید.");
+            addToast("لطفاً تامین کننده، شماره فاکتور و حداقل یک قلم دارو را وارد کنید.", 'error');
             return;
         }
 
@@ -235,91 +237,111 @@ type PurchasingProps = {
     onSave: (bill: PurchaseBill) => void;
     onDelete: (id: number) => void;
     currentUser: User;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs, onSave, onDelete, currentUser }) => {
+const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs, onSave, onDelete, currentUser, addToast }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    
+    const [searchTerm, setSearchTerm] = useState('');
+
     const canManage = useMemo(() => 
         currentUser.role === 'مدیر کل' || currentUser.role === 'انباردار', 
     [currentUser.role]);
 
-    const handleDelete = (id: number) => {
-        onDelete(id);
+    const filteredBills = useMemo(() => {
+        return purchaseBills.filter(bill =>
+            bill.billNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            bill.supplierName.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [purchaseBills, searchTerm]);
+
+    const getStatusStyle = (status: PurchaseStatus) => {
+        switch (status) {
+            case 'دریافت شده': return { text: 'text-green-700', bg: 'bg-green-100' };
+            case 'در انتظار': return { text: 'text-yellow-700', bg: 'bg-yellow-100' };
+            case 'لغو شده': return { text: 'text-gray-700', bg: 'bg-gray-100' };
+            default: return { text: 'text-gray-700', bg: 'bg-gray-100' };
+        }
     };
 
     return (
         <div className="p-8">
-            {canManage && <PurchaseModal 
+            {canManage && <PurchaseModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onSave={onSave}
                 suppliers={suppliers}
                 drugs={drugs}
+                addToast={addToast}
             />}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-800">مدیریت خرید و فاکتورها</h2>
-                    <p className="text-gray-500">فاکتورهای خرید از تامین کنندگان را ثبت و مدیریت کنید.</p>
+                    <h2 className="text-2xl font-bold text-gray-800">خرید و فاکتورها</h2>
+                    <p className="text-gray-500">فاکتورهای خرید از تامین کنندگان را مدیریت کنید.</p>
                 </div>
-                 {canManage && <button onClick={() => setIsModalOpen(true)} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 shadow-md">
-                    <PlusIcon />
-                    <span className="mr-2">ثبت فاکتور جدید</span>
-                </button>}
+                <div className="flex items-center space-x-2 space-x-reverse flex-wrap gap-2">
+                    <div className="relative">
+                        <input
+                            type="text"
+                            placeholder="جستجوی فاکتور..."
+                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                           <SearchIcon />
+                        </div>
+                    </div>
+                    {canManage && (
+                        <button onClick={() => setIsModalOpen(true)} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 shadow-md">
+                            <PlusIcon />
+                            <span className="mr-2">ثبت فاکتور جدید</span>
+                        </button>
+                    )}
+                </div>
             </div>
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-right">
-                        <thead className="bg-gray-50 border-b-2 border-gray-200">
+                        <thead className="bg-gray-50 border-b-2">
                             <tr>
-                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">شماره فاکتور</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">تامین کننده</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">تاریخ خرید</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">مبلغ کل</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">مبلغ باقی‌مانده</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">وضعیت</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">عملیات</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600">شماره فاکتور</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600">تامین کننده</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600">تاریخ</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600">مبلغ کل</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600">پرداختی</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600">مانده</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600">وضعیت</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600">عملیات</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200">
-                            {purchaseBills.length === 0 ? (
+                        <tbody className="divide-y">
+                             {filteredBills.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="text-center p-8 text-gray-500">
-                                        هیچ فاکتور خریدی ثبت نشده است.
+                                    <td colSpan={8} className="text-center p-8 text-gray-500">
+                                        هیچ فاکتوری با این مشخصات یافت نشد.
                                     </td>
                                 </tr>
                             ) : (
-                                purchaseBills.map(bill => {
-                                    const remainingAmount = bill.totalAmount - bill.amountPaid;
-                                    const statusStyles = {
-                                        'دریافت شده': 'bg-green-100 text-green-700',
-                                        'در انتظار': 'bg-yellow-100 text-yellow-700',
-                                        'لغو شده': 'bg-gray-100 text-gray-700',
-                                    };
-                                    const statusStyle = statusStyles[bill.status] || statusStyles['در انتظار'];
-
+                                filteredBills.map(bill => {
+                                    const remaining = bill.totalAmount - bill.amountPaid;
+                                    const statusStyle = getStatusStyle(bill.status);
                                     return (
-                                        <tr key={bill.id} className="hover:bg-gray-50">
-                                            <td className="p-4 whitespace-nowrap text-gray-800 font-medium">{bill.billNumber}</td>
-                                            <td className="p-4 whitespace-nowrap text-gray-500">{bill.supplierName}</td>
-                                            <td className="p-4 whitespace-nowrap text-gray-500">{new Date(bill.purchaseDate).toLocaleDateString('fa-IR')}</td>
-                                            <td className="p-4 whitespace-nowrap text-gray-800 font-semibold">{bill.totalAmount.toLocaleString()}</td>
-                                            <td className={`p-4 whitespace-nowrap font-semibold ${remainingAmount > 0 ? 'text-red-600' : 'text-green-600'}`}>{remainingAmount.toLocaleString()}</td>
-                                            <td className="p-4 whitespace-nowrap">
-                                                <span className={`px-3 py-1 text-xs font-bold rounded-full ${statusStyle}`}>
-                                                    {bill.status}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 whitespace-nowrap">
-                                                <div className="flex items-center space-x-2 space-x-reverse">
-                                                    {canManage && (
-                                                        <button onClick={() => handleDelete(bill.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
+                                    <tr key={bill.id} className="hover:bg-gray-50">
+                                        <td className="p-4 font-medium">{bill.billNumber}</td>
+                                        <td className="p-4">{bill.supplierName}</td>
+                                        <td className="p-4">{new Date(bill.purchaseDate).toLocaleDateString('fa-IR')}</td>
+                                        <td className="p-4 font-semibold">{bill.totalAmount.toLocaleString()}</td>
+                                        <td className="p-4 text-green-600">{bill.amountPaid.toLocaleString()}</td>
+                                        <td className={`p-4 font-bold ${remaining > 0 ? 'text-red-600' : 'text-gray-800'}`}>{remaining.toLocaleString()}</td>
+                                        <td className="p-4"><span className={`px-2 py-1 text-xs font-bold rounded-full ${statusStyle.bg} ${statusStyle.text}`}>{bill.status}</span></td>
+                                        <td className="p-4">
+                                            {canManage && (
+                                                <button onClick={() => onDelete(bill.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                )})
                             )}
                         </tbody>
                     </table>

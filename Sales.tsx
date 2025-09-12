@@ -128,9 +128,10 @@ type OrderModalProps = {
     initialData: Order | null;
     drugs: Drug[];
     customers: Customer[];
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initialData, drugs, customers }) => {
+const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initialData, drugs, customers, addToast }) => {
     
     const [orderInfo, setOrderInfo] = useState({
         customerName: '', amountPaid: '', status: 'ارسال شده' as OrderStatus,
@@ -201,7 +202,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
          const totalRequired = existingItemIndex > -1 ? items[existingItemIndex].quantity + quantity + (items[existingItemIndex].bonusQuantity || 0) : quantity;
 
          if (totalRequired > drug.quantity) {
-            alert(`تعداد درخواستی (${totalRequired}) بیشتر از موجودی انبار (${drug.quantity}) است.`);
+            addToast(`تعداد درخواستی (${totalRequired}) بیشتر از موجودی انبار (${drug.quantity}) است.`, 'error');
             return false;
          }
 
@@ -227,7 +228,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     const handleSelectDrug = (drug: Drug) => {
         const quantity = Number(addQuantity);
         if (!quantity || quantity <= 0) {
-            alert("لطفا تعداد معتبر وارد کنید.");
+            addToast("لطفا تعداد معتبر وارد کنید.", 'error');
             return;
         }
         if (addItemToOrder(drug, quantity)) {
@@ -244,7 +245,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                 setIsScannerOpen(false);
             }
         } else {
-            alert("محصولی با این بارکد یافت نشد.");
+            addToast("محصولی با این بارکد یافت نشد.", 'error');
             setIsScannerOpen(false);
         }
     };
@@ -258,7 +259,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
             if (drug) {
                  addItemToOrder(drug, 1);
             } else {
-                alert("محصولی با این بارکد یافت نشد.");
+                addToast("محصولی با این بارکد یافت نشد.", 'error');
             }
             setDeviceScanInput(''); 
         }
@@ -275,7 +276,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
 
         const drugInStock = drugs.find(d => d.id === drugId);
         if (drugInStock && (newQuantity + item.bonusQuantity) > drugInStock.quantity) {
-            alert(`مجموع تعداد فروش و بونس (${newQuantity + item.bonusQuantity}) بیشتر از موجودی انبار (${drugInStock.quantity}) است.`);
+            addToast(`مجموع تعداد فروش و بونس (${newQuantity + item.bonusQuantity}) بیشتر از موجودی انبار (${drugInStock.quantity}) است.`, 'error');
             return;
         }
 
@@ -291,7 +292,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
 
         const drugInStock = drugs.find(d => d.id === drugId);
         if (drugInStock && (item.quantity + newBonusQuantity) > drugInStock.quantity) {
-            alert(`مجموع تعداد فروش و بونس (${item.quantity + newBonusQuantity}) بیشتر از موجودی انبار (${drugInStock.quantity}) است.`);
+            addToast(`مجموع تعداد فروش و بونس (${item.quantity + newBonusQuantity}) بیشتر از موجودی انبار (${drugInStock.quantity}) است.`, 'error');
             return;
         }
 
@@ -305,17 +306,17 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         const amountPaid = Number(orderInfo.amountPaid) || 0;
 
         if (!orderInfo.customerName || items.length === 0) {
-            alert("لطفاً نام مشتری را وارد کرده و حداقل یک قلم دارو به سفارش اضافه کنید.");
+            addToast("لطفاً نام مشتری را وارد کرده و حداقل یک قلم دارو به سفارش اضافه کنید.", 'error');
             return;
         }
 
         if (items.some(item => item.quantity < 0 || item.bonusQuantity < 0)) {
-            alert("تعداد فروش یا بونس نمی‌تواند منفی باشد.");
+            addToast("تعداد فروش یا بونس نمی‌تواند منفی باشد.", 'error');
             return;
         }
         
          if (items.some(item => item.quantity === 0 && item.bonusQuantity > 0)) {
-            alert("نمی‌توان برای محصولی که فروخته نشده، بونس ثبت کرد. لطفاً حداقل یک عدد در تعداد فروش وارد کنید.");
+            addToast("نمی‌توان برای محصولی که فروخته نشده، بونس ثبت کرد. لطفاً حداقل یک عدد در تعداد فروش وارد کنید.", 'error');
             return;
         }
 
@@ -665,9 +666,10 @@ type SalesProps = {
     onDelete: (id: number) => void;
     currentUser: User;
     documentSettings: DocumentSettings;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser, documentSettings }) => {
+const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser, documentSettings, addToast }) => {
     const initialFilters = {
         searchTerm: '', status: 'all', paymentStatus: 'all', startDate: '', endDate: '',
     };
@@ -744,6 +746,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                 initialData={editingOrder}
                 drugs={drugs}
                 customers={customers}
+                addToast={addToast}
             />}
              <InvoiceModal
                 isOpen={!!orderToPrint}

@@ -243,9 +243,10 @@ type SupplierAccountsProps = {
     suppliers: Supplier[];
     purchaseBills: PurchaseBill[];
     companyInfo: CompanyInfo;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchaseBills, companyInfo }) => {
+const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchaseBills, companyInfo, addToast }) => {
     const [isLedgerOpen, setIsLedgerOpen] = useState(false);
     const [selectedSupplier, setSelectedSupplier] = useState<SupplierFinancialSummary | null>(null);
 
@@ -273,7 +274,8 @@ const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchase
         e.preventDefault();
         const { supplierId, startDate, endDate } = reportFilters;
         if (!supplierId || !startDate || !endDate) {
-            alert("لطفاً شرکت و بازه زمانی را به طور کامل انتخاب کنید.");
+            // Fix: Replaced alert with addToast for consistent UI
+            addToast("لطفاً شرکت و بازه زمانی را به طور کامل انتخاب کنید.", "error");
             return;
         }
 

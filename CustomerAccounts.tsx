@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo } from 'react';
 import { Customer } from './Customers';
 import { Order } from './Sales';
@@ -285,9 +286,10 @@ type CustomerAccountsProps = {
     orders: Order[];
     companyInfo: CompanyInfo;
     documentSettings: DocumentSettings;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, companyInfo, documentSettings }) => {
+const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, companyInfo, documentSettings, addToast }) => {
     const [isLedgerOpen, setIsLedgerOpen] = useState(false);
     const [selectedCustomer, setSelectedCustomer] = useState<CustomerFinancialSummary | null>(null);
 
@@ -326,7 +328,7 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
         e.preventDefault();
         const { customerId, startDate, endDate } = reportFilters;
         if (!customerId || !startDate || !endDate) {
-            alert("لطفاً مشتری و بازه زمانی را به طور کامل انتخاب کنید.");
+            addToast("لطفاً مشتری و بازه زمانی را به طور کامل انتخاب کنید.", 'error');
             return;
         }
 

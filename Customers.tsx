@@ -44,9 +44,10 @@ type CustomerModalProps = {
     onClose: () => void;
     onSave: (customer: Customer) => void;
     initialData: Customer | null;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
+const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
     const [customer, setCustomer] = useState({
         name: '', manager: '', phone: '', address: '', status: 'فعال' as CustomerStatus
     });
@@ -71,7 +72,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!customer.name || !customer.phone) {
-            // Parent component will handle showing the alert
+            addToast("لطفاً نام مشتری و شماره تماس را وارد کنید.", "error");
             return;
         }
         onSave({
@@ -135,9 +136,10 @@ type CustomersProps = {
     onSave: (customer: Customer) => void;
     onDelete: (id: number) => void;
     currentUser: User;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, currentUser }) => {
+const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, currentUser, addToast }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -181,6 +183,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
                 onClose={handleCloseModal} 
                 onSave={onSave}
                 initialData={editingCustomer}
+                addToast={addToast}
             />}
             <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
                 <div>

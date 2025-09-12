@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
@@ -770,25 +771,38 @@ const App: React.FC = () => {
     
     // Toast & Confirmation Modal State
     const [toasts, setToasts] = useState<Toast[]>([]);
-    // FIX: Explicitly type the state to allow message to be a string or other ReactNode, not just a JSX element.
-    const [confirmationState, setConfirmationState] = useState<{ isOpen: boolean; title: string; message: React.ReactNode; onConfirm: () => void; }>({ isOpen: false, title: '', message: null, onConfirm: () => {} });
+    const [confirmationState, setConfirmationState] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: React.ReactNode;
+        onConfirm: () => void;
+        onCancel?: () => void;
+    }>({
+        isOpen: false,
+        title: '',
+        message: null,
+        onConfirm: () => {},
+        onCancel: () => {}
+    });
+
 
     // --- Toast & Confirmation Handlers ---
     const addToast = (message: string, type: ToastType = 'info') => {
         setToasts(prev => [...prev, { id: Date.now(), message, type }]);
     };
     
-    const showConfirmation = (title: string, message: React.ReactNode, onConfirm: () => void) => {
-        setConfirmationState({ isOpen: true, title, message, onConfirm });
+    const showConfirmation = (title: string, message: React.ReactNode, onConfirm: () => void, onCancel?: () => void) => {
+        setConfirmationState({ isOpen: true, title, message, onConfirm, onCancel: onCancel || (() => {}) });
     };
 
     const closeConfirmation = () => {
+        confirmationState.onCancel?.();
         setConfirmationState(prev => ({ ...prev, isOpen: false }));
     };
 
     const handleConfirm = () => {
         confirmationState.onConfirm();
-        closeConfirmation();
+        setConfirmationState(prev => ({ ...prev, isOpen: false }));
     };
 
     // --- Unsaved Changes Warning ---
@@ -1004,20 +1018,19 @@ const App: React.FC = () => {
             return false;
         }
 
-        let proceed = false;
-        await new Promise<void>(resolve => {
+        const proceed = await new Promise<boolean>(resolve => {
             showConfirmation(
                 'تایید بازنویسی',
                 'این کار نسخه پشتیبان آنلاین قبلی شما را بازنویسی می‌کند. آیا می‌خواهید ادامه دهید؟',
-                () => { proceed = true; resolve(); }
+                () => resolve(true), // onConfirm
+                () => resolve(false)  // onCancel
             );
-             // FIX: This block of code was logically flawed and would cause a runtime crash.
-             // It was attempting to read a non-existent 'onClose' property from the state.
-             // The underlying goal (resolving the promise on cancellation) is complex to fix
-             // without a larger refactor, so the safest fix is to remove the broken code.
         });
 
-        if (!proceed) return false;
+        if (!proceed) {
+            addToast("عملیات پشتیبان‌گیری لغو شد.", "info");
+            return false;
+        }
         
         try {
             const backup_data = getAllData();
@@ -1470,27 +1483,26 @@ const App: React.FC = () => {
             case 'dashboard':
                 return <Dashboard drugs={drugs} orders={orders} customers={customers} onNavigate={setActiveItem} />;
             case 'inventory':
-                return <Inventory drugs={drugs} onSave={handleSaveDrug} onDelete={handleDeleteDrug} currentUser={currentUser} />;
+                return <Inventory drugs={drugs} onSave={handleSaveDrug} onDelete={handleDeleteDrug} currentUser={currentUser} addToast={addToast} />;
             case 'sales':
-                return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} documentSettings={documentSettings}/>;
+                return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} documentSettings={documentSettings} addToast={addToast}/>;
             case 'fulfillment':
                 return <Fulfillment orders={orders} onUpdateOrder={handleSaveOrder} />;
             case 'customers':
-                return <Customers customers={customers} onSave={handleSaveCustomer} onDelete={handleDeleteCustomer} currentUser={currentUser} />;
+                return <Customers customers={customers} onSave={handleSaveCustomer} onDelete={handleDeleteCustomer} currentUser={currentUser} addToast={addToast} />;
             case 'customer_accounts':
-                return <CustomerAccounts customers={customers} orders={orders} companyInfo={companyInfo} documentSettings={documentSettings} />;
+                return <CustomerAccounts customers={customers} orders={orders} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} />;
             case 'suppliers':
                 return <Suppliers suppliers={suppliers} onSave={handleSaveSupplier} onDelete={handleDeleteSupplier} currentUser={currentUser} />;
             case 'purchasing':
-                return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={drugs} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={currentUser} />;
+                return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={drugs} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={currentUser} addToast={addToast} />;
             case 'supplier_accounts':
-                return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} />;
+                return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} addToast={addToast} />;
             case 'finance':
                 return <Accounting incomes={incomes} expenses={expenses} onSave={handleSaveExpense} onDelete={handleDeleteExpense} currentUser={currentUser} />;
             case 'reports':
                 return <Reports orders={orders} expenses={expenses} drugs={drugs} companyInfo={companyInfo} documentSettings={documentSettings} />;
              case 'checkneh':
-                // FIX: Pass the required `addToast` and `showConfirmation` props to the Checkneh component.
                 return <Checkneh 
                     customers={customers} 
                     companyInfo={companyInfo} 
@@ -1515,7 +1527,6 @@ const App: React.FC = () => {
                     documentSettings={documentSettings}
                     onSetDocumentSettings={handleSetDocumentSettings}
                     hasUnsavedChanges={hasUnsavedChanges}
-                    // FIX: Pass the required `addToast` and `showConfirmation` props to the Settings component.
                     addToast={addToast}
                     showConfirmation={showConfirmation}
                 />;
