@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Customer } from './Customers';
 import { CompanyInfo, DocumentSettings } from './Settings';
@@ -174,7 +173,7 @@ const ChecknehInvoicePrintModal = ({ isOpen, onClose, invoice, companyInfo, docu
 };
 
 // --- New Invoice Form ---
-const ChecknehInvoiceForm = ({ customers, onSave, setTab }: { customers: Customer[], onSave: (invoice: Omit<ChecknehInvoice, 'id' | 'invoiceNumber' | 'totalAmount'>) => ChecknehInvoice, setTab: (tab: Tab) => void }) => {
+const ChecknehInvoiceForm = ({ customers, onSave, setTab, addToast }: { customers: Customer[], onSave: (invoice: Omit<ChecknehInvoice, 'id' | 'invoiceNumber' | 'totalAmount'>) => ChecknehInvoice, setTab: (tab: Tab), addToast: (message: string, type?: 'success' | 'error' | 'info') => void }) => {
     const defaultInfo = { customerName: '', supplierName: '', invoiceDate: new Date().toISOString().split('T')[0] };
     const [info, setInfo] = useState(defaultInfo);
     const [items, setItems] = useState<ChecknehItem[]>([]);
@@ -186,7 +185,7 @@ const ChecknehInvoiceForm = ({ customers, onSave, setTab }: { customers: Custome
     const handleAddItem = (e: React.FormEvent) => {
         e.preventDefault();
         if (!currentItem.drugName || !currentItem.quantity || !currentItem.purchasePrice || !currentItem.sellingPrice) {
-            alert("لطفا نام دارو، تعداد، قیمت خرید و قیمت فروش را وارد کنید.");
+            addToast("لطفا نام دارو، تعداد، قیمت خرید و قیمت فروش را وارد کنید.", 'error');
             return;
         }
         setItems(prev => [...prev, { ...currentItem, id: Date.now(), quantity: Number(currentItem.quantity), purchasePrice: Number(currentItem.purchasePrice), sellingPrice: Number(currentItem.sellingPrice), discountPercentage: Number(currentItem.discountPercentage) }]);
@@ -197,13 +196,13 @@ const ChecknehInvoiceForm = ({ customers, onSave, setTab }: { customers: Custome
 
     const handleSaveInvoice = () => {
         if (!info.customerName || !info.supplierName || items.length === 0) {
-            alert("لطفا مشتری، تامین‌کننده و حداقل یک قلم دارو را مشخص کنید.");
+            addToast("لطفا مشتری، تامین‌کننده و حداقل یک قلم دارو را مشخص کنید.", 'error');
             return;
         }
         onSave({ ...info, items });
         setInfo(defaultInfo);
         setItems([]);
-        alert("فاکتور با موفقیت ذخیره شد.");
+        addToast("فاکتور با موفقیت ذخیره شد.", 'success');
         setTab('invoice_list');
     };
 
@@ -269,12 +268,12 @@ const ChecknehInvoiceForm = ({ customers, onSave, setTab }: { customers: Custome
 };
 
 // --- Report Tab ---
-const ChecknehReports = ({ invoices }: { invoices: ChecknehInvoice[] }) => {
+const ChecknehReports = ({ invoices, addToast }: { invoices: ChecknehInvoice[], addToast: (message: string, type?: 'success' | 'error' | 'info') => void }) => {
     const [filters, setFilters] = useState({ startDate: '', endDate: '' });
     const [reportData, setReportData] = useState<any>(null);
 
     const handleGenerate = () => {
-        if (!filters.startDate || !filters.endDate) { alert("لطفا بازه زمانی را مشخص کنید."); return; }
+        if (!filters.startDate || !filters.endDate) { addToast("لطفا بازه زمانی را مشخص کنید.", 'error'); return; }
         const start = new Date(filters.startDate);
         const end = new Date(filters.endDate);
         end.setHours(23, 59, 59, 999);
@@ -339,7 +338,7 @@ const ChecknehReports = ({ invoices }: { invoices: ChecknehInvoice[] }) => {
 };
 
 // --- Backup Tab ---
-const ChecknehBackup = ({ invoices, setInvoices }) => {
+const ChecknehBackup = ({ invoices, setInvoices, addToast, showConfirmation }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     
     const handleBackup = () => {
@@ -351,34 +350,39 @@ const ChecknehBackup = ({ invoices, setInvoices }) => {
             link.download = `hayat-checkneh-backup-${new Date().toISOString().split('T')[0]}.json`;
             link.click();
             URL.revokeObjectURL(link.href);
-            alert("پشتیبان‌گیری از داده‌های بخش چکنه با موفقیت انجام شد.");
+            addToast("پشتیبان‌گیری از داده‌های بخش چکنه با موفقیت انجام شد.", 'success');
         } catch (error) {
-            alert("خطا در ایجاد فایل پشتیبان.");
+            addToast("خطا در ایجاد فایل پشتیبان.", 'error');
         }
     };
 
     const handleRestore = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
-        if (!window.confirm("آیا مطمئنید؟ با این کار تمام داده‌های فعلی بخش چکنه با اطلاعات فایل پشتیبان جایگزین خواهد شد.")) return;
-        
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const text = e.target?.result as string;
-                const restoredInvoices = JSON.parse(text);
-                // Basic validation
-                if (Array.isArray(restoredInvoices)) {
-                    setInvoices(restoredInvoices);
-                    alert('اطلاعات با موفقیت بازیابی شد.');
-                } else {
-                     throw new Error("Invalid file format");
-                }
-            } catch (error) {
-                alert("خطا در بازیابی اطلاعات از فایل.");
+
+        showConfirmation(
+            'تایید بازیابی اطلاعات چکنه',
+            'آیا مطمئنید؟ با این کار تمام داده‌های فعلی بخش چکنه با اطلاعات فایل پشتیبان جایگزین خواهد شد.',
+            () => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const text = e.target?.result as string;
+                        const restoredInvoices = JSON.parse(text);
+                        // Basic validation
+                        if (Array.isArray(restoredInvoices)) {
+                            setInvoices(restoredInvoices);
+                            addToast('اطلاعات با موفقیت بازیابی شد.', 'success');
+                        } else {
+                            throw new Error("Invalid file format");
+                        }
+                    } catch (error) {
+                        addToast("خطا در بازیابی اطلاعات از فایل.", 'error');
+                    }
+                };
+                reader.readAsText(file);
             }
-        };
-        reader.readAsText(file);
+        );
     };
 
     return (
@@ -400,7 +404,15 @@ const ChecknehBackup = ({ invoices, setInvoices }) => {
 
 
 //=========== MAIN COMPONENT ===========//
-const Checkneh = ({ customers, companyInfo, documentSettings }: { customers: Customer[], companyInfo: CompanyInfo, documentSettings: DocumentSettings }) => {
+interface ChecknehProps {
+    customers: Customer[];
+    companyInfo: CompanyInfo;
+    documentSettings: DocumentSettings;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    showConfirmation: (title: string, message: React.ReactNode, onConfirm: () => void) => void;
+}
+
+const Checkneh: React.FC<ChecknehProps> = ({ customers, companyInfo, documentSettings, addToast, showConfirmation }) => {
     const [activeTab, setActiveTab] = useState<Tab>('new_invoice');
     const [invoices, setInvoices] = usePersistentState<ChecknehInvoice[]>('hayat_checkneh_invoices', []);
     const [invoiceToPrint, setInvoiceToPrint] = useState<ChecknehInvoice | null>(null);
@@ -428,9 +440,14 @@ const Checkneh = ({ customers, companyInfo, documentSettings }: { customers: Cus
     };
     
     const handleDeleteInvoice = (id: number) => {
-        if(window.confirm("آیا از حذف این فاکتور اطمینان دارید؟ این عمل غیرقابل بازگشت است.")) {
-            setInvoices(prev => prev.filter(inv => inv.id !== id));
-        }
+        showConfirmation(
+            "تایید حذف فاکتور",
+            "آیا از حذف این فاکتور اطمینان دارید؟ این عمل غیرقابل بازگشت است.",
+            () => {
+                setInvoices(prev => prev.filter(inv => inv.id !== id));
+                addToast("فاکتور با موفقیت حذف شد.", 'info');
+            }
+        );
     };
     
     const TabButton = ({ tabId, children }: { tabId: Tab, children: React.ReactNode }) => (
@@ -455,7 +472,7 @@ const Checkneh = ({ customers, companyInfo, documentSettings }: { customers: Cus
             </div>
 
             <div>
-                {activeTab === 'new_invoice' && <ChecknehInvoiceForm customers={customers} onSave={handleSaveInvoice} setTab={setActiveTab} />}
+                {activeTab === 'new_invoice' && <ChecknehInvoiceForm customers={customers} onSave={handleSaveInvoice} setTab={setActiveTab} addToast={addToast} />}
                 {activeTab === 'invoice_list' && (
                      <div className="bg-white p-6 rounded-xl shadow-lg">
                          <h3 className="text-xl font-bold text-gray-800 mb-4">لیست فاکتورهای چکنه</h3>
@@ -485,8 +502,8 @@ const Checkneh = ({ customers, companyInfo, documentSettings }: { customers: Cus
                          </div>
                     </div>
                 )}
-                {activeTab === 'reports' && <ChecknehReports invoices={invoices} />}
-                {activeTab === 'backup' && <ChecknehBackup invoices={invoices} setInvoices={setInvoices} />}
+                {activeTab === 'reports' && <ChecknehReports invoices={invoices} addToast={addToast} />}
+                {activeTab === 'backup' && <ChecknehBackup invoices={invoices} setInvoices={setInvoices} addToast={addToast} showConfirmation={showConfirmation} />}
             </div>
         </div>
     );

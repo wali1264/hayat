@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { SupabaseClient } from '@supabase/supabase-js';
 
@@ -154,7 +153,6 @@ const CompanyInfoSection = ({ companyInfo, onSetCompanyInfo }) => {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSetCompanyInfo(info);
-        alert('اطلاعات شرکت با موفقیت ذخیره شد.');
     };
 
     return (
@@ -217,7 +215,6 @@ const DocumentCustomizerSection = ({ settings, onSetSettings, companyInfo }) => 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSetSettings(localSettings);
-        alert('تنظیمات اسناد با موفقیت ذخیره شد.');
     };
     
     return (
@@ -324,7 +321,7 @@ const UserManagementSection = ({ users, onSaveUser, onDeleteUser }) => {
 };
 
 
-const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, onBackupOnline, onRestoreOnline, supabase, licenseId, hasUnsavedChanges }) => {
+const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, onBackupOnline, onRestoreOnline, supabase, licenseId, hasUnsavedChanges, addToast }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [onlineBackup, setOnlineBackup] = useState<{ id: string, created_at: string } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -343,7 +340,7 @@ const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, onBackupOnline
             setOnlineBackup(data || null);
         } catch (error: any) {
             console.error("Error fetching backup:", error);
-            alert(`خطا در دریافت اطلاعات پشتیبان: ${error.message}`);
+            addToast(`خطا در دریافت اطلاعات پشتیبان: ${error.message}`, 'error');
         } finally {
             setIsLoading(false);
         }
@@ -408,7 +405,7 @@ const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, onBackupOnline
     );
 };
 
-const DataPurgeSection = ({ onPurgeData }) => {
+const DataPurgeSection = ({ onPurgeData, showConfirmation, addToast }) => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -417,11 +414,11 @@ const DataPurgeSection = ({ onPurgeData }) => {
     const handleOpenModal = (e: React.FormEvent) => {
         e.preventDefault();
         if (!startDate || !endDate) {
-            alert('لطفا تاریخ شروع و پایان را انتخاب کنید.');
+            addToast('لطفا تاریخ شروع و پایان را انتخاب کنید.', 'error');
             return;
         }
         if (new Date(startDate) > new Date(endDate)) {
-            alert('تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.');
+            addToast('تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.', 'error');
             return;
         }
         setIsModalOpen(true);
@@ -507,6 +504,8 @@ type SettingsProps = {
     documentSettings: DocumentSettings;
     onSetDocumentSettings: (settings: DocumentSettings) => void;
     hasUnsavedChanges: boolean;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    showConfirmation: (title: string, message: React.ReactNode, onConfirm: () => void) => void;
 };
 
 const Settings: React.FC<SettingsProps> = (props) => {
@@ -533,11 +532,16 @@ const Settings: React.FC<SettingsProps> = (props) => {
                     supabase={props.supabase}
                     licenseId={props.licenseId}
                     hasUnsavedChanges={props.hasUnsavedChanges}
+                    addToast={props.addToast}
                 />
             </SettingsCard>
 
             <SettingsCard title="مدیریت پیشرفته داده‌ها" description="حذف دائمی داده‌های قدیمی برای سبک‌سازی برنامه و بهبود عملکرد.">
-                <DataPurgeSection onPurgeData={props.onPurgeData} />
+                <DataPurgeSection 
+                    onPurgeData={props.onPurgeData} 
+                    showConfirmation={props.showConfirmation} 
+                    addToast={props.addToast} 
+                />
             </SettingsCard>
         </div>
     );

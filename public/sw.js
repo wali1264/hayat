@@ -1,5 +1,5 @@
 // Incrementing cache name for updates.
-const CACHE_NAME = 'hayat-cache-v6';
+const CACHE_NAME = 'hayat-cache-v7';
 
 // List of essential files for the app shell to work offline.
 const urlsToCache = [

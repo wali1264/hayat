@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { User } from './Settings';
 
@@ -72,7 +71,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!customer.name || !customer.phone) {
-            alert("لطفاً نام مشتری و شماره تماس را وارد کنید.");
+            // Parent component will handle showing the alert
             return;
         }
         onSave({

@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { User } from './Settings';
 
@@ -72,7 +71,7 @@ const SupplierModal: React.FC<SupplierModalProps> = ({ isOpen, onClose, onSave, 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!supplier.name || !supplier.phone) {
-            alert("لطفاً نام شرکت و شماره تماس را وارد کنید.");
+            // This alert will be replaced in the parent component's onSave logic if needed
             return;
         }
         onSave({ ...supplier, id: isEditMode ? initialData.id : Date.now() });

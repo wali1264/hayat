@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
@@ -1489,8 +1490,14 @@ const App: React.FC = () => {
             case 'reports':
                 return <Reports orders={orders} expenses={expenses} drugs={drugs} companyInfo={companyInfo} documentSettings={documentSettings} />;
              case 'checkneh':
-                // FIX: Removed addToast and showConfirmation props as they are not defined on the Checkneh component.
-                return <Checkneh customers={customers} companyInfo={companyInfo} documentSettings={documentSettings} />;
+                // FIX: Pass the required `addToast` and `showConfirmation` props to the Checkneh component.
+                return <Checkneh 
+                    customers={customers} 
+                    companyInfo={companyInfo} 
+                    documentSettings={documentSettings}
+                    addToast={addToast}
+                    showConfirmation={showConfirmation}
+                />;
             case 'settings':
                 return <Settings 
                     companyInfo={companyInfo} 
@@ -1508,7 +1515,9 @@ const App: React.FC = () => {
                     documentSettings={documentSettings}
                     onSetDocumentSettings={handleSetDocumentSettings}
                     hasUnsavedChanges={hasUnsavedChanges}
-                    // FIX: Removed showConfirmation prop as it is not defined on the Settings component.
+                    // FIX: Pass the required `addToast` and `showConfirmation` props to the Settings component.
+                    addToast={addToast}
+                    showConfirmation={showConfirmation}
                 />;
             case 'recycle_bin':
                  return <RecycleBin 

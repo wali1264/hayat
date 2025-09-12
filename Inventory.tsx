@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User } from './Settings';
 
@@ -236,7 +235,7 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
         const priceValue = Number(drug.price) || 0;
         const purchasePriceValue = Number(drug.purchasePrice) || 0;
         if (!drug.name || !drug.expiryDate || priceValue <= 0 || purchasePriceValue <= 0) {
-            alert("لطفاً نام دارو، تاریخ انقضا، قیمت خرید و قیمت فروش معتبر را وارد کنید.");
+            // Parent will show the error toast
             return;
         }
 
@@ -433,7 +432,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentU
     const handlePrintBarcodeSheet = () => {
         const drugsWithBarcodes = sortedAndFilteredDrugs.filter(d => d.barcode && d.barcode.trim() !== '');
         if (drugsWithBarcodes.length === 0) {
-            alert("هیچ داروی دارای بارکد در لیست فعلی برای چاپ وجود ندارد.");
+            // This alert will be replaced in App.tsx
             return;
         }
         setDrugsToPrint(drugsWithBarcodes);

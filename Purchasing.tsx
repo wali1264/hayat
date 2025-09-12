@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Drug } from './Inventory';
 import { Supplier } from './Suppliers';
