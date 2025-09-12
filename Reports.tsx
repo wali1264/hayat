@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Order, OrderItem } from './Sales';
 import { Expense } from './Accounting';
@@ -71,7 +72,7 @@ const ReportPrintView = ({ reportData, companyInfo, onClose, documentSettings })
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl my-8" onClick={e => e.stopPropagation()}>
                 <div 
                     id="print-section"
-                    className={`p-10 ${'template-' + selectedTemplate} ${'layout-logo-' + documentSettings.logoPosition} ${documentSettings.documentBackground !== 'none' ? 'bg-' + documentSettings.documentBackground : ''}`}
+                    className={`p-10 ${'template-' + selectedTemplate} ${'layout-logo-' + documentSettings.logoPosition}`}
                     style={{ '--accent-color': documentSettings.accentColor } as React.CSSProperties}
                 >
                     <header className="print-header">

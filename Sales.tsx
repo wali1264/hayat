@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Drug, drugCategories } from './Inventory';
 import { Customer } from './Customers';
@@ -556,7 +557,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
             <div className="bg-white rounded-xl shadow-2xl mt-8 mb-8 w-full max-w-4xl" onClick={e => e.stopPropagation()}>
                 <div 
                     id="print-section" 
-                    className={`p-10 ${'template-' + selectedTemplate} ${'layout-logo-' + documentSettings.logoPosition} ${documentSettings.documentBackground !== 'none' ? 'bg-' + documentSettings.documentBackground : ''}`}
+                    className={`p-10 ${'template-' + selectedTemplate} ${'layout-logo-' + documentSettings.logoPosition}`}
                     style={{ '--accent-color': documentSettings.accentColor } as React.CSSProperties}
                 >
                     <header className="print-header">

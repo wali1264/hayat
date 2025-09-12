@@ -13,8 +13,7 @@ import Dashboard from './Dashboard';
 import CustomerAccounts from './CustomerAccounts';
 import Suppliers, { Supplier } from './Suppliers';
 import Purchasing, { PurchaseBill, PurchaseItem } from './Purchasing';
-// FIX: Changed import to named import to resolve potential default export detection issues, which might be caused by syntax errors in the imported file.
-import { SupplierAccounts } from './SupplierAccounts';
+import SupplierAccounts from './SupplierAccounts';
 import RecycleBin, { TrashItem, TrashableItem } from './RecycleBin';
 import Checkneh from './Checkneh';
 
@@ -683,13 +682,44 @@ const App: React.FC = () => {
     const [documentSettings, setDocumentSettings] = usePersistentState<DocumentSettings>('hayat_documentSettings', {
         logoPosition: 'right',
         accentColor: '#0d9488',
-        documentBackground: 'none',
+        backgroundImage: null,
     });
 
     // AI Assistant State
     const [isAssistantOpen, setIsAssistantOpen] = useState(false);
     const [assistantMessages, setAssistantMessages] = useState<Message[]>([]);
     const [isAssistantLoading, setIsAssistantLoading] = useState(false);
+
+    // Effect to manage custom print background styles
+    useEffect(() => {
+        const styleId = 'custom-print-background-style';
+        let styleElement = document.getElementById(styleId) as HTMLStyleElement;
+        
+        if (!styleElement) {
+            styleElement = document.createElement('style');
+            styleElement.id = styleId;
+            document.head.appendChild(styleElement);
+        }
+
+        if (documentSettings.backgroundImage) {
+            styleElement.innerHTML = `
+                #print-section::before {
+                    background-image: url(${documentSettings.backgroundImage}) !important;
+                    background-size: cover !important;
+                    background-repeat: no-repeat !important;
+                    background-position: center !important;
+                    opacity: 1 !important;
+                }
+                #print-section::after {
+                    background-color: rgba(255, 255, 255, 0.9) !important;
+                }
+            `;
+        } else {
+            // Revert to default by clearing the overrides
+            styleElement.innerHTML = ``;
+        }
+        
+    }, [documentSettings.backgroundImage]);
 
     // --- Auth Handlers ---
     const handleLogout = () => {
@@ -859,11 +889,15 @@ const App: React.FC = () => {
         
         try {
             const backup_data = getAllData();
-            // Upsert operation: update if exists, insert if not.
-            const { error } = await supabase.from('backups').upsert({ license_id: licenseId, backup_data }, { onConflict: 'license_id' });
-            if (error) throw error;
+            // Delete old backups first to ensure only one exists
+            const { error: deleteError } = await supabase.from('backups').delete().eq('license_id', licenseId);
+            if (deleteError) console.warn("Could not delete old backups, proceeding anyway:", deleteError.message);
             
-            alert('نسخه پشتیبان آنلاین با موفقیت ایجاد / به‌روزرسانی شد.');
+            // Insert the new backup
+            const { error: insertError } = await supabase.from('backups').insert({ license_id: licenseId, backup_data });
+            if (insertError) throw insertError;
+            
+            alert('نسخه پشتیبان آنلاین با موفقیت ایجاد و جایگزین شد.');
             return true;
         } catch (error: any) {
             console.error("Error creating online backup:", error);
@@ -1257,7 +1291,7 @@ const App: React.FC = () => {
             case 'purchasing':
                 return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={drugs} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={currentUser} />;
             case 'supplier_accounts':
-                return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} documentSettings={documentSettings} />;
+                return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} />;
             case 'finance':
                 return <Accounting incomes={incomes} expenses={expenses} onSave={handleSaveExpense} onDelete={handleDeleteExpense} currentUser={currentUser} />;
             case 'reports':

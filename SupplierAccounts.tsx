@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Supplier } from './Suppliers';
 import { PurchaseBill } from './Purchasing';
-import { CompanyInfo, DocumentSettings } from './Settings';
+import { CompanyInfo } from './Settings';
 
 //=========== ICONS ===========//
 const Icon = ({ path, className = "w-5 h-5" }) => (
@@ -150,14 +150,14 @@ type SupplierReportModalProps = {
     onClose: () => void;
     reportData: ReportData | null;
     companyInfo: CompanyInfo;
-    documentSettings: DocumentSettings;
 }
 
-const SupplierReportModal: React.FC<SupplierReportModalProps> = ({ isOpen, onClose, reportData, companyInfo, documentSettings }) => {
-    const [selectedTemplate, setSelectedTemplate] = useState('modern');
+const SupplierReportModal: React.FC<SupplierReportModalProps> = ({ isOpen, onClose, reportData, companyInfo }) => {
+
     if (!isOpen || !reportData) return null;
 
     const handlePrint = () => {
+        // A small delay can help ensure the browser has processed any DOM/style updates before printing.
         setTimeout(() => {
             window.print();
         }, 100);
@@ -166,24 +166,19 @@ const SupplierReportModal: React.FC<SupplierReportModalProps> = ({ isOpen, onClo
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-start p-4 overflow-y-auto" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl my-8" onClick={e => e.stopPropagation()}>
-                <div 
-                    id="print-section" 
-                    className={`p-10 ${'template-' + selectedTemplate} ${'layout-logo-' + documentSettings.logoPosition} ${documentSettings.documentBackground !== 'none' ? 'bg-' + documentSettings.documentBackground : ''}`}
-                    style={{ '--accent-color': documentSettings.accentColor } as React.CSSProperties}
-                >
-                    <header className="print-header">
-                        <div className="print-company-info">
-                            <h1 className="text-2xl font-bold text-gray-800 print-title">{companyInfo.name}</h1>
+                <div id="print-section" className="p-10">
+                    <header className="flex justify-between items-start pb-6 border-b">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-800">{companyInfo.name}</h1>
                             <p className="text-sm text-gray-500">{companyInfo.address}</p>
                             <p className="text-sm text-gray-500">{companyInfo.phone}</p>
                         </div>
-                        {companyInfo.logo && <img src={companyInfo.logo} alt="Company Logo" className="print-logo" />}
+                        <div className='text-left'>
+                            <h2 className='text-xl font-bold'>گزارش تفصیلی معاملات با تامین کننده</h2>
+                             <p className="text-sm text-gray-500">برای: {reportData.supplierName}</p>
+                             <p className="text-sm text-gray-500">از {new Date(reportData.startDate).toLocaleDateString('fa-IR')} تا {new Date(reportData.endDate).toLocaleDateString('fa-IR')}</p>
+                        </div>
                     </header>
-                    <div className="text-center my-6">
-                        <h2 className='text-xl font-bold'>گزارش تفصیلی معاملات با تامین کننده</h2>
-                         <p className="text-sm text-gray-500">برای: {reportData.supplierName}</p>
-                         <p className="text-sm text-gray-500">از {new Date(reportData.startDate).toLocaleDateString('fa-IR')} تا {new Date(reportData.endDate).toLocaleDateString('fa-IR')}</p>
-                    </div>
                     <main className='mt-6 space-y-8'>
                         {reportData.bills.length === 0 ? (
                             <p className="text-center text-gray-500 py-10">هیچ معامله‌ای در این بازه زمانی برای این شرکت یافت نشد.</p>
@@ -222,7 +217,7 @@ const SupplierReportModal: React.FC<SupplierReportModalProps> = ({ isOpen, onClo
                            )) 
                         )}
                     </main>
-                     <footer className="mt-8 pt-6 border-t print-summary">
+                     <footer className="mt-8 pt-6 border-t">
                         <h4 className='text-lg font-bold'>خلاصه کلی گزارش</h4>
                          <div className='flex justify-end mt-2'>
                             <div className='w-full max-w-sm space-y-2'>
@@ -233,20 +228,9 @@ const SupplierReportModal: React.FC<SupplierReportModalProps> = ({ isOpen, onClo
                          </div>
                     </footer>
                 </div>
-                <div className="flex justify-between items-center space-x-2 space-x-reverse p-4 bg-gray-50 rounded-b-xl border-t print:hidden">
-                    <div>
-                        <label className="text-sm font-semibold mr-2">قالب:</label>
-                        <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="bg-white border border-gray-300 rounded-md px-2 py-1">
-                            <option value="modern">مدرن</option>
-                            <option value="classic">کلاسیک</option>
-                            <option value="minimalist">ساده</option>
-                            <option value="compact">فشرده</option>
-                        </select>
-                    </div>
-                    <div className="flex gap-2">
-                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">بستن</button>
-                        <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold"><PrintIcon /> <span className="mr-2">چاپ</span></button>
-                    </div>
+                <div className="flex justify-end space-x-2 space-x-reverse p-4 bg-gray-50 rounded-b-xl border-t print:hidden">
+                    <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">بستن</button>
+                    <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold"><PrintIcon /> <span className="mr-2">چاپ</span></button>
                 </div>
             </div>
         </div>
@@ -259,10 +243,9 @@ type SupplierAccountsProps = {
     suppliers: Supplier[];
     purchaseBills: PurchaseBill[];
     companyInfo: CompanyInfo;
-    documentSettings: DocumentSettings;
 };
 
-export const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchaseBills, companyInfo, documentSettings }) => {
+const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchaseBills, companyInfo }) => {
     const [isLedgerOpen, setIsLedgerOpen] = useState(false);
     const [selectedSupplier, setSelectedSupplier] = useState<SupplierFinancialSummary | null>(null);
 
@@ -321,7 +304,7 @@ export const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, p
     return (
         <div className="p-8">
             <LedgerModal isOpen={isLedgerOpen} onClose={() => setIsLedgerOpen(false)} supplier={selectedSupplier} bills={purchaseBills} />
-            <SupplierReportModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} reportData={generatedReportData} companyInfo={companyInfo} documentSettings={documentSettings} />
+            <SupplierReportModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} reportData={generatedReportData} companyInfo={companyInfo} />
             
             <div className="mb-8">
                 <h2 className="text-3xl font-bold text-gray-800">مدیریت حسابات شرکت‌ها</h2>
@@ -344,23 +327,19 @@ export const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, p
                         </div>
                          <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">تا تاریخ</label>
-                            {/* FIX: Corrected the onChange handler to use e.target.value instead of the event object 'e' itself. */}
                             <input type="date" name="endDate" value={reportFilters.endDate} onChange={e => setReportFilters(p => ({...p, endDate: e.target.value}))} className="w-full bg-white px-3 py-2 border rounded-lg" required />
                         </div>
                     </div>
-                     <div className="flex justify-end mt-4">
-                        <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold shadow-md">
-                           ایجاد گزارش تفصیلی
-                        </button>
+                    <div className="flex justify-end mt-4">
+                        <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold shadow-md">ایجاد گزارش تفصیلی</button>
                     </div>
                  </form>
             </div>
 
-
             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-right">
-                        <thead className="bg-gray-50 border-b-2 border-gray-200">
+                        <thead className="bg-gray-50 border-b-2">
                             <tr>
                                 <th className="p-4 text-sm font-semibold text-gray-600">نام شرکت</th>
                                 <th className="p-4 text-sm font-semibold text-gray-600">مجموع خرید</th>
@@ -369,34 +348,20 @@ export const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, p
                                 <th className="p-4 text-sm font-semibold text-gray-600">عملیات</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200">
-                             {supplierSummaries.length === 0 ? (
-                                <tr>
-                                    <td colSpan={5} className="text-center p-8 text-gray-500">
-                                        هیچ تامین کننده‌ای ثبت نشده است.
+                        <tbody className="divide-y">
+                             {supplierSummaries.map(summary => (
+                                <tr key={summary.supplierId} className={`hover:bg-gray-50 ${summary.balance > 0 ? 'bg-red-50 hover:bg-red-100' : ''}`}>
+                                    <td className="p-4 font-medium text-gray-800">{summary.supplierName}</td>
+                                    <td className="p-4 text-gray-600">{summary.totalPurchased.toLocaleString()}</td>
+                                    <td className="p-4 text-green-600">{summary.totalPaid.toLocaleString()}</td>
+                                    <td className={`p-4 font-bold ${summary.balance > 0 ? 'text-red-600' : 'text-gray-800'}`}>{summary.balance.toLocaleString()}</td>
+                                    <td className="p-4">
+                                        <button onClick={() => handleViewLedger(summary)} className="flex items-center text-teal-600 hover:text-teal-800 font-semibold text-sm">
+                                            <LedgerIcon /><span className="mr-2">مشاهده صورت حساب</span>
+                                        </button>
                                     </td>
                                 </tr>
-                            ) : (
-                                supplierSummaries.map(summary => (
-                                    <tr key={summary.supplierId} className={`hover:bg-gray-50 transition-colors ${summary.balance > 0 ? 'bg-red-50 hover:bg-red-100' : ''}`}>
-                                        <td className="p-4 text-gray-800 font-medium">{summary.supplierName}</td>
-                                        <td className="p-4 text-gray-600">{summary.totalPurchased.toLocaleString()}</td>
-                                        <td className="p-4 text-green-600">{summary.totalPaid.toLocaleString()}</td>
-                                        <td className={`p-4 font-bold ${summary.balance > 0 ? 'text-red-600' : (summary.balance < 0 ? 'text-green-700' : 'text-gray-800')}`}>
-                                            {summary.balance.toLocaleString()}
-                                        </td>
-                                        <td className="p-4">
-                                            <button 
-                                                onClick={() => handleViewLedger(summary)} 
-                                                className="flex items-center text-teal-600 hover:text-teal-800 font-semibold text-sm"
-                                            >
-                                                <LedgerIcon />
-                                                <span className="mr-2">مشاهده صورت حساب</span>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
+                            ))}
                         </tbody>
                     </table>
                 </div>

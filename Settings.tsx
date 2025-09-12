@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { SupabaseClient } from '@supabase/supabase-js';
 
@@ -34,12 +35,10 @@ export type CompanyInfo = {
     logo: string | null;
 };
 
-export type DocumentBackground = 'none' | 'caduceus' | 'pills' | 'molecular' | 'grid';
-
 export type DocumentSettings = {
     logoPosition: 'left' | 'center' | 'right';
     accentColor: string;
-    documentBackground: DocumentBackground;
+    backgroundImage: string | null;
 };
 
 //=========== MOCK DATA ===========//
@@ -190,18 +189,29 @@ const CompanyInfoSection = ({ companyInfo, setCompanyInfo }) => {
 
 const DocumentCustomizerSection = ({ settings, setSettings, companyInfo }) => {
     const [localSettings, setLocalSettings] = useState(settings);
-    
-    const backgroundPreviews: { id: DocumentBackground, name: string, className: string }[] = [
-        { id: 'none', name: 'بدون پس‌زمینه', className: 'bg-white' },
-        { id: 'caduceus', name: 'پزشکی', className: 'bg-caduceus' },
-        { id: 'pills', name: 'قرص‌ها', className: 'bg-pills' },
-        { id: 'molecular', name: 'مولکولی', className: 'bg-molecular' },
-        { id: 'grid', name: 'شبکه‌ای', className: 'bg-grid' },
-    ];
 
-    const handleSettingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    useEffect(() => {
+        setLocalSettings(settings);
+    }, [settings]);
+
+    const handleSettingChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setLocalSettings(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleBackgroundChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setLocalSettings(prev => ({ ...prev, backgroundImage: reader.result as string }));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleRemoveBackground = () => {
+        setLocalSettings(prev => ({ ...prev, backgroundImage: null }));
     };
     
     const handleSubmit = (e: React.FormEvent) => {
@@ -233,36 +243,33 @@ const DocumentCustomizerSection = ({ settings, setSettings, companyInfo }) => {
                              <span className="font-mono text-sm">{localSettings.accentColor}</span>
                          </div>
                     </div>
-                    <div>
-                         <label className="block text-sm font-bold mb-2">پس‌زمینه اسناد</label>
-                         <div className="flex flex-wrap gap-2">
-                            {backgroundPreviews.map(bg => (
-                                <label key={bg.id} className="cursor-pointer">
-                                    <input type="radio" name="documentBackground" value={bg.id} checked={localSettings.documentBackground === bg.id} onChange={handleSettingChange} className="sr-only" />
-                                    <div className={`w-20 h-16 rounded-md border-2 flex items-center justify-center text-xs text-center p-1 ${localSettings.documentBackground === bg.id ? 'border-teal-500 ring-2 ring-teal-500' : 'border-gray-300'}`}>
-                                        <div className={`w-full h-full ${bg.className} rounded`}></div>
-                                    </div>
-                                    <span className="block text-center text-xs mt-1">{bg.name}</span>
-                                </label>
-                            ))}
-                         </div>
+                     <div>
+                        <label className="block text-sm font-bold mb-2">تصویر پس‌زمینه فاکتور</label>
+                        <p className="text-xs text-gray-500 mb-2">این تصویر به صورت محو در پس‌زمینه تمام اسناد چاپی قرار می‌گیرد.</p>
+                        <div className="flex items-center gap-4">
+                            <input type="file" accept="image/*" onChange={handleBackgroundChange} className="w-full text-sm" />
+                            {localSettings.backgroundImage && (
+                                <div className="relative">
+                                    <img src={localSettings.backgroundImage} alt="Background Preview" className="w-16 h-16 rounded-lg object-cover border p-1" />
+                                    <button type="button" onClick={handleRemoveBackground} title="حذف پس‌زمینه" className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 w-5 h-5 flex items-center justify-center text-xs shadow-md">X</button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
                  {/* Live Preview */}
-                <div className="border-2 border-dashed rounded-lg p-4 relative overflow-hidden">
-                    <h4 className="text-center font-semibold text-gray-500 text-sm mb-2">پیش‌نمایش زنده</h4>
-                     <div className={`relative z-10 p-2 rounded-md ${localSettings.documentBackground !== 'none' ? `bg-${localSettings.documentBackground}` : ''}`}>
-                         <div 
-                            className={`print-header layout-logo-${localSettings.logoPosition}`} 
-                            style={{ borderColor: localSettings.accentColor }}
-                        >
-                            <div className="print-company-info">
-                                <h1 className="font-bold text-gray-800" style={{ color: localSettings.accentColor }}>{companyInfo.name || 'نام شرکت شما'}</h1>
-                                <p className="text-xs text-gray-500">{companyInfo.address || 'آدرس شما'}</p>
-                            </div>
-                            {companyInfo.logo && <img src={companyInfo.logo} alt="Logo" className="w-12 h-12 object-contain" />}
+                <div className="border-2 border-dashed rounded-lg p-4">
+                    <h4 className="text-center font-semibold text-gray-500 text-sm mb-2">پیش‌نمایش زنده سربرگ</h4>
+                     <div 
+                        className={`print-header layout-logo-${localSettings.logoPosition}`} 
+                        style={{ borderColor: localSettings.accentColor }}
+                    >
+                        <div className="print-company-info">
+                            <h1 className="font-bold text-gray-800" style={{ color: localSettings.accentColor }}>{companyInfo.name || 'نام شرکت شما'}</h1>
+                            <p className="text-xs text-gray-500">{companyInfo.address || 'آدرس شما'}</p>
                         </div>
-                     </div>
+                        {companyInfo.logo && <img src={companyInfo.logo} alt="Logo" className="w-12 h-12 object-contain" />}
+                    </div>
                 </div>
             </div>
              <div className="flex justify-end pt-4 border-t mt-4">

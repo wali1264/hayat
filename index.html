@@ -45,54 +45,48 @@
         thead { display:table-header-group }
         tfoot { display:table-footer-group }
       }
-      
-      /* --- Document Backgrounds --- */
-      .bg-caduceus,
-      .bg-pills,
-      .bg-molecular,
-      .bg-grid {
-          position: relative;
-          background-color: white;
-      }
-
-      .bg-caduceus::before,
-      .bg-pills::before,
-      .bg-molecular::before,
-      .bg-grid::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-repeat: repeat;
-        background-position: center;
-        opacity: 0.05;
-        z-index: -1;
-      }
-
-      .bg-caduceus::before {
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 6V4m0 16v-2m4.6-9.4L18 8m-9.2 2.8L5 12m14 0h2M3 12h2m12.6-6.4L16 4m-9.2 2.8L5 8m5.05 8.13-1.59 1.59m5.08-5.08 1.59 1.59M12 16a2 2 0 0 0 2-2V8a2 2 0 0 0-4 0v6a2 2 0 0 0 2 2z'/%3E%3C/svg%3E");
-        background-size: 150px;
-      }
-       .bg-pills::before {
-        background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23a1a1aa'%3E%3Cpath d='M23.333 35.833a6.667 6.667 0 010-13.333h33.334a6.667 6.667 0 010 13.333H23.333z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-        background-size: 80px;
-      }
-      .bg-molecular::before {
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23a1a1aa' fill-opacity='0.4'%3E%3Cpath opacity='.5' d='M96 95h4v1h-4v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9zm-1 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-        background-size: 100px;
-      }
-      .bg-grid::before {
-         background-image: url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23a1a1aa' fill-opacity='0.4' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E");
-         background-size: 20px;
-      }
-
 
       /* Document Customization Styles */
       #print-section {
         --accent-color: #0d9488; /* Default accent color */
+        position: relative; /* Context for background layers */
+        z-index: 1; /* Keep content on top */
       }
+      
+      /* Background Layer (custom image OR default watermark) */
+      #print-section::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: -2; /* Behind the overlay */
+        /* Default SVG watermark */
+        background-image: url("data:image/svg+xml,%3Csvg width='300' height='300' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M45 50 H55 M50 45 V55' stroke='%23cccccc' stroke-width='2'/%3E%3Cpath d='M150 90 L158.66 95 L158.66 105 L150 110 L141.34 105 L141.34 95 Z' stroke='%23cccccc' stroke-width='1.5' fill='none'/%3E%3Crect x='75' y='195' width='20' height='10' rx='5' ry='5' stroke='%23cccccc' stroke-width='1.5' fill='none'/%3E%3Cline x1='85' y1='195' x2='85' y2='205' stroke='%23cccccc' stroke-width='1.5'/%3E%3Cpath d='M240 210 C 250 220, 260 220, 270 210' stroke='%23cccccc' stroke-width='1.5' fill='none'/%3E%3Cpath d='M240 215 C 250 205, 260 205, 270 215' stroke='%23cccccc' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+        background-repeat: repeat;
+        background-size: 250px;
+        opacity: 0.1;
+        background-position: center;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      /* Overlay Layer (for custom background image) */
+      #print-section::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: -1; /* Above background, below content */
+        background-color: transparent; /* Default state */
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+
       #print-section .print-header {
         display: flex;
         justify-content: space-between;
