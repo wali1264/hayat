@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
@@ -977,21 +978,68 @@ const App: React.FC = () => {
         }
     };
     
-    // Background license verifier
+    // Initial license verifier on app load
     useEffect(() => {
         // Run once on load if online
         if (navigator.onLine && isDeviceActivated) {
             verifyLicense();
         }
-        
-        const intervalId = setInterval(() => {
-            if (navigator.onLine && isDeviceActivated) {
-                verifyLicense();
-            }
-        }, 1000 * 60 * 15); // Every 15 minutes
-
-        return () => clearInterval(intervalId);
     }, [isDeviceActivated, licenseId, session]);
+
+    // Real-time license verifier using Supabase subscriptions
+    useEffect(() => {
+        if (!isDeviceActivated || !licenseId) {
+            return; // Don't subscribe if not activated
+        }
+
+        const handleLicenseUpdate = (payload: any) => {
+            console.log('Real-time license update received:', payload);
+            const newLicenseData = payload.new;
+            const localMachineId = getOrCreateMachineId();
+
+            if (!newLicenseData || !newLicenseData.is_active || newLicenseData.machine_id !== localMachineId) {
+                console.error("License deactivated or transferred in real-time. Locking app.");
+                addToast("دسترسی شما به دلیل تغییر در وضعیت لایسنس مسدود شد.", "error");
+                setIsLicenseDeactivated(true);
+            } else {
+                 if (isLicenseDeactivated) {
+                     console.log("License re-activated in real-time. Unlocking app.");
+                     setIsLicenseDeactivated(false);
+                 }
+            }
+        };
+
+        const channel = supabase.channel(`license-updates-${licenseId}`);
+        channel
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'licenses',
+                    filter: `id=eq.${licenseId}`,
+                },
+                handleLicenseUpdate
+            )
+            .subscribe((status, err) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log(`Successfully subscribed to real-time updates for license ${licenseId}.`);
+                }
+                if (status === 'CHANNEL_ERROR' || err) {
+                    console.error('Subscription error:', err || 'Channel error');
+                }
+            });
+
+        // Cleanup function
+        return () => {
+            if (channel) {
+                supabase.removeChannel(channel).then(() => {
+                    console.log(`Unsubscribed from license updates for ${licenseId}.`);
+                });
+            }
+        };
+    }, [isDeviceActivated, licenseId, isLicenseDeactivated, addToast]);
+
 
     // 30-day offline check
     useEffect(() => {
