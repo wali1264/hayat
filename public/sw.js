@@ -1,5 +1,5 @@
-// Incrementing cache name for updates.
-const CACHE_NAME = 'hayat-cache-v9';
+// Incrementing cache name for updates to trigger the 'activate' event.
+const CACHE_NAME = 'hayat-cache-v10';
 
 // List of essential files for the app shell to work offline.
 const urlsToCache = [
@@ -15,23 +15,29 @@ const urlsToCache = [
   'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js',
   
-  // Import map dependencies
-  "https://aistudiocdn.com/react@^19.1.1",
-  "https://aistudiocdn.com/react-dom@^19.1.1/",
-  "https://aistudiocdn.com/@google/genai@^1.17.0",
+  // Import map dependencies (best effort based on import map)
+  "https://aistudiocdn.com/react@19.1.1/",
+  "https://aistudiocdn.com/react-dom@19.1.1/",
+  "https://aistudiocdn.com/@google/genai@1.17.0",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
 ];
 
-// Install event: Cache all critical assets.
+// Install event: Cache all critical assets for the initial offline experience.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('SW Installing: Caching app shell.');
-        return cache.addAll(urlsToCache);
+        // Use a separate fetch for each to avoid all-or-nothing failure of addAll
+        const promises = urlsToCache.map(urlToCache => {
+            return fetch(urlToCache, { mode: 'no-cors' })
+                .then(response => cache.put(urlToCache, response))
+                .catch(err => console.warn(`Failed to cache ${urlToCache}:`, err));
+        });
+        return Promise.all(promises);
       })
       .catch(err => {
-          console.error('Failed to cache critical assets during install:', err);
+          console.error('Failed to open cache during install:', err);
       })
   );
 });
@@ -51,7 +57,6 @@ self.addEventListener('activate', (event) => {
       );
     }).then(() => {
       console.log('SW Activating: Claiming clients.');
-      // Take control of all pages immediately.
       return self.clients.claim();
     })
   );
@@ -64,54 +69,56 @@ self.addEventListener('message', (event) => {
   }
 });
 
-
-// Fetch event: Implement "Cache-first, falling back to network" strategy.
+// Fetch event: Implement "Network-first, falling back to cache" strategy.
 self.addEventListener('fetch', (event) => {
   // Ignore non-GET requests and chrome extension requests.
   if (event.request.method !== 'GET' || event.request.url.startsWith('chrome-extension://')) {
     return;
   }
 
+  const url = new URL(event.request.url);
+
+  // CRITICAL: For Supabase API calls, always go to the network. Do not cache.
+  // This ensures the license check is always fresh when online.
+  if (url.hostname.includes('supabase.co')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // For all other requests, implement "Network first, falling back to cache" strategy.
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      // If the resource is in the cache, return it.
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      // If the resource is not in the cache, fetch it from the network.
-      return fetch(event.request).then((networkResponse) => {
-        // Check if we received a valid response.
-        // We only want to cache successful responses.
-        if (!networkResponse || networkResponse.status !== 200) {
-          return networkResponse;
+    fetch(event.request)
+      .then((networkResponse) => {
+        // If the network request is successful, cache the response and return it.
+        // We only cache valid or opaque responses.
+        if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
         }
-
-        // Clone the response because it's a stream and can only be consumed once.
-        const responseToCache = networkResponse.clone();
-
-        caches.open(CACHE_NAME).then((cache) => {
-          // Cache the new resource for future offline use.
-          cache.put(event.request, responseToCache);
-        });
-
         return networkResponse;
-      }).catch(error => {
-        // This will happen if the network request fails and the resource is not in the cache.
-        console.warn(`[SW] Fetch failed for: ${event.request.url}. This resource is not available offline.`);
-        
-        // For navigation requests, you could return an offline fallback page.
-        if (event.request.mode === 'navigate') {
-          return caches.match('/'); // Use '/' which is cached and points to index.html
-        }
-        
-        // For other assets, return a synthetic error response to avoid the crash.
-        // This is a valid Response object, which satisfies `event.respondWith`.
-        return new Response('Network error', {
-          status: 408,
-          headers: { 'Content-Type': 'text/plain' },
+      })
+      .catch(() => {
+        // If the network request fails (e.g., user is offline), try to serve from the cache.
+        return caches.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          // If the request is not in the cache, it's truly unavailable offline.
+          console.warn(`[SW] Fetch failed for: ${event.request.url}. This resource is not available offline.`);
+          
+          // For navigation requests, serve the base index.html page as a fallback.
+          if (event.request.mode === 'navigate') {
+            return caches.match('/');
+          }
+          
+          // For other assets, return a synthetic error response to avoid a crash.
+          return new Response('Network error: Resource not available offline.', {
+            status: 408,
+            headers: { 'Content-Type': 'text/plain' },
+          });
         });
-      });
-    })
+      })
   );
 });
