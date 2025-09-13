@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
@@ -370,6 +366,12 @@ const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout }) => {
                         onClick={() => setActiveItem('settings')}
                     />
                  )}
+                  <NavItem
+                    icon={<LogoutIcon />}
+                    label="خروج از سیستم"
+                    isActive={false} 
+                    onClick={onLogout}
+                />
             </div>
         </aside>
     );
@@ -1544,7 +1546,7 @@ const App: React.FC = () => {
 
     return (
         <div className="flex h-screen bg-gray-100" dir="rtl">
-            <Sidebar activeItem={activeItem} setActiveItem={setActiveItem} userRole={currentUser.role} onLogout={() => {}} />
+            <Sidebar activeItem={activeItem} setActiveItem={setActiveItem} userRole={currentUser.role} onLogout={handleLogout} />
             <div className="flex-1 flex flex-col overflow-hidden">
                 <Header title={getPageTitle()} currentUser={currentUser} />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto">
