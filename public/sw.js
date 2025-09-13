@@ -1,5 +1,5 @@
 // Incrementing cache name for updates.
-const CACHE_NAME = 'hayat-cache-v8';
+const CACHE_NAME = 'hayat-cache-v9';
 
 // List of essential files for the app shell to work offline.
 const urlsToCache = [
@@ -24,13 +24,10 @@ const urlsToCache = [
 
 // Install event: Cache all critical assets.
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Activate new service worker immediately.
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('Opened cache. Caching critical assets.');
-        // addAll is atomic - if one file fails, the whole operation fails.
-        // This is better for ensuring the app is fully ready offline.
+        console.log('SW Installing: Caching app shell.');
         return cache.addAll(urlsToCache);
       })
       .catch(err => {
@@ -47,17 +44,26 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('Deleting old cache:', cacheName);
+            console.log('SW Activating: Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
     }).then(() => {
+      console.log('SW Activating: Claiming clients.');
       // Take control of all pages immediately.
       return self.clients.claim();
     })
   );
 });
+
+// Message event: Listen for a message from the client to skip waiting.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 
 // Fetch event: Implement "Cache-first, falling back to network" strategy.
 self.addEventListener('fetch', (event) => {

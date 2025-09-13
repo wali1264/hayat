@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
@@ -64,7 +65,7 @@ const CloseIcon = ({ className = "w-6 h-6" }: { className?: string}) => (
     </svg>
 );
 
-//=========== TOAST & MODAL COMPONENTS ===========//
+//=========== TOAST & MODAL & UPDATE COMPONENTS ===========//
 type ToastType = 'success' | 'error' | 'info';
 type Toast = {
   id: number;
@@ -132,6 +133,21 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, children }: Conf
         </div>
     );
 };
+
+const UpdateNotification = ({ onUpdate }: { onUpdate: () => void; }) => (
+    <div className="fixed bottom-8 right-8 z-[101] bg-gray-800 text-white rounded-lg shadow-2xl p-4 flex items-center gap-4 animate-fade-in-up">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h5M20 20v-5h-5m-4-1a4 4 0 01-4-4V7a4 4 0 014-4h1.586a1 1 0 01.707.293l1.414 1.414a1 1 0 00.707.293h4.586a4 4 0 014 4v5a4 4 0 01-4 4H7z" />
+        </svg>
+        <div>
+            <p className="font-semibold">نسخه جدیدی از برنامه در دسترس است.</p>
+            <p className="text-sm text-gray-300">برای اعمال تغییرات، برنامه را به‌روزرسانی کنید.</p>
+        </div>
+        <button onClick={onUpdate} className="px-4 py-2 bg-teal-600 rounded-lg font-semibold hover:bg-teal-700 transition-colors">
+            به‌روزرسانی
+        </button>
+    </div>
+);
 
 
 //=========== PERSISTENCE HOOK ===========//
@@ -570,7 +586,7 @@ const ActivationScreen = ({ onActivate, onSwitchToLogin }: { onActivate: () => v
             if (signUpError) throw new Error(signUpError.message);
             if (!signUpData.user || !signUpData.session) throw new Error('ایجاد حساب کاربری با شکست مواجه شد.');
 
-            const { data: newLicense, error: insertError } = await supabase.from('licenses').insert({ username: username.trim(), machine_id: machineId, user_id: signUpData.user.id }).select().single();
+            const { data: newLicense, error: insertError } = await supabase.from('licenses').insert({ username: username.trim(), machine_id: machineId, user_id: signUpData.user.id, is_active: true }).select().single();
             
             if (insertError) throw new Error(`خطا در ثبت لایسنس: ${insertError.message}`);
             if (!newLicense) throw new Error('ثبت لایسنس با شکست مواجه شد.');
@@ -645,9 +661,13 @@ const LoginScreen = ({ onLoginSuccess, onSwitchToActivation }: { onLoginSuccess:
             if (signInError) throw new Error("نام کاربری یا رمز عبور اشتباه است.");
             if (!session || !user) throw new Error("ورود با شکست مواجه شد.");
 
-            const { data: license, error: licenseError } = await supabase.from('licenses').select('id, machine_id').eq('user_id', user.id).single();
+            const { data: license, error: licenseError } = await supabase.from('licenses').select('id, machine_id, is_active').eq('user_id', user.id).single();
             if (licenseError || !license) throw new Error("لایسنس مرتبط با این کاربر یافت نشد.");
             
+            if (!license.is_active) {
+                throw new Error("دسترسی شما مسدود شده است. لطفاً با پشتیبانی تماس بگیرید.");
+            }
+
             const currentMachineId = getOrCreateMachineId();
             if (license.machine_id === currentMachineId) {
                 // Machine ID matches, proceed with login
@@ -787,6 +807,68 @@ const App: React.FC = () => {
         onCancel: () => {}
     });
 
+    // PWA Update State
+    const [showUpdateNotification, setShowUpdateNotification] = useState(false);
+    const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+
+
+     // --- PWA Update Handler ---
+    useEffect(() => {
+        if ('serviceWorker' in navigator) {
+            const registerServiceWorker = async () => {
+                try {
+                    const registration = await navigator.serviceWorker.register('/sw.js');
+                    console.log('ServiceWorker registration successful:', registration);
+
+                    if (registration.waiting) {
+                        console.log("Update found on load: A new service worker is waiting.");
+                        setWaitingWorker(registration.waiting);
+                        setShowUpdateNotification(true);
+                        return;
+                    }
+
+                    registration.addEventListener('updatefound', () => {
+                        console.log("Update found: A new service worker is installing.");
+                        const newWorker = registration.installing;
+                        if (newWorker) {
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log("Update installed: New service worker is ready.");
+                                    setWaitingWorker(newWorker);
+                                    setShowUpdateNotification(true);
+                                }
+                            });
+                        }
+                    });
+
+                } catch (err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                }
+            };
+            
+            window.addEventListener('load', registerServiceWorker);
+            
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!refreshing) {
+                    console.log("Controller changed. Reloading page.");
+                    window.location.reload();
+                    refreshing = true;
+                }
+            });
+
+            return () => window.removeEventListener('load', registerServiceWorker);
+        }
+    }, []);
+
+    const handleUpdate = () => {
+        if (waitingWorker) {
+            console.log("User clicked update. Sending SKIP_WAITING message.");
+            waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+            setShowUpdateNotification(false);
+        }
+    };
+
 
     // --- Toast & Confirmation Handlers ---
     const addToast = (message: string, type: ToastType = 'info') => {
@@ -880,7 +962,7 @@ const App: React.FC = () => {
 
             if (licenseError) throw new Error(`خطا در ارتباط با سرور: ${licenseError.message}`);
             
-            if (!data.is_active || data.machine_id !== localMachineId) {
+            if (!data || !data.is_active || data.machine_id !== localMachineId) {
                 if (isManualTrigger) addToast("اعتبارسنجی لایسنس ناموفق بود. دسترسی شما مسدود شد.", "error");
                 setIsLicenseDeactivated(true);
             } else {
@@ -897,6 +979,11 @@ const App: React.FC = () => {
     
     // Background license verifier
     useEffect(() => {
+        // Run once on load if online
+        if (navigator.onLine && isDeviceActivated) {
+            verifyLicense();
+        }
+        
         const intervalId = setInterval(() => {
             if (navigator.onLine && isDeviceActivated) {
                 verifyLicense();
@@ -1579,6 +1666,8 @@ const App: React.FC = () => {
                 isLoading={isAssistantLoading}
                 onSendMessage={handleSendToAssistant}
             />
+
+            {showUpdateNotification && <UpdateNotification onUpdate={handleUpdate} />}
         </div>
     );
 };
