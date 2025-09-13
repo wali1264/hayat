@@ -955,22 +955,43 @@ const App: React.FC = () => {
         if (!isDeviceActivated || !licenseId || !session) return;
         
         try {
-            const { error: sessionError } = await supabase.auth.setSession(session);
+            // Attempt to refresh the session using the stored refresh token.
+            const { data: sessionData, error: sessionError } = await supabase.auth.setSession(session);
+            
             if (sessionError) throw new Error("Session محلی نامعتبر است.");
+
+            // If the session was refreshed, update our stored session to prevent using stale tokens on next load.
+            if (sessionData.session) {
+                setSession(sessionData.session);
+            } else {
+                 // If there's no session after attempting to set it, we are not authenticated.
+                 // This will likely cause the next query to fail RLS and return no data.
+                 console.warn("Could not establish a valid session. License check might fail.");
+            }
 
             const localMachineId = getOrCreateMachineId();
             const { data, error: licenseError } = await supabase.from('licenses').select('is_active, machine_id').eq('id', licenseId).single();
 
             if (licenseError) throw new Error(`خطا در ارتباط با سرور: ${licenseError.message}`);
             
-            if (!data || !data.is_active || data.machine_id !== localMachineId) {
-                if (isManualTrigger) addToast("اعتبارسنجی لایسنس ناموفق بود. دسترسی شما مسدود شد.", "error");
-                setIsLicenseDeactivated(true);
+            // This is the key change to fix the bug.
+            // We only check for deactivation conditions if we successfully received data from the database.
+            // If `data` is null (due to auth failure, network issue, or no record), we do NOT deactivate,
+            // as per user request to only deactivate on explicit DB flags.
+            if (data) {
+                if (data.is_active === false || data.machine_id !== localMachineId) {
+                    // Deactivate only if is_active is explicitly false or machine ID mismatches.
+                    setIsLicenseDeactivated(true);
+                } else {
+                    // This is the success path.
+                    setIsLicenseDeactivated(false);
+                    if (isUpdateRequired) setIsUpdateRequired(false);
+                    window.localStorage.setItem('hayat_lastLicenseCheck', JSON.stringify(new Date().toISOString()));
+                    if (isManualTrigger) addToast("برنامه با موفقیت به‌روزرسانی و تایید شد!", "success");
+                }
             } else {
-                setIsLicenseDeactivated(false);
-                if (isUpdateRequired) setIsUpdateRequired(false);
-                window.localStorage.setItem('hayat_lastLicenseCheck', JSON.stringify(new Date().toISOString()));
-                if (isManualTrigger) addToast("برنامه با موفقیت به‌روزرسانی و تایید شد!", "success");
+                // If data is null, we log it but do not change the activation state.
+                console.error(`CRITICAL: License verification for ID ${licenseId} returned no data. This could be an authentication or RLS policy issue. Not deactivating user as per requirements.`);
             }
         } catch (error: any) {
             console.error("License verification failed:", error.message);
