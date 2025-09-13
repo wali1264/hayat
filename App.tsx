@@ -383,12 +383,12 @@ const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout }) => {
                         onClick={() => setActiveItem('settings')}
                     />
                  )}
-                  <NavItem
+                  {/* <NavItem
                     icon={<LogoutIcon />}
                     label="خروج از سیستم"
                     isActive={false} 
                     onClick={onLogout}
-                />
+                /> */}
             </div>
         </aside>
     );
