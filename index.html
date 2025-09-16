@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <title>پلتفرم مدیریت دارویی حیات</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0d9488" />
+    <link rel="icon" href="/icon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/icon.png">
+    <link rel="manifest" href="/manifest.json" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap');
+      body {
+        font-family: 'Vazirmatn', sans-serif;
+      }
+
+      /* Base Print Styles */
+      @media print {
+        @page {
+          size: A4;
+          margin: 15mm;
+        }
+        body {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        body * {
+          visibility: hidden;
+        }
+        #print-section, #print-section * {
+          visibility: visible;
+        }
+        #print-section {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          margin: 0;
+          padding: 0;
+        }
+        .page-break-inside-avoid { page-break-inside: avoid; }
+        table { page-break-inside:auto }
+        tr    { page-break-inside:avoid; page-break-after:auto }
+        thead { display:table-header-group }
+        tfoot { display:table-footer-group }
+      }
+
+      /* Document Customization Styles */
+      #print-section {
+        --accent-color: #0d9488; /* Default accent color */
+        position: relative; /* Context for background layers */
+        z-index: 1; /* Keep content on top */
+      }
+      
+      /* Background Layer (custom image OR default watermark) */
+      #print-section::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: -2; /* Behind the overlay */
+        /* Default SVG watermark */
+        background-image: url("data:image/svg+xml,%3Csvg width='300' height='300' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M45 50 H55 M50 45 V55' stroke='%23cccccc' stroke-width='2'/%3E%3Cpath d='M150 90 L158.66 95 L158.66 105 L150 110 L141.34 105 L141.34 95 Z' stroke='%23cccccc' stroke-width='1.5' fill='none'/%3E%3Crect x='75' y='195' width='20' height='10' rx='5' ry='5' stroke='%23cccccc' stroke-width='1.5' fill='none'/%3E%3Cline x1='85' y1='195' x2='85' y2='205' stroke='%23cccccc' stroke-width='1.5'/%3E%3Cpath d='M240 210 C 250 220, 260 220, 270 210' stroke='%23cccccc' stroke-width='1.5' fill='none'/%3E%3Cpath d='M240 215 C 250 205, 260 205, 270 215' stroke='%23cccccc' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+        background-repeat: repeat;
+        background-size: 250px;
+        opacity: 0.1;
+        background-position: center;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      /* Overlay Layer (for custom background image) */
+      #print-section::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: -1; /* Above background, below content */
+        background-color: transparent; /* Default state */
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+
+      #print-section .print-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      #print-section .print-logo {
+        width: 6rem;
+        height: 6rem;
+        object-fit: contain;
+      }
+      #print-section .print-company-info {
+        text-align: right;
+      }
+      /* Logo Position Layouts */
+      #print-section.layout-logo-right .print-header { flex-direction: row; }
+      #print-section.layout-logo-left .print-header { flex-direction: row-reverse; }
+      #print-section.layout-logo-center .print-header { 
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      #print-section.layout-logo-center .print-company-info {
+        text-align: center;
+        margin-top: 1rem;
+      }
+      
+      /* --- TEMPLATE: MODERN --- */
+      .template-modern {
+        font-family: 'Vazirmatn', sans-serif;
+      }
+      .template-modern .print-header {
+        border-bottom: 2px solid var(--accent-color);
+      }
+      .template-modern .print-title {
+        color: var(--accent-color);
+        font-weight: 700;
+        font-size: 1.25rem;
+        margin-bottom: 0.25rem;
+      }
+      .template-modern table thead {
+        background-color: var(--accent-color) !important;
+        color: white;
+      }
+       .template-modern table thead th {
+        font-weight: 600;
+        padding: 0.75rem;
+      }
+       .template-modern table tbody tr:nth-child(even) {
+        background-color: #f9fafb;
+      }
+      .template-modern .print-summary {
+        border-top: 2px solid var(--accent-color);
+      }
+
+      /* --- TEMPLATE: CLASSIC --- */
+      .template-classic {
+        font-family: 'Times New Roman', serif;
+      }
+       .template-classic .print-header {
+        border-bottom: 2px double #333;
+      }
+       .template-classic .print-title {
+        font-size: 1.5rem;
+        font-weight: bold;
+      }
+       .template-classic table {
+        border-collapse: collapse;
+        width: 100%;
+        border: 1px solid #666;
+      }
+       .template-classic table th, .template-classic table td {
+        border: 1px solid #666;
+        padding: 0.5rem;
+      }
+      .template-classic table thead {
+        background-color: #e5e7eb !important;
+        font-weight: bold;
+      }
+      .template-classic .print-summary {
+         border-top: 2px double #333;
+      }
+      
+      /* --- TEMPLATE: MINIMALIST --- */
+      .template-minimalist {
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      .template-minimalist .print-header, .template-minimalist .print-summary, .template-minimalist table, .template-minimalist td, .template-minimalist th {
+        border-color: #e5e7eb;
+      }
+      .template-minimalist .print-logo {
+        filter: grayscale(100%);
+      }
+       .template-minimalist table thead {
+        background-color: transparent !important;
+        border-bottom: 2px solid #333;
+      }
+       .template-minimalist table td, .template-minimalist table th {
+          padding: 0.5rem;
+      }
+      .template-minimalist * {
+        color: #111827 !important;
+      }
+
+      /* --- TEMPLATE: COMPACT --- */
+      .template-compact {
+         font-size: 0.8rem;
+      }
+      .template-compact .print-header { padding-bottom: 0.75rem; }
+      .template-compact .print-logo { width: 4rem; height: 4rem; }
+      .template-compact .print-title { font-size: 1.1rem; }
+      .template-compact table th, .template-compact table td {
+        padding: 0.4rem;
+      }
+       .template-compact .print-summary {
+        font-size: 0.9rem;
+      }
+
+      /* --- TEMPLATE: REPORT CLASSIC (Compressed) --- */
+      .template-report-classic {
+        font-family: 'Vazirmatn', sans-serif;
+        font-size: 9pt; /* Smaller font size for density */
+      }
+      .template-report-classic .print-header {
+        border-bottom: 2px double #333;
+        padding-bottom: 1rem;
+        margin-bottom: 1rem;
+      }
+      .template-report-classic .print-title {
+        font-size: 1.5rem;
+        font-weight: bold;
+        text-align: center;
+      }
+       .template-report-classic .report-subtitle {
+        text-align: center;
+        font-size: 1rem;
+        margin-bottom: 1.5rem;
+      }
+       .template-report-classic table {
+        border-collapse: collapse;
+        width: 100%;
+        border: 1px solid #666;
+        font-size: 8pt;
+      }
+       .template-report-classic table th, .template-report-classic table td {
+        border: 1px solid #999;
+        padding: 4px 6px; /* Tighter padding */
+        text-align: right;
+      }
+      .template-report-classic table thead {
+        background-color: #e5e7eb !important;
+        font-weight: bold;
+        color: #111827;
+      }
+       .template-report-classic .summary-section {
+         page-break-before: always;
+         padding-top: 2rem;
+         border-top: 2px double #333;
+      }
+      .template-report-classic .entity-group {
+        margin-bottom: 1.5rem;
+        page-break-inside: avoid;
+      }
+      .template-report-classic .entity-header {
+        font-size: 11pt;
+        font-weight: bold;
+        background-color: #f3f4f6 !important;
+        padding: 6px;
+        border-radius: 4px;
+        margin-bottom: 0.5rem;
+      }
+      
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.17.0",
+    "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+  }
+}
+</script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-gray-100">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

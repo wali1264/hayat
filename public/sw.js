@@ -1,5 +1,5 @@
 // Incrementing cache name for updates to trigger the 'activate' event.
-const CACHE_NAME = 'hayat-cache-v10';
+const CACHE_NAME = 'hayat-cache-v11';
 
 // List of essential files for the app shell to work offline.
 const urlsToCache = [
@@ -24,20 +24,32 @@ const urlsToCache = [
 
 // Install event: Cache all critical assets for the initial offline experience.
 self.addEventListener('install', (event) => {
+  // Force the waiting service worker to become the active service worker.
+  self.skipWaiting();
+  
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('SW Installing: Caching app shell.');
-        // Use a separate fetch for each to avoid all-or-nothing failure of addAll
         const promises = urlsToCache.map(urlToCache => {
-            return fetch(urlToCache, { mode: 'no-cors' })
-                .then(response => cache.put(urlToCache, response))
-                .catch(err => console.warn(`Failed to cache ${urlToCache}:`, err));
+            // Fetch with standard CORS mode to ensure we get a proper response.
+            return fetch(urlToCache)
+                .then(response => {
+                    // Only cache successful responses (status 200-299).
+                    if (!response.ok) {
+                        console.error(`[SW] Failed to fetch and cache ${urlToCache}. Status: ${response.status}`);
+                        // Don't throw an error, just skip caching this resource.
+                        // This prevents one failed resource from failing the entire install.
+                        return; 
+                    }
+                    return cache.put(urlToCache, response);
+                })
+                .catch(err => console.error(`[SW] Fetch error for ${urlToCache}:`, err));
         });
         return Promise.all(promises);
       })
       .catch(err => {
-          console.error('Failed to open cache during install:', err);
+          console.error('[SW] Failed to open cache or cache assets during install:', err);
       })
   );
 });
