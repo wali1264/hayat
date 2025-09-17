@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Supplier } from './Suppliers';
 import { PurchaseBill } from './Purchasing';
@@ -282,7 +283,7 @@ const SupplierReportModal: React.FC<SupplierReportModalProps> = ({ isOpen, onClo
                             onChange={e => setNotes(e.target.value)} 
                             className="w-full text-sm border rounded-lg p-2 mt-1 bg-white focus:ring-2 focus:ring-teal-500" 
                             rows="2"
-                            placeholder="ملاحظات لازم را اینجا بنویسید..."
+                            placeholder="ملاحظات لازم را اینجا وارد کنید..."
                         ></textarea>
                     </div>
                     <div className="flex justify-between items-center">
@@ -336,12 +337,13 @@ const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchase
             
             const balance = totalPurchased - totalReturned - totalPaid;
             
+            // Fix: Explicitly cast all calculated financial values to Number to resolve type errors.
             return {
-                supplierId: supplier.id,
+                supplierId: Number(supplier.id),
                 supplierName: supplier.name,
-                totalPurchased: totalPurchased - totalReturned, // Net Purchased
-                totalPaid,
-                balance,
+                totalPurchased: Number(totalPurchased - totalReturned), // Net Purchased
+                totalPaid: Number(totalPaid),
+                balance: Number(balance),
             };
         });
     }, [suppliers, bills]);
@@ -363,7 +365,6 @@ const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchase
             return;
         }
 
-        // FIX: Convert supplierId from string to number for comparison.
         const supplier = suppliers.find(c => c.id === Number(supplierId));
         if (!supplier) return;
 
@@ -374,7 +375,6 @@ const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchase
                    billDate <= new Date(endDate);
         }).sort((a,b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
 
-        // FIX: Convert supplierId from string to number for comparison.
         const summary = supplierSummaries.find(s => s.supplierId === Number(supplierId));
 
         const reportData: ReportData = {

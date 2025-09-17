@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Customer } from './Customers';
 import { Order } from './Sales';
@@ -362,12 +363,13 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
             
             const balance = totalBilled - totalReturned - totalPaid;
             
+            // Fix: Explicitly cast all calculated financial values to Number to resolve type errors.
             return {
-                customerId: customer.id,
+                customerId: Number(customer.id),
                 customerName: customer.name,
-                totalBilled: totalBilled - totalReturned, // Net Billed
-                totalPaid,
-                balance,
+                totalBilled: Number(totalBilled - totalReturned), // Net Billed
+                totalPaid: Number(totalPaid),
+                balance: Number(balance),
             };
         });
     }, [customers, orders]);
@@ -399,7 +401,6 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
                    orderDate <= new Date(endDate);
         }).sort((a,b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
 
-        // FIX: Convert customerId from string to number for comparison.
         const summary = customerSummaries.find(s => s.customerId === Number(customerId));
 
         const reportData: ReportData = {

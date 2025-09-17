@@ -1,5 +1,5 @@
 // Incrementing cache name for updates to trigger the 'activate' event.
-const CACHE_NAME = 'hayat-cache-v11';
+const CACHE_NAME = 'hayat-cache-v12';
 
 // List of essential files for the app shell to work offline.
 const urlsToCache = [
@@ -8,6 +8,26 @@ const urlsToCache = [
   '/manifest.json',
   '/icon.png',
 
+  // Local TSX files
+  '/index.tsx',
+  '/App.tsx',
+  '/Inventory.tsx',
+  '/Sales.tsx',
+  '/Customers.tsx',
+  '/Accounting.tsx',
+  '/Reports.tsx',
+  '/Settings.tsx',
+  '/Fulfillment.tsx',
+  '/Dashboard.tsx',
+  '/CustomerAccounts.tsx',
+  '/Suppliers.tsx',
+  '/Purchasing.tsx',
+  '/SupplierAccounts.tsx',
+  '/RecycleBin.tsx',
+  '/Checkneh.tsx',
+  '/Alerts.tsx',
+  '/MainWarehouse.tsx',
+
   // Third-party scripts and styles from index.html
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap',
@@ -15,11 +35,11 @@ const urlsToCache = [
   'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js',
   
-  // Import map dependencies (best effort based on import map)
-  "https://aistudiocdn.com/react@19.1.1/",
-  "https://aistudiocdn.com/react-dom@19.1.1/",
-  "https://aistudiocdn.com/@google/genai@1.17.0",
-  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+  // Import map dependencies (matching the import map in index.html)
+  'https://aistudiocdn.com/react@^19.1.1',
+  'https://aistudiocdn.com/react-dom@^19.1.1/client',
+  'https://aistudiocdn.com/@google/genai@^1.17.0',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
 ];
 
 // Install event: Cache all critical assets for the initial offline experience.

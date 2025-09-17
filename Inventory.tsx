@@ -329,97 +329,100 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
                 setIsScannerOpen(false);
             }}
         />
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 transition-opacity duration-300" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-2xl transform transition-all duration-300" onClick={e => e.stopPropagation()}>
-                <h3 className="text-2xl font-bold text-gray-800 mb-6">{isEditMode ? 'ویرایش دارو' : 'افزودن داروی جدید'}</h3>
-                <form onSubmit={handleSubmit}>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                         <div>
-                            <label htmlFor="name" className={labelStyles}>نام دارو (ضروری)</label>
-                            <input type="text" name="name" id="name" value={drug.name} onChange={handleChange} className={inputStyles} required autoFocus />
-                        </div>
-                        <div>
-                           <label htmlFor="manufacturer" className={labelStyles}>کمپانی</label>
-                           <input type="text" name="manufacturer" id="manufacturer" value={drug.manufacturer} onChange={handleChange} className={inputStyles} />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label htmlFor="category" className={labelStyles}>دسته‌بندی</label>
-                            <select name="category" id="category" value={drug.category} onChange={handleChange} className={inputStyles}>
-                                {drugCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                            </select>
-                        </div>
-                         <div>
-                            <label htmlFor="code" className={labelStyles}>کد محصول</label>
-                            <input type="text" name="code" id="code" value={drug.code} onChange={handleChange} className={inputStyles} />
-                        </div>
-                    </div>
-                    
-                    <div className="mb-4">
-                        <label htmlFor="barcode" className={labelStyles}>بارکد / QR Code</label>
-                        <div className="flex gap-2">
-                             <input type="text" name="barcode" id="barcode" value={drug.barcode} onChange={handleChange} className={inputStyles} />
-                             <button type="button" title="اسکن با دوربین" onClick={() => setIsScannerOpen(true)} className="p-2 border rounded-lg hover:bg-gray-100"><CameraIcon /></button>
-                        </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                         <div>
-                            <label htmlFor="purchasePrice" className={labelStyles}>قیمت خرید (ضروری)</label>
-                            <input type="number" name="purchasePrice" id="purchasePrice" value={drug.purchasePrice} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 120" />
-                        </div>
-                         <div>
-                            <label htmlFor="price" className={labelStyles}>قیمت فروش (ضروری)</label>
-                            <input type="number" name="price" id="price" value={drug.price} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 150" />
-                        </div>
-                        <div>
-                            <label htmlFor="discountPercentage" className={labelStyles}>تخفیف (٪)</label>
-                            <input type="number" name="discountPercentage" id="discountPercentage" value={drug.discountPercentage} onChange={handleChange} className={inputStyles} min="0" max="100" placeholder="مثلا: 5"/>
-                        </div>
-                    </div>
-                    
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                         <div>
-                            <label htmlFor="productionDate" className={labelStyles}>تاریخ تولید</label>
-                            <input type="date" name="productionDate" id="productionDate" value={drug.productionDate} onChange={handleChange} className={inputStyles} />
-                        </div>
-                         <div>
-                            <label htmlFor="expiryDate" className={labelStyles}>تاریخ انقضا (ضروری)</label>
-                            <input type="date" name="expiryDate" id="expiryDate" value={drug.expiryDate} onChange={handleChange} className={inputStyles} required />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                        <div>
-                            <label htmlFor="unitsPerCarton" className={labelStyles}>تعداد در کارتن</label>
-                            <input type="number" name="unitsPerCarton" id="unitsPerCarton" value={drug.unitsPerCarton} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 100" />
-                        </div>
-                        <div className="md:col-span-2">
-                            <label className={labelStyles}>موجودی انبار</label>
-                            <div className="flex items-center gap-2">
-                                <input type="number" name="cartonQuantity" value={drug.cartonQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد کارتن" disabled={!drug.unitsPerCarton || Number(drug.unitsPerCarton) <= 1} />
-                                <span className="text-gray-500 flex-shrink-0">کارتن</span>
-                                <input type="number" name="unitQuantity" value={drug.unitQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد واحد" />
-                                <span className="text-gray-500 flex-shrink-0">عدد</span>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 transition-opacity duration-300" onClick={onClose} role="dialog" aria-modal="true">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                <header className="p-8 pb-4 flex-shrink-0">
+                    <h3 className="text-2xl font-bold text-gray-800">{isEditMode ? 'ویرایش دارو' : 'افزودن داروی جدید'}</h3>
+                </header>
+                <main className="flex-1 overflow-y-auto px-8">
+                    <form id="drug-modal-form" onSubmit={handleSubmit}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                             <div>
+                                <label htmlFor="name" className={labelStyles}>نام دارو (ضروری)</label>
+                                <input type="text" name="name" id="name" value={drug.name} onChange={handleChange} className={inputStyles} required autoFocus />
+                            </div>
+                            <div>
+                               <label htmlFor="manufacturer" className={labelStyles}>کمپانی</label>
+                               <input type="text" name="manufacturer" id="manufacturer" value={drug.manufacturer} onChange={handleChange} className={inputStyles} />
                             </div>
                         </div>
-                    </div>
 
-                     <div className="mb-6 text-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-                        <span>مجموع کل: </span>
-                        <span className="font-bold font-mono text-base text-teal-700">{calculatedTotal.toLocaleString()}</span>
-                        <span> واحد</span>
-                    </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label htmlFor="category" className={labelStyles}>دسته‌بندی</label>
+                                <select name="category" id="category" value={drug.category} onChange={handleChange} className={inputStyles}>
+                                    {drugCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                </select>
+                            </div>
+                             <div>
+                                <label htmlFor="code" className={labelStyles}>کد محصول</label>
+                                <input type="text" name="code" id="code" value={drug.code} onChange={handleChange} className={inputStyles} />
+                            </div>
+                        </div>
+                        
+                        <div className="mb-4">
+                            <label htmlFor="barcode" className={labelStyles}>بارکد / QR Code</label>
+                            <div className="flex gap-2">
+                                 <input type="text" name="barcode" id="barcode" value={drug.barcode} onChange={handleChange} className={inputStyles} />
+                                 <button type="button" title="اسکن با دوربین" onClick={() => setIsScannerOpen(true)} className="p-2 border rounded-lg hover:bg-gray-100"><CameraIcon /></button>
+                            </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                             <div>
+                                <label htmlFor="purchasePrice" className={labelStyles}>قیمت خرید (ضروری)</label>
+                                <input type="number" name="purchasePrice" id="purchasePrice" value={drug.purchasePrice} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 120" />
+                            </div>
+                             <div>
+                                <label htmlFor="price" className={labelStyles}>قیمت فروش (ضروری)</label>
+                                <input type="number" name="price" id="price" value={drug.price} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 150" />
+                            </div>
+                            <div>
+                                <label htmlFor="discountPercentage" className={labelStyles}>تخفیف (٪)</label>
+                                <input type="number" name="discountPercentage" id="discountPercentage" value={drug.discountPercentage} onChange={handleChange} className={inputStyles} min="0" max="100" placeholder="مثلا: 5"/>
+                            </div>
+                        </div>
+                        
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                             <div>
+                                <label htmlFor="productionDate" className={labelStyles}>تاریخ تولید</label>
+                                <input type="date" name="productionDate" id="productionDate" value={drug.productionDate} onChange={handleChange} className={inputStyles} />
+                            </div>
+                             <div>
+                                <label htmlFor="expiryDate" className={labelStyles}>تاریخ انقضا (ضروری)</label>
+                                <input type="date" name="expiryDate" id="expiryDate" value={drug.expiryDate} onChange={handleChange} className={inputStyles} required />
+                            </div>
+                        </div>
 
-                    <div className="flex justify-end space-x-4 space-x-reverse pt-4 border-t border-gray-200">
-                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold transition-colors">انصراف</button>
-                        <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors shadow-md hover:shadow-lg">
-                            {isEditMode ? 'ذخیره تغییرات' : 'ذخیره'}
-                        </button>
-                    </div>
-                </form>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <div>
+                                <label htmlFor="unitsPerCarton" className={labelStyles}>تعداد در کارتن</label>
+                                <input type="number" name="unitsPerCarton" id="unitsPerCarton" value={drug.unitsPerCarton} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 100" />
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className={labelStyles}>موجودی انبار</label>
+                                <div className="flex items-center gap-2">
+                                    <input type="number" name="cartonQuantity" value={drug.cartonQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد کارتن" disabled={!drug.unitsPerCarton || Number(drug.unitsPerCarton) <= 1} />
+                                    <span className="text-gray-500 flex-shrink-0">کارتن</span>
+                                    <input type="number" name="unitQuantity" value={drug.unitQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد واحد" />
+                                    <span className="text-gray-500 flex-shrink-0">عدد</span>
+                                </div>
+                            </div>
+                        </div>
+
+                         <div className="my-6 text-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+                            <span>مجموع کل: </span>
+                            <span className="font-bold font-mono text-base text-teal-700">{calculatedTotal.toLocaleString()}</span>
+                            <span> واحد</span>
+                        </div>
+                    </form>
+                </main>
+                <footer className="flex justify-end space-x-4 space-x-reverse p-8 pt-4 border-t border-gray-200 flex-shrink-0">
+                    <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold transition-colors">انصراف</button>
+                    <button type="submit" form="drug-modal-form" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors shadow-md hover:shadow-lg">
+                        {isEditMode ? 'ذخیره تغییرات' : 'ذخیره'}
+                    </button>
+                </footer>
             </div>
         </div>
         </>
@@ -556,7 +559,6 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
             addToast("لطفا حداقل یک قلم به درخواست اضافه کنید.", "error");
             return;
         }
-        // FIX: Map items to include quantityFulfilled property, which is required by StockRequisitionItem type.
         const itemsToSave: StockRequisitionItem[] = items.map(item => ({...item, quantityFulfilled: 0}));
         onSave({ items: itemsToSave, notes });
         onClose();
