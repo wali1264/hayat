@@ -1,22 +1,8 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
 import Inventory, { Drug } from './Inventory';
-import Sales, { Order, OrderItem } from './Sales';
+import Sales, { Order, OrderItem, ExtraCharge } from './Sales';
 import Customers, { Customer } from './Customers';
 import Accounting, { Expense, Income } from './Accounting';
 import Reports from './Reports';
@@ -31,6 +17,7 @@ import SupplierAccounts from './SupplierAccounts';
 import RecycleBin, { TrashItem, TrashableItem } from './RecycleBin';
 import Checkneh, { ChecknehInvoice } from './Checkneh';
 import Alerts, { AlertSettings } from './Alerts';
+import MainWarehouse from './MainWarehouse';
 
 
 //=========== SUPABASE CLIENT ===========//
@@ -47,6 +34,7 @@ const Icon = ({ path, className = "w-6 h-6" }: { path: string, className?: strin
 );
 
 const DashboardIcon = ({ className }: { className?: string }) => <Icon path="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" className={className} />;
+const MainWarehouseIcon = ({ className }: { className?: string }) => <Icon path="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" className={className} />;
 const InventoryIcon = ({ className }: { className?: string }) => <Icon path="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" className={className} />;
 const SalesIcon = ({ className }: { className?: string }) => <Icon path="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" className={className} />;
 const FulfillmentIcon = ({ className }: { className?: string }) => <Icon path="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" className={className} />;
@@ -195,25 +183,71 @@ type PermissionsMap = {
 };
 
 const permissions: PermissionsMap = {
-    'مدیر کل': ['dashboard', 'inventory', 'sales', 'fulfillment', 'customers', 'customer_accounts', 'suppliers', 'purchasing', 'supplier_accounts', 'finance', 'reports', 'checkneh', 'alerts', 'settings', 'recycle_bin'],
+    'مدیر کل': ['dashboard', 'main_warehouse', 'inventory', 'sales', 'fulfillment', 'customers', 'customer_accounts', 'suppliers', 'purchasing', 'supplier_accounts', 'finance', 'reports', 'checkneh', 'alerts', 'settings', 'recycle_bin'],
     'فروشنده': ['dashboard', 'sales', 'customers', 'customer_accounts'],
-    'انباردار': ['dashboard', 'inventory', 'fulfillment', 'suppliers', 'purchasing'],
+    'انباردار': ['dashboard', 'main_warehouse', 'inventory', 'fulfillment', 'suppliers', 'purchasing'],
     'حسابدار': ['dashboard', 'customer_accounts', 'supplier_accounts', 'finance', 'reports'],
 };
 
+//=========== NEW DATA TYPES ===========//
+export type WriteOffReason = 'تاریخ گذشته' | 'آسیب دیده' | 'مفقود شده' | 'سایر';
+export type InventoryWriteOff = {
+    id: number;
+    drugId: number;
+    drugName: string;
+    quantity: number;
+    reason: WriteOffReason;
+    notes?: string;
+    date: string;
+    adjustedBy: string;
+    costAtTime: number; // purchase price per unit
+    totalLossValue: number;
+};
+
+export type StockRequisitionItem = {
+    drugId: number;
+    drugName: string;
+    quantityRequested: number;
+    quantityFulfilled: number;
+};
+
+export type StockRequisition = {
+    id: number;
+    date: string;
+    requestedBy: string; // username
+    fulfilledBy?: string; // username
+    status: 'در انتظار' | 'تکمیل شده' | 'رد شده';
+    items: StockRequisitionItem[];
+    notes?: string;
+};
+
+
+
 //=========== MOCK DATA FOR DEMO ===========//
+// --- Sales Warehouse ---
 const initialMockDrugs: Drug[] = [
-    { id: 1, name: 'Amoxicillin 500mg', barcode: '8901234567890', code: 'AMX500', manufacturer: 'Kabul Pharma', quantity: 1500, unitsPerCarton: 100, productionDate: '2023-12-01', expiryDate: '2025-12-31', price: 120, purchasePrice: 95, discountPercentage: 5, category: 'آنتی‌بیوتیک' },
-    { id: 2, name: 'Panadol Extra', barcode: '8901234567891', code: 'PAN-EX', manufacturer: 'GSK', quantity: 2500, unitsPerCarton: 200, productionDate: '2024-01-01', expiryDate: '2026-06-30', price: 80, purchasePrice: 60, discountPercentage: 0, category: 'مسکن' },
-    { id: 3, name: 'Vitamin C 1000mg', barcode: '8901234567892', code: 'VITC1000', manufacturer: 'Bayer', quantity: 800, unitsPerCarton: 50, productionDate: '2023-05-01', expiryDate: '2024-11-30', price: 250, purchasePrice: 190, discountPercentage: 10, category: 'ویتامین و مکمل' },
+    { id: 1, name: 'Amoxicillin 500mg', barcode: '8901234567890', code: 'AMX500', manufacturer: 'Kabul Pharma', quantity: 150, unitsPerCarton: 100, productionDate: '2023-12-01', expiryDate: '2025-12-31', price: 120, purchasePrice: 95, discountPercentage: 5, category: 'آنتی‌بیوتیک' },
+    { id: 2, name: 'Panadol Extra', barcode: '8901234567891', code: 'PAN-EX', manufacturer: 'GSK', quantity: 250, unitsPerCarton: 200, productionDate: '2024-01-01', expiryDate: '2026-06-30', price: 80, purchasePrice: 60, discountPercentage: 0, category: 'مسکن' },
+    { id: 3, name: 'Vitamin C 1000mg', barcode: '8901234567892', code: 'VITC1000', manufacturer: 'Bayer', quantity: 80, unitsPerCarton: 50, productionDate: '2023-05-01', expiryDate: '2024-11-30', price: 250, purchasePrice: 190, discountPercentage: 10, category: 'ویتامین و مکمل' },
     { id: 4, name: 'Metformin 850mg', barcode: '8901234567893', code: 'MET850', manufacturer: 'Merck', quantity: 45, unitsPerCarton: 60, expiryDate: '2025-02-28', price: 180, purchasePrice: 145, discountPercentage: 0, category: 'دیابت' }, // Low stock
-    { id: 5, name: 'Aspirin 81mg', barcode: '8901234567894', code: 'ASP81', manufacturer: 'Bayer', quantity: 1200, unitsPerCarton: 1, expiryDate: '2027-01-31', price: 90, purchasePrice: 70, discountPercentage: 0, category: 'بیماری‌های قلبی' },
-    { id: 6, name: 'Ciprofloxacin 500mg', barcode: '8901234567895', code: 'CIP500', manufacturer: 'Kabul Pharma', quantity: 600, unitsPerCarton: 100, expiryDate: '2024-09-30', price: 300, purchasePrice: 240, discountPercentage: 15, category: 'آنتی‌بیوتیک' }, // Near expiry
-    { id: 7, name: 'Salbutamol Inhaler', barcode: '8901234567896', code: 'SAL-INH', manufacturer: 'GSK', quantity: 300, unitsPerCarton: 1, expiryDate: '2025-08-31', price: 450, purchasePrice: 380, discountPercentage: 0, category: 'تنفسی' },
-    { id: 8, name: 'Paracetamol Syrup', barcode: '8901234567897', code: 'PARA-SYP', manufacturer: 'Herat Medica', quantity: 950, unitsPerCarton: 24, expiryDate: '2025-10-31', price: 60, purchasePrice: 45, discountPercentage: 0, category: 'مسکن' },
+    { id: 5, name: 'Aspirin 81mg', barcode: '8901234567894', code: 'ASP81', manufacturer: 'Bayer', quantity: 120, unitsPerCarton: 1, expiryDate: '2027-01-31', price: 90, purchasePrice: 70, discountPercentage: 0, category: 'بیماری‌های قلبی' },
+    { id: 6, name: 'Ciprofloxacin 500mg', barcode: '8901234567895', code: 'CIP500', manufacturer: 'Kabul Pharma', quantity: 60, unitsPerCarton: 100, expiryDate: '2024-09-30', price: 300, purchasePrice: 240, discountPercentage: 15, category: 'آنتی‌بیوتیک' }, // Near expiry
+    { id: 7, name: 'Salbutamol Inhaler', barcode: '8901234567896', code: 'SAL-INH', manufacturer: 'GSK', quantity: 30, unitsPerCarton: 1, expiryDate: '2025-08-31', price: 450, purchasePrice: 380, discountPercentage: 0, category: 'تنفسی' },
+    { id: 8, name: 'Paracetamol Syrup', barcode: '8901234567897', code: 'PARA-SYP', manufacturer: 'Herat Medica', quantity: 95, unitsPerCarton: 24, expiryDate: '2025-10-31', price: 60, purchasePrice: 45, discountPercentage: 0, category: 'مسکن' },
     { id: 9, name: 'Loratadine 10mg', barcode: '8901234567898', code: 'LOR10', manufacturer: 'Bayer', quantity: 0, unitsPerCarton: 100, expiryDate: '2024-05-31', price: 150, purchasePrice: 110, discountPercentage: 0, category: 'ضد حساسیت' }, // Out of stock & expired
-    { id: 10, name: 'Omeprazole 20mg', barcode: '8901234567899', code: 'OME20', manufacturer: 'Herat Medica', quantity: 700, unitsPerCarton: 70, expiryDate: '2026-04-30', price: 220, purchasePrice: 175, discountPercentage: 5, category: 'گوارشی' },
+    { id: 10, name: 'Omeprazole 20mg', barcode: '8901234567899', code: 'OME20', manufacturer: 'Herat Medica', quantity: 70, unitsPerCarton: 70, expiryDate: '2026-04-30', price: 220, purchasePrice: 175, discountPercentage: 5, category: 'گوارشی' },
 ];
+
+// --- Main Warehouse ---
+const initialMockMainWarehouseDrugs: Drug[] = [
+    { id: 1, name: 'Amoxicillin 500mg', barcode: '8901234567890', code: 'AMX500', manufacturer: 'Kabul Pharma', quantity: 5000, unitsPerCarton: 100, productionDate: '2023-12-01', expiryDate: '2025-12-31', price: 120, purchasePrice: 95, discountPercentage: 5, category: 'آنتی‌بیوتیک' },
+    { id: 2, name: 'Panadol Extra', barcode: '8901234567891', code: 'PAN-EX', manufacturer: 'GSK', quantity: 10000, unitsPerCarton: 200, productionDate: '2024-01-01', expiryDate: '2026-06-30', price: 80, purchasePrice: 60, discountPercentage: 0, category: 'مسکن' },
+    { id: 3, name: 'Vitamin C 1000mg', barcode: '8901234567892', code: 'VITC1000', manufacturer: 'Bayer', quantity: 2000, unitsPerCarton: 50, productionDate: '2023-05-01', expiryDate: '2024-11-30', price: 250, purchasePrice: 190, discountPercentage: 10, category: 'ویتامین و مکمل' },
+    { id: 6, name: 'Ciprofloxacin 500mg', barcode: '8901234567895', code: 'CIP500', manufacturer: 'Kabul Pharma', quantity: 2500, unitsPerCarton: 100, expiryDate: '2024-09-30', price: 300, purchasePrice: 240, discountPercentage: 15, category: 'آنتی‌بیوتیک' },
+    { id: 8, name: 'Paracetamol Syrup', barcode: '8901234567897', code: 'PARA-SYP', manufacturer: 'Herat Medica', quantity: 5000, unitsPerCarton: 24, expiryDate: '2025-10-31', price: 60, purchasePrice: 45, discountPercentage: 0, category: 'مسکن' },
+    { id: 10, name: 'Omeprazole 20mg', barcode: '8901234567899', code: 'OME20', manufacturer: 'Herat Medica', quantity: 3000, unitsPerCarton: 70, expiryDate: '2026-04-30', price: 220, purchasePrice: 175, discountPercentage: 5, category: 'گوارشی' },
+];
+
 
 const initialMockCustomers: Customer[] = [
     { id: 1, name: 'داروخانه مرکزی کابل', manager: 'احمد ولی', phone: '0788112233', address: 'چهارراهی انصاری، کابل', registrationDate: '2023-01-15', status: 'فعال' },
@@ -230,6 +264,7 @@ const initialMockOrders: Order[] = [
             { drugId: 1, drugName: 'Amoxicillin 500mg', manufacturer: 'Kabul Pharma', code: 'AMX500', quantity: 50, bonusQuantity: 0, originalPrice: 120, discountPercentage: 5, finalPrice: 114 },
             { drugId: 2, drugName: 'Panadol Extra', manufacturer: 'GSK', code: 'PAN-EX', quantity: 100, bonusQuantity: 0, originalPrice: 80, discountPercentage: 0, finalPrice: 80 },
         ],
+        extraCharges: [],
         totalAmount: 13700,
         amountPaid: 13700, status: 'تکمیل شده', paymentStatus: 'پرداخت شده', ledgerRefCode: 'C1-001'
     },
@@ -238,6 +273,7 @@ const initialMockOrders: Order[] = [
         items: [
             { drugId: 3, drugName: 'Vitamin C 1000mg', manufacturer: 'Bayer', code: 'VITC1000', quantity: 20, bonusQuantity: 0, originalPrice: 250, discountPercentage: 10, finalPrice: 225 },
         ],
+        extraCharges: [],
         totalAmount: 4500,
         amountPaid: 2000, status: 'ارسال شده', paymentStatus: 'قسمتی پرداخت شده', ledgerRefCode: 'C2-001'
     },
@@ -247,6 +283,7 @@ const initialMockOrders: Order[] = [
             { drugId: 7, drugName: 'Salbutamol Inhaler', manufacturer: 'GSK', code: 'SAL-INH', quantity: 10, bonusQuantity: 2, originalPrice: 450, discountPercentage: 0, finalPrice: 450 },
             { drugId: 5, drugName: 'Aspirin 81mg', manufacturer: 'Bayer', code: 'ASP81', quantity: 200, bonusQuantity: 0, originalPrice: 90, discountPercentage: 0, finalPrice: 90 },
         ],
+        extraCharges: [],
         totalAmount: 22500,
         amountPaid: 0, status: 'ارسال شده', paymentStatus: 'پرداخت نشده', ledgerRefCode: 'C3-001'
     },
@@ -255,6 +292,7 @@ const initialMockOrders: Order[] = [
         items: [
             { drugId: 8, drugName: 'Paracetamol Syrup', manufacturer: 'Herat Medica', code: 'PARA-SYP', quantity: 60, bonusQuantity: 0, originalPrice: 60, discountPercentage: 0, finalPrice: 60 },
         ],
+        extraCharges: [],
         totalAmount: 3600,
         amountPaid: 0, status: 'در حال پردازش', paymentStatus: 'پرداخت نشده', ledgerRefCode: 'C5-001'
     },
@@ -264,6 +302,7 @@ const initialMockOrders: Order[] = [
             { drugId: 4, drugName: 'Metformin 850mg', manufacturer: 'Merck', code: 'MET850', quantity: 15, bonusQuantity: 0, originalPrice: 180, discountPercentage: 0, finalPrice: 180 },
             { drugId: 10, drugName: 'Omeprazole 20mg', manufacturer: 'Herat Medica', code: 'OME20', quantity: 30, bonusQuantity: 0, originalPrice: 220, discountPercentage: 5, finalPrice: 209 },
         ],
+        extraCharges: [],
         totalAmount: 8970,
         amountPaid: 0, status: 'در حال پردازش', paymentStatus: 'پرداخت نشده', ledgerRefCode: 'C1-002'
     },
@@ -272,6 +311,7 @@ const initialMockOrders: Order[] = [
         items: [
             { drugId: 2, drugName: 'Panadol Extra', manufacturer: 'GSK', code: 'PAN-EX', quantity: 200, bonusQuantity: 0, originalPrice: 80, discountPercentage: 0, finalPrice: 80 },
         ],
+        extraCharges: [],
         totalAmount: 16000,
         amountPaid: 16000, status: 'تکمیل شده', paymentStatus: 'پرداخت شده', ledgerRefCode: 'C2-002'
     }
@@ -300,6 +340,8 @@ const initialMockPurchaseBills: PurchaseBill[] = [
         totalAmount: 210000,
         amountPaid: 210000,
         status: 'دریافت شده',
+        currency: 'AFN',
+        exchangeRate: 1,
     },
     {
         id: 2, type: 'purchase', billNumber: 'HM-2024-58', supplierName: 'Herat Medica', purchaseDate: '2024-07-20',
@@ -310,11 +352,24 @@ const initialMockPurchaseBills: PurchaseBill[] = [
         totalAmount: 135000,
         amountPaid: 50000,
         status: 'دریافت شده',
+        currency: 'AFN',
+        exchangeRate: 1,
     }
 ];
 
 // --- Checkneh Mock Data (Will be managed by its own hook) ---
 const initialMockChecknehInvoices: ChecknehInvoice[] = [];
+
+// --- Internal Transfers Mock Data ---
+export type InternalTransfer = { 
+    id: number; 
+    date: string; 
+    drugName: string; 
+    quantity: number; 
+    from: 'main'; 
+    to: 'sales'; 
+    transferredBy: string; 
+};
 
 
 //=========== COMPONENTS ===========//
@@ -344,7 +399,8 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, isActive, onClick }) => 
 
 const navItems = [
     { id: 'dashboard', label: 'داشبورد', icon: <DashboardIcon /> },
-    { id: 'inventory', label: 'انبار و موجودی', icon: <InventoryIcon /> },
+    { id: 'main_warehouse', label: 'انبار اصلی', icon: <MainWarehouseIcon /> },
+    { id: 'inventory', label: 'انبار فروش', icon: <InventoryIcon /> },
     { id: 'sales', label: 'فروش و سفارشات', icon: <SalesIcon /> },
     { id: 'fulfillment', label: 'آماده‌سازی سفارشات', icon: <FulfillmentIcon /> },
     { id: 'customers', label: 'مشتریان', icon: <CustomersIcon /> },
@@ -844,12 +900,16 @@ const App: React.FC = () => {
     // Centralized, Persistent State
     const [users, setUsers] = usePersistentState<User[]>('hayat_users', initialMockUsers);
     const [drugs, setDrugs] = usePersistentState<Drug[]>('hayat_drugs', initialMockDrugs);
+    const [mainWarehouseDrugs, setMainWarehouseDrugs] = usePersistentState<Drug[]>('hayat_mainWarehouseDrugs', initialMockMainWarehouseDrugs);
+    const [internalTransfers, setInternalTransfers] = usePersistentState<InternalTransfer[]>('hayat_internalTransfers', []);
+    const [stockRequisitions, setStockRequisitions] = usePersistentState<StockRequisition[]>('hayat_stockRequisitions', []);
     const [orders, setOrders] = usePersistentState<Order[]>('hayat_orders', initialMockOrders);
     const [customers, setCustomers] = usePersistentState<Customer[]>('hayat_customers', initialMockCustomers);
     const [expenses, setExpenses] = usePersistentState<Expense[]>('hayat_expenses', initialMockExpenses);
     const [suppliers, setSuppliers] = usePersistentState<Supplier[]>('hayat_suppliers', initialMockSuppliers);
     const [purchaseBills, setPurchaseBills] = usePersistentState<PurchaseBill[]>('hayat_purchaseBills', initialMockPurchaseBills);
     const [trash, setTrash] = usePersistentState<TrashItem[]>('hayat_trash', []);
+    const [inventoryWriteOffs, setInventoryWriteOffs] = usePersistentState<InventoryWriteOff[]>('hayat_inventoryWriteOffs', []);
     
     // State for unsaved changes warning
     const [hasUnsavedChanges, setHasUnsavedChanges] = usePersistentState<boolean>('hayat_hasUnsavedChanges', false);
@@ -909,7 +969,10 @@ const App: React.FC = () => {
         if (alertSettings.expiry.enabled) {
             const thresholdDate = new Date();
             thresholdDate.setMonth(now.getMonth() + alertSettings.expiry.months);
-            drugs.forEach(drug => {
+            const allDrugs = [...drugs, ...mainWarehouseDrugs];
+            const uniqueDrugs = Array.from(new Map(allDrugs.map(d => [d.id, d])).values());
+
+            uniqueDrugs.forEach(drug => {
                 const expiryDate = new Date(drug.expiryDate);
                 if (drug.quantity > 0 && expiryDate < thresholdDate && expiryDate > now) {
                     const monthsLeft = (expiryDate.getFullYear() - now.getFullYear()) * 12 + (expiryDate.getMonth() - now.getMonth());
@@ -924,7 +987,7 @@ const App: React.FC = () => {
             });
         }
         
-        // 2. Low Stock
+        // 2. Low Stock (Only for Sales Warehouse)
         if (alertSettings.lowStock.enabled) {
              drugs.forEach(drug => {
                 if (drug.quantity > 0 && drug.quantity < alertSettings.lowStock.quantity) {
@@ -932,7 +995,7 @@ const App: React.FC = () => {
                         id: `lowstock-${drug.id}`,
                         type: 'low-stock',
                         severity: 'warning',
-                        message: `موجودی داروی ${drug.name} کم است (${drug.quantity} عدد باقی مانده).`,
+                        message: `موجودی ${drug.name} در انبار فروش کم است (${drug.quantity} عدد).`,
                         navigateTo: 'inventory'
                     });
                 }
@@ -976,7 +1039,7 @@ const App: React.FC = () => {
         }
 
         return generatedAlerts;
-    }, [drugs, orders, customers, alertSettings]);
+    }, [drugs, mainWarehouseDrugs, orders, customers, alertSettings]);
 
 
      // --- PWA Update Handler ---
@@ -1291,7 +1354,7 @@ const App: React.FC = () => {
 
     // --- Backup & Restore Handlers ---
     const getAllData = () => ({
-        users, drugs, orders, customers, expenses, suppliers, purchaseBills, trash, companyInfo, documentSettings, alertSettings
+        users, drugs, mainWarehouseDrugs, internalTransfers, orders, customers, expenses, suppliers, purchaseBills, trash, inventoryWriteOffs, stockRequisitions, companyInfo, documentSettings, alertSettings
     });
 
     const setAllData = (data: any) => {
@@ -1301,12 +1364,16 @@ const App: React.FC = () => {
         }
         if (data.users) setUsers(data.users);
         if (data.drugs) setDrugs(data.drugs);
+        if (data.mainWarehouseDrugs) setMainWarehouseDrugs(data.mainWarehouseDrugs);
+        if (data.internalTransfers) setInternalTransfers(data.internalTransfers);
+        if (data.stockRequisitions) setStockRequisitions(data.stockRequisitions);
         if (data.orders) setOrders(data.orders);
         if (data.customers) setCustomers(data.customers);
         if (data.expenses) setExpenses(data.expenses);
         if (data.suppliers) setSuppliers(data.suppliers);
         if (data.purchaseBills) setPurchaseBills(data.purchaseBills);
         if (data.trash) setTrash(data.trash);
+        if (data.inventoryWriteOffs) setInventoryWriteOffs(data.inventoryWriteOffs);
         if (data.companyInfo) setCompanyInfo(data.companyInfo);
         if (data.documentSettings) setDocumentSettings(data.documentSettings);
         if (data.alertSettings) setAlertSettings(data.alertSettings);
@@ -1469,6 +1536,25 @@ const App: React.FC = () => {
             return Array.from(drugsMap.values());
         });
     };
+
+    const adjustMainWarehouseInventory = (items: PurchaseItem[], operation: 'add' | 'subtract') => {
+        setMainWarehouseDrugs(currentDrugs => {
+            const drugsMap = new Map(currentDrugs.map(d => [d.id, { ...d }]));
+            
+            for (const item of items) {
+                const drug = drugsMap.get(item.drugId);
+                if (drug) {
+                    if (operation === 'subtract') {
+                        drug.quantity -= item.quantity;
+                    } else {
+                        drug.quantity += item.quantity;
+                    }
+                    drugsMap.set(item.drugId, drug);
+                }
+            }
+            return Array.from(drugsMap.values());
+        });
+    };
     
     // --- Drug Handlers ---
     const handleSaveDrug = (drugData: Drug) => {
@@ -1493,6 +1579,33 @@ const App: React.FC = () => {
         });
     };
     
+    const handleWriteOff = (drug: Drug, quantity: number, reason: WriteOffReason, notes: string) => {
+        if (!currentUser) return;
+        
+        // 1. Create the write-off record
+        const newWriteOff: InventoryWriteOff = {
+            id: Date.now(),
+            drugId: drug.id,
+            drugName: drug.name,
+            quantity,
+            reason,
+            notes,
+            date: new Date().toISOString(),
+            adjustedBy: currentUser.username,
+            costAtTime: drug.purchasePrice,
+            totalLossValue: drug.purchasePrice * quantity,
+        };
+        setInventoryWriteOffs(prev => [newWriteOff, ...prev]);
+    
+        // 2. Adjust inventory
+        setDrugs(currentDrugs => currentDrugs.map(d =>
+            d.id === drug.id ? { ...d, quantity: d.quantity - quantity } : d
+        ));
+        
+        addToast(`${quantity.toLocaleString()} عدد از ${drug.name} به عنوان ضایعات ثبت شد.`, 'success');
+        setHasUnsavedChanges(true);
+    };
+
     // --- Order Handlers ---
     const handleSaveOrder = (orderData: Order) => {
         const existingOrder = orders.find(o => o.id === orderData.id);
@@ -1607,28 +1720,46 @@ const App: React.FC = () => {
     
     // --- Purchase Bill Handlers ---
     const handleSavePurchaseBill = (billData: PurchaseBill) => {
-        const exists = purchaseBills.some(b => b.id === billData.id);
-        if (exists) { // This is an edit - which shouldn't happen for returns
+        const isEditing = purchaseBills.some(b => b.id === billData.id);
+        const oldBill = isEditing ? purchaseBills.find(b => b.id === billData.id) : null;
+    
+        if (isEditing && oldBill) {
+            // Revert old inventory status
+            if (oldBill.status === 'دریافت شده') {
+                const operation = oldBill.type === 'purchase' ? 'subtract' : 'add';
+                adjustMainWarehouseInventory(oldBill.items, operation);
+            }
+            // Apply new inventory status
+            if (billData.status === 'دریافت شده') {
+                const operation = billData.type === 'purchase' ? 'add' : 'subtract';
+                adjustMainWarehouseInventory(billData.items, operation);
+            }
             setPurchaseBills(prev => prev.map(b => b.id === billData.id ? billData : b));
             addToast(`فاکتور خرید ${billData.billNumber} به‌روزرسانی شد.`, 'success');
-        } else { // This is a new bill (purchase or return)
-            setPurchaseBills(prev => [billData, ...prev]);
-            if (billData.type === 'purchase') {
-                 addToast(`فاکتور خرید ${billData.billNumber} با موفقیت ثبت شد.`, 'success');
-            } else {
-                 addToast(`مستردی خرید ${billData.billNumber} با موفقیت ثبت شد.`, 'success');
+        } else {
+            // New bill inventory logic
+            if (billData.status === 'دریافت شده') {
+                const operation = billData.type === 'purchase' ? 'add' : 'subtract';
+                adjustMainWarehouseInventory(billData.items, operation);
             }
+            setPurchaseBills(prev => [billData, ...prev]);
+            addToast(`فاکتور ${billData.type === 'purchase' ? 'خرید' : 'مستردی'} ${billData.billNumber} با موفقیت ثبت شد.`, 'success');
         }
         setHasUnsavedChanges(true);
     };
     
     const handleDeletePurchaseBill = (id: number) => {
-         showConfirmation('تایید حذف', 'آیا از حذف این فاکتور خرید اطمینان دارید؟ این عمل تاثیری بر انبار نخواهد داشت.', () => {
+        showConfirmation('تایید حذف', 'آیا از حذف این فاکتور خرید اطمینان دارید؟ اگر این فاکتور دریافت شده باشد، موجودی کالاها از انبار کسر خواهد شد.', () => {
             const itemToDelete = purchaseBills.find(b => b.id === id);
-            if(itemToDelete) {
-                 softDeleteItem(itemToDelete, 'purchaseBill');
-                 setPurchaseBills(prev => prev.filter(b => b.id !== id));
-                 addToast('فاکتور خرید با موفقیت به سطل زباله منتقل شد.', 'success');
+            if (itemToDelete) {
+                // Revert inventory changes if the bill was received
+                if (itemToDelete.status === 'دریافت شده') {
+                    const operation = itemToDelete.type === 'purchase' ? 'subtract' : 'add';
+                    adjustMainWarehouseInventory(itemToDelete.items, operation);
+                }
+                softDeleteItem(itemToDelete, 'purchaseBill');
+                setPurchaseBills(prev => prev.filter(b => b.id !== id));
+                addToast('فاکتور خرید با موفقیت به سطل زباله منتقل شد.', 'success');
             }
         });
     };
@@ -1722,7 +1853,10 @@ const App: React.FC = () => {
                 break;
             case 'purchaseBill':
                 const restoredBill = itemToRestore.data as PurchaseBill;
-                // No inventory adjustment on purchase restore, per user request
+                if (restoredBill.status === 'دریافت شده') {
+                    const operation = restoredBill.type === 'purchase' ? 'add' : 'subtract';
+                    adjustMainWarehouseInventory(restoredBill.items, operation);
+                }
                 setPurchaseBills(prev => [restoredBill, ...prev].sort((a,b) => a.id - b.id));
                 break;
         }
@@ -1747,6 +1881,74 @@ const App: React.FC = () => {
         });
     }
 
+    // --- Stock Requisition Handlers ---
+    const handleSaveRequisition = (newRequisition: Omit<StockRequisition, 'id' | 'status' | 'requestedBy' | 'date'>) => {
+        if (!currentUser) return;
+        const finalRequisition: StockRequisition = {
+            ...newRequisition,
+            id: Date.now(),
+            date: new Date().toISOString(),
+            status: 'در انتظار',
+            requestedBy: currentUser.username,
+        };
+        setStockRequisitions(prev => [finalRequisition, ...prev]);
+        addToast('درخواست کالا با موفقیت ثبت و برای انبار اصلی ارسال شد.', 'success');
+        setHasUnsavedChanges(true);
+    };
+
+    const handleFulfillRequisition = (requisition: StockRequisition, fulfilledItems: StockRequisitionItem[], fulfilledBy: string) => {
+        // 1. Update inventories
+        setMainWarehouseDrugs(currentDrugs => {
+            const drugsMap = new Map(currentDrugs.map(d => [d.id, { ...d }]));
+            for (const item of fulfilledItems) {
+                const drug = drugsMap.get(item.drugId);
+                if (drug) {
+                    drug.quantity -= item.quantityFulfilled;
+                    drugsMap.set(item.drugId, drug);
+                }
+            }
+            return Array.from(drugsMap.values());
+        });
+
+        setDrugs(currentDrugs => {
+            const drugsMap = new Map(currentDrugs.map(d => [d.id, { ...d }]));
+            for (const item of fulfilledItems) {
+                const drug = drugsMap.get(item.drugId);
+                const mainWarehouseDrug = mainWarehouseDrugs.find(d => d.id === item.drugId);
+                if (drug) {
+                    drug.quantity += item.quantityFulfilled;
+                    drugsMap.set(item.drugId, drug);
+                } else if (mainWarehouseDrug) {
+                    // Drug doesn't exist in sales warehouse, add it
+                    drugsMap.set(item.drugId, { ...mainWarehouseDrug, quantity: item.quantityFulfilled });
+                }
+            }
+            return Array.from(drugsMap.values());
+        });
+
+        // 2. Update requisition status
+        setStockRequisitions(prev => prev.map(req => 
+            req.id === requisition.id 
+                ? { ...req, status: 'تکمیل شده', fulfilledBy, items: fulfilledItems } 
+                : req
+        ));
+
+        // 3. Create a log in internalTransfers for history
+        const transferLog: InternalTransfer = {
+            id: Date.now(),
+            date: new Date().toISOString(),
+            drugName: `انتقال بر اساس درخواست #${requisition.id}`,
+            quantity: fulfilledItems.reduce((sum, item) => sum + item.quantityFulfilled, 0),
+            from: 'main',
+            to: 'sales',
+            transferredBy: fulfilledBy,
+        };
+        setInternalTransfers(prev => [transferLog, ...prev]);
+
+        addToast(`درخواست #${requisition.id} با موفقیت تکمیل و کالاها منتقل شدند.`, 'success');
+        setHasUnsavedChanges(true);
+    };
+
 
     // --- AI Assistant Handler ---
     const handleSendToAssistant = async (message: string) => {
@@ -1757,7 +1959,7 @@ const App: React.FC = () => {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
             const systemInstruction = `You are 'Hayat Assistant', an expert business analyst for a pharmaceutical distribution company in Afghanistan. Your responses must be in Farsi. Analyze the provided JSON data to answer the user's question. Today's date is ${new Date().toISOString().split('T')[0]}.`;
             
-            const prompt = `${systemInstruction}\n\n## Data:\n\n### Drugs:\n${JSON.stringify(drugs, null, 2)}\n\n### Customers:\n${JSON.stringify(customers, null, 2)}\n\n### Orders:\n${JSON.stringify(orders, null, 2)}\n\n## User Question:\n${message}`;
+            const prompt = `${systemInstruction}\n\n## Data:\n\n### Sales Warehouse Drugs:\n${JSON.stringify(drugs, null, 2)}\n\n### Customers:\n${JSON.stringify(customers, null, 2)}\n\n### Orders:\n${JSON.stringify(orders, null, 2)}\n\n## User Question:\n${message}`;
 
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
 
@@ -1848,10 +2050,28 @@ const App: React.FC = () => {
         switch (activeItem) {
             case 'dashboard':
                 return <Dashboard drugs={drugs} orders={orders} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
+            case 'main_warehouse':
+                return <MainWarehouse 
+                    mainWarehouseDrugs={mainWarehouseDrugs}
+                    stockRequisitions={stockRequisitions}
+                    onFulfillRequisition={handleFulfillRequisition}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                />;
             case 'inventory':
-                return <Inventory drugs={drugs} onSave={handleSaveDrug} onDelete={handleDeleteDrug} currentUser={currentUser} addToast={addToast} />;
+                return <Inventory 
+                    drugs={drugs} 
+                    mainWarehouseDrugs={mainWarehouseDrugs} 
+                    stockRequisitions={stockRequisitions}
+                    onSaveDrug={handleSaveDrug} 
+                    onDelete={handleDeleteDrug} 
+                    onWriteOff={handleWriteOff} 
+                    onSaveRequisition={handleSaveRequisition}
+                    currentUser={currentUser} 
+                    addToast={addToast} 
+                />;
             case 'sales':
-                return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} documentSettings={documentSettings} addToast={addToast}/>;
+                return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} documentSettings={documentSettings} addToast={addToast} onSaveDrug={handleSaveDrug} />;
             case 'fulfillment':
                 return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} />;
             case 'customers':
@@ -1867,7 +2087,7 @@ const App: React.FC = () => {
             case 'finance':
                 return <Accounting incomes={incomes} expenses={expenses} onSave={handleSaveExpense} onDelete={handleDeleteExpense} currentUser={currentUser} />;
             case 'reports':
-                return <Reports orders={orders} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} documentSettings={documentSettings} />;
+                return <Reports orders={orders} drugs={drugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} companyInfo={companyInfo} documentSettings={documentSettings} />;
              case 'checkneh':
                 return <Checkneh 
                     customers={customers} 

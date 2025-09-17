@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Customer } from './Customers';
 import { Order } from './Sales';
@@ -39,6 +38,21 @@ type ReportData = {
         finalBalance: number;
     }
 }
+
+//=========== HELPERS ===========//
+const formatGregorianForDisplay = (dateStr: string): string => {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    } catch (e) {
+        return '';
+    }
+};
 
 
 //=========== MODAL COMPONENTS ===========//
@@ -125,7 +139,8 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, customer, or
                     <table className="w-full text-right text-sm">
                         <thead className="bg-gray-100 sticky top-0">
                             <tr>
-                                <th className="p-3 font-semibold text-gray-600">تاریخ</th>
+                                <th className="p-3 font-semibold text-gray-600">تاریخ شمسی</th>
+                                <th className="p-3 font-semibold text-gray-600">تاریخ میلادی</th>
                                 <th className="p-3 font-semibold text-gray-600">کد ارجاع</th>
                                 <th className="p-3 font-semibold text-gray-600">شرح</th>
                                 <th className="p-3 font-semibold text-gray-600">بدهکار</th>
@@ -137,6 +152,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, customer, or
                             {ledgerEntries.map(entry => (
                                 <tr key={entry.orderId} className="hover:bg-gray-50">
                                     <td className="p-3 whitespace-nowrap">{new Date(entry.date).toLocaleDateString('fa-IR')}</td>
+                                    <td className="p-3 whitespace-nowrap font-mono text-xs">{formatGregorianForDisplay(entry.date)}</td>
                                     <td className="p-3 whitespace-nowrap font-mono text-xs">{entry.refCode || '-'}</td>
                                     <td className="p-3">{entry.description}</td>
                                     <td className="p-3 text-red-600">{entry.debit > 0 ? entry.debit.toLocaleString() : '-'}</td>
@@ -198,7 +214,7 @@ const CustomerReportModal: React.FC<CustomerReportModalProps> = ({ isOpen, onClo
                     <div className="text-center my-6">
                         <h2 className='text-xl font-bold'>گزارش تفصیلی معاملات</h2>
                          <p className="text-sm text-gray-500">برای: {reportData.customerName}</p>
-                         <p className="text-sm text-gray-500">از {new Date(reportData.startDate).toLocaleDateString('fa-IR')} تا {new Date(reportData.endDate).toLocaleDateString('fa-IR')}</p>
+                         <p className="text-sm text-gray-500">از {new Date(reportData.startDate).toLocaleDateString('fa-IR')} ({formatGregorianForDisplay(reportData.startDate)}) تا {new Date(reportData.endDate).toLocaleDateString('fa-IR')} ({formatGregorianForDisplay(reportData.endDate)})</p>
                     </div>
                     <main className='mt-6 space-y-8'>
                         {reportData.invoices.length === 0 ? (
@@ -208,7 +224,7 @@ const CustomerReportModal: React.FC<CustomerReportModalProps> = ({ isOpen, onClo
                                <div key={invoice.id} className="p-4 border rounded-lg page-break-inside-avoid">
                                    <div className='flex justify-between items-center bg-gray-50 p-3 rounded-t-md'>
                                        <h4 className='font-bold text-lg'>فاکتور شماره: {invoice.orderNumber} ({invoice.ledgerRefCode})</h4>
-                                       <p className='text-sm font-semibold'>تاریخ: {new Date(invoice.orderDate).toLocaleDateString('fa-IR')}</p>
+                                       <p className='text-sm font-semibold'>تاریخ: {new Date(invoice.orderDate).toLocaleDateString('fa-IR')} / {formatGregorianForDisplay(invoice.orderDate)}</p>
                                    </div>
                                     <div className="overflow-x-auto mt-2">
                                          <table className="w-full text-right text-sm">
@@ -383,6 +399,7 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
                    orderDate <= new Date(endDate);
         }).sort((a,b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
 
+        // FIX: Convert customerId from string to number for comparison.
         const summary = customerSummaries.find(s => s.customerId === Number(customerId));
 
         const reportData: ReportData = {
@@ -429,7 +446,6 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
                             <label htmlFor="customerId" className="block text-sm font-medium text-gray-700 mb-1">انتخاب مشتری</label>
                              <select id="customerId" name="customerId" value={reportFilters.customerId} onChange={handleReportFilterChange} className="w-full bg-white px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" required>
                                 <option value="" disabled>-- یک مشتری را انتخاب کنید --</option>
-                                {/* FIX: Explicitly cast customer ID to a string for the option's value attribute. */}
                                 {customers.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
                             </select>
                         </div>

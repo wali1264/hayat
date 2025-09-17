@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Supplier } from './Suppliers';
 import { PurchaseBill } from './Purchasing';
@@ -39,6 +38,21 @@ type ReportData = {
         finalBalance: number;
     }
 }
+
+//=========== HELPERS ===========//
+const formatGregorianForDisplay = (dateStr: string): string => {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    } catch (e) {
+        return '';
+    }
+};
 
 
 //=========== MODAL COMPONENTS ===========//
@@ -124,7 +138,8 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, supplier, bi
                     <table className="w-full text-right text-sm">
                         <thead className="bg-gray-100 sticky top-0">
                             <tr>
-                                <th className="p-3 font-semibold text-gray-600">تاریخ</th>
+                                <th className="p-3 font-semibold text-gray-600">تاریخ شمسی</th>
+                                <th className="p-3 font-semibold text-gray-600">تاریخ میلادی</th>
                                 <th className="p-3 font-semibold text-gray-600">شرح</th>
                                 <th className="p-3 font-semibold text-gray-600">بدهکار (پرداختی ما)</th>
                                 <th className="p-3 font-semibold text-gray-600">بستانکار (خرید ما)</th>
@@ -135,6 +150,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, supplier, bi
                             {ledgerEntries.map(entry => (
                                 <tr key={entry.billId} className="hover:bg-gray-50">
                                     <td className="p-3 whitespace-nowrap">{new Date(entry.date).toLocaleDateString('fa-IR')}</td>
+                                    <td className="p-3 whitespace-nowrap font-mono text-xs">{formatGregorianForDisplay(entry.date)}</td>
                                     <td className="p-3">{entry.description}</td>
                                     <td className="p-3 text-green-600">{entry.debit > 0 ? entry.debit.toLocaleString() : '-'}</td>
                                     <td className="p-3 text-red-600">{entry.credit > 0 ? entry.credit.toLocaleString() : '-'}</td>
@@ -195,7 +211,7 @@ const SupplierReportModal: React.FC<SupplierReportModalProps> = ({ isOpen, onClo
                     <div className="text-center my-6">
                          <h2 className='text-xl font-bold'>گزارش تفصیلی معاملات با تامین کننده</h2>
                          <p className="text-sm text-gray-500">برای: {reportData.supplierName}</p>
-                         <p className="text-sm text-gray-500">از {new Date(reportData.startDate).toLocaleDateString('fa-IR')} تا {new Date(reportData.endDate).toLocaleDateString('fa-IR')}</p>
+                         <p className="text-sm text-gray-500">از {new Date(reportData.startDate).toLocaleDateString('fa-IR')} ({formatGregorianForDisplay(reportData.startDate)}) تا {new Date(reportData.endDate).toLocaleDateString('fa-IR')} ({formatGregorianForDisplay(reportData.endDate)})</p>
                     </div>
                     <main className='mt-6 space-y-8'>
                         {reportData.bills.length === 0 ? (
@@ -205,7 +221,7 @@ const SupplierReportModal: React.FC<SupplierReportModalProps> = ({ isOpen, onClo
                                <div key={bill.id} className="p-4 border rounded-lg page-break-inside-avoid">
                                    <div className='flex justify-between items-center bg-gray-50 p-3 rounded-t-md'>
                                        <h4 className='font-bold text-lg'>فاکتور شماره: {bill.billNumber}</h4>
-                                       <p className='text-sm font-semibold'>تاریخ: {new Date(bill.purchaseDate).toLocaleDateString('fa-IR')}</p>
+                                       <p className='text-sm font-semibold'>تاریخ: {new Date(bill.purchaseDate).toLocaleDateString('fa-IR')} / {formatGregorianForDisplay(bill.purchaseDate)}</p>
                                    </div>
                                     <div className="overflow-x-auto mt-2">
                                          <table className="w-full text-right text-sm">
@@ -266,7 +282,7 @@ const SupplierReportModal: React.FC<SupplierReportModalProps> = ({ isOpen, onClo
                             onChange={e => setNotes(e.target.value)} 
                             className="w-full text-sm border rounded-lg p-2 mt-1 bg-white focus:ring-2 focus:ring-teal-500" 
                             rows="2"
-                            placeholder="ملاحظات لازم را اینجا وارد کنید..."
+                            placeholder="ملاحظات لازم را اینجا بنویسید..."
                         ></textarea>
                     </div>
                     <div className="flex justify-between items-center">
@@ -279,9 +295,11 @@ const SupplierReportModal: React.FC<SupplierReportModalProps> = ({ isOpen, onClo
                                 <option value="compact">فشرده</option>
                             </select>
                         </div>
-                        <div className="flex gap-2">
+                        <div className='flex gap-2'>
                             <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">بستن</button>
-                            <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold"><PrintIcon /> <span className="mr-2">چاپ</span></button>
+                            <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold">
+                                <PrintIcon /> <span className="mr-2">چاپ</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -300,7 +318,7 @@ type SupplierAccountsProps = {
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchaseBills, companyInfo, documentSettings, addToast }) => {
+const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchaseBills: bills, companyInfo, documentSettings, addToast }) => {
     const [isLedgerOpen, setIsLedgerOpen] = useState(false);
     const [selectedSupplier, setSelectedSupplier] = useState<SupplierFinancialSummary | null>(null);
 
@@ -308,43 +326,58 @@ const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchase
     const [reportFilters, setReportFilters] = useState({ supplierId: '', startDate: '', endDate: '' });
     const [generatedReportData, setGeneratedReportData] = useState<ReportData | null>(null);
 
+
     const supplierSummaries = useMemo<SupplierFinancialSummary[]>(() => {
         return suppliers.map(supplier => {
-            const supplierBills = purchaseBills.filter(b => b.supplierName === supplier.name);
+            const supplierBills = bills.filter(b => b.supplierName === supplier.name);
             const totalPurchased = supplierBills.filter(b => b.type === 'purchase').reduce((sum, b) => sum + Number(b.totalAmount), 0);
             const totalReturned = supplierBills.filter(b => b.type === 'purchase_return').reduce((sum, b) => sum + Math.abs(Number(b.totalAmount)), 0);
             const totalPaid = supplierBills.reduce((sum, b) => sum + Number(b.amountPaid), 0);
             
             const balance = totalPurchased - totalReturned - totalPaid;
             
-            return { supplierId: supplier.id, supplierName: supplier.name, totalPurchased: totalPurchased - totalReturned, totalPaid, balance };
+            return {
+                supplierId: supplier.id,
+                supplierName: supplier.name,
+                totalPurchased: totalPurchased - totalReturned, // Net Purchased
+                totalPaid,
+                balance,
+            };
         });
-    }, [suppliers, purchaseBills]);
+    }, [suppliers, bills]);
     
-    const handleViewLedger = (summary: SupplierFinancialSummary) => {
-        setSelectedSupplier(summary);
+    const handleViewLedger = (supplierSummary: SupplierFinancialSummary) => {
+        setSelectedSupplier(supplierSummary);
         setIsLedgerOpen(true);
     };
+
+    const handleReportFilterChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
+        setReportFilters(prev => ({...prev, [e.target.name]: e.target.value}));
+    }
 
     const handleGenerateReport = (e: React.FormEvent) => {
         e.preventDefault();
         const { supplierId, startDate, endDate } = reportFilters;
         if (!supplierId || !startDate || !endDate) {
-            addToast("لطفاً شرکت و بازه زمانی را به طور کامل انتخاب کنید.", "error");
+            addToast("لطفاً شرکت و بازه زمانی را به طور کامل انتخاب کنید.", 'error');
             return;
         }
 
-        const supplier = suppliers.find(s => s.id === Number(supplierId));
+        // FIX: Convert supplierId from string to number for comparison.
+        const supplier = suppliers.find(c => c.id === Number(supplierId));
         if (!supplier) return;
 
-        const filteredBills = purchaseBills.filter(b => {
+        const filteredBills = bills.filter(b => {
             const billDate = new Date(b.purchaseDate);
-            return b.supplierName === supplier.name && billDate >= new Date(startDate) && billDate <= new Date(endDate);
+            return b.supplierName === supplier.name &&
+                   billDate >= new Date(startDate) &&
+                   billDate <= new Date(endDate);
         }).sort((a,b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
 
+        // FIX: Convert supplierId from string to number for comparison.
         const summary = supplierSummaries.find(s => s.supplierId === Number(supplierId));
 
-        setGeneratedReportData({
+        const reportData: ReportData = {
             supplierName: supplier.name,
             startDate,
             endDate,
@@ -354,50 +387,66 @@ const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchase
                 totalPaid: filteredBills.reduce((sum, bill) => sum + Number(bill.amountPaid), 0),
                 finalBalance: summary ? summary.balance : 0
             }
-        });
+        };
+        
+        setGeneratedReportData(reportData);
         setIsReportModalOpen(true);
     }
 
+
     return (
         <div className="p-8">
-            <LedgerModal isOpen={isLedgerOpen} onClose={() => setIsLedgerOpen(false)} supplier={selectedSupplier} bills={purchaseBills} />
-            <SupplierReportModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} reportData={generatedReportData} companyInfo={companyInfo} documentSettings={documentSettings} />
-            
+            <LedgerModal
+                isOpen={isLedgerOpen}
+                onClose={() => setIsLedgerOpen(false)}
+                supplier={selectedSupplier}
+                bills={bills}
+            />
+            <SupplierReportModal
+                isOpen={isReportModalOpen}
+                onClose={() => setIsReportModalOpen(false)}
+                reportData={generatedReportData}
+                companyInfo={companyInfo}
+                documentSettings={documentSettings}
+            />
             <div className="mb-8">
                 <h2 className="text-3xl font-bold text-gray-800">مدیریت حسابات شرکت‌ها</h2>
                 <p className="text-gray-500 mt-2">بررسی وضعیت مالی، بدهی‌ها و صورت حساب هر تامین کننده.</p>
             </div>
-
+            
+            {/* Report Generation Section */}
             <div className="bg-gray-50 rounded-xl shadow-md p-4 mb-6">
                  <form onSubmit={handleGenerateReport}>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                         <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">انتخاب شرکت</label>
-                             <select name="supplierId" value={reportFilters.supplierId} onChange={e => setReportFilters(p => ({...p, supplierId: e.target.value}))} className="w-full bg-white px-3 py-2 border rounded-lg" required>
+                            <label htmlFor="supplierId" className="block text-sm font-medium text-gray-700 mb-1">انتخاب شرکت</label>
+                             <select id="supplierId" name="supplierId" value={reportFilters.supplierId} onChange={handleReportFilterChange} className="w-full bg-white px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" required>
                                 <option value="" disabled>-- یک شرکت را انتخاب کنید --</option>
-                                {/* FIX: Explicitly cast supplier ID to a string for the option's value attribute. */}
                                 {suppliers.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
                             </select>
                         </div>
                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">از تاریخ</label>
-                            <input type="date" name="startDate" value={reportFilters.startDate} onChange={e => setReportFilters(p => ({...p, startDate: e.target.value}))} className="w-full bg-white px-3 py-2 border rounded-lg" required />
+                            <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">از تاریخ</label>
+                            <input type="date" id="startDate" name="startDate" value={reportFilters.startDate} onChange={handleReportFilterChange} className="w-full bg-white px-3 py-2 border border-gray-300 rounded-lg" required />
                         </div>
                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">تا تاریخ</label>
-                            <input type="date" name="endDate" value={reportFilters.endDate} onChange={e => setReportFilters(p => ({...p, endDate: e.target.value}))} className="w-full bg-white px-3 py-2 border rounded-lg" required />
+                            <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">تا تاریخ</label>
+                            <input type="date" id="endDate" name="endDate" value={reportFilters.endDate} onChange={handleReportFilterChange} className="w-full bg-white px-3 py-2 border border-gray-300 rounded-lg" required />
                         </div>
                     </div>
                     <div className="flex justify-end mt-4">
-                        <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold shadow-md">ایجاد گزارش تفصیلی</button>
+                        <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold shadow-md">
+                           ایجاد گزارش تفصیلی
+                        </button>
                     </div>
                  </form>
             </div>
 
+
             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-right">
-                        <thead className="bg-gray-50 border-b-2">
+                        <thead className="bg-gray-50 border-b-2 border-gray-200">
                             <tr>
                                 <th className="p-4 text-sm font-semibold text-gray-600">نام شرکت</th>
                                 <th className="p-4 text-sm font-semibold text-gray-600">مجموع خرید خالص</th>
@@ -406,26 +455,34 @@ const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchase
                                 <th className="p-4 text-sm font-semibold text-gray-600">عملیات</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y">
-                             {supplierSummaries.map(summary => (
-                                <tr key={summary.supplierId} className={`hover:bg-gray-50 ${summary.balance > 0 ? 'bg-red-50 hover:bg-red-100' : ''}`}>
-                                    <td className="p-4 font-medium text-gray-800">{summary.supplierName}</td>
-                                    <td className="p-4 text-gray-600">{summary.totalPurchased.toLocaleString()}</td>
-                                    <td className="p-4 text-green-600">{summary.totalPaid.toLocaleString()}</td>
-                                    <td className={`p-4 font-bold ${summary.balance > 0 ? 'text-red-600' : 'text-gray-800'}`}>
-                                        {summary.balance.toLocaleString()}
-                                    </td>
-                                    <td className="p-4">
-                                        <button 
-                                            onClick={() => handleViewLedger(summary)} 
-                                            className="flex items-center text-teal-600 hover:text-teal-800 font-semibold text-sm"
-                                        >
-                                            <LedgerIcon />
-                                            <span className="mr-2">مشاهده صورت حساب</span>
-                                        </button>
+                        <tbody className="divide-y divide-gray-200">
+                             {supplierSummaries.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="text-center p-8 text-gray-500">
+                                        هیچ تامین کننده‌ای ثبت نشده است.
                                     </td>
                                 </tr>
-                            ))}
+                            ) : (
+                                supplierSummaries.map(summary => (
+                                    <tr key={summary.supplierId} className={`hover:bg-gray-50 transition-colors ${summary.balance > 0 ? 'bg-red-50 hover:bg-red-100' : ''}`}>
+                                        <td className="p-4 text-gray-800 font-medium">{summary.supplierName}</td>
+                                        <td className="p-4 text-gray-600">{summary.totalPurchased.toLocaleString()}</td>
+                                        <td className="p-4 text-green-600">{summary.totalPaid.toLocaleString()}</td>
+                                        <td className={`p-4 font-bold ${summary.balance > 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                                            {summary.balance.toLocaleString()}
+                                        </td>
+                                        <td className="p-4">
+                                            <button 
+                                                onClick={() => handleViewLedger(summary)} 
+                                                className="flex items-center text-teal-600 hover:text-teal-800 font-semibold text-sm"
+                                            >
+                                                <LedgerIcon />
+                                                <span className="mr-2">مشاهده صورت حساب</span>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>

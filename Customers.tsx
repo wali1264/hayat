@@ -38,6 +38,20 @@ const getStatusStyle = (status: CustomerStatus) => {
     }
 };
 
+const formatGregorianForDisplay = (dateStr: string): string => {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    } catch (e) {
+        return '';
+    }
+};
+
 //=========== MODAL COMPONENT ===========//
 type CustomerModalProps = {
     isOpen: boolean;
@@ -254,7 +268,10 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
                                             <td className="p-4 text-gray-500">{customer.manager}</td>
                                             <td className="p-4 text-gray-500">{customer.phone}</td>
                                             <td className="p-4 text-gray-500 truncate max-w-xs">{customer.address}</td>
-                                            <td className="p-4 text-gray-500">{new Date(customer.registrationDate).toLocaleDateString('fa-IR')}</td>
+                                            <td className="p-4 whitespace-nowrap text-gray-500 text-sm">
+                                                {new Date(customer.registrationDate).toLocaleDateString('fa-IR')}
+                                                <div className="font-mono text-xs text-gray-400">{formatGregorianForDisplay(customer.registrationDate)}</div>
+                                            </td>
                                             <td className="p-4">
                                                 <span className={`px-3 py-1 text-xs font-bold rounded-full ${status.bg} ${status.text}`}>
                                                     {customer.status}

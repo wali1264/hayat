@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { User } from './Settings';
 
@@ -31,6 +32,21 @@ export type Income = {
     description: string;
     amount: number;
     date: string;
+};
+
+//=========== HELPERS ===========//
+const formatGregorianForDisplay = (dateStr: string): string => {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    } catch (e) {
+        return '';
+    }
 };
 
 //=========== MODAL COMPONENT ===========//
@@ -228,7 +244,10 @@ const FinanceAndExpenses: React.FC<AccountingProps> = ({ incomes, expenses, onSa
                                 <tr key={expense.id} className="hover:bg-gray-50">
                                     <td className="p-4 text-gray-800 font-medium">{expense.description}</td>
                                     <td className="p-4 text-gray-500">{expense.category}</td>
-                                    <td className="p-4 text-gray-500">{new Date(expense.date).toLocaleDateString('fa-IR')}</td>
+                                    <td className="p-4 whitespace-nowrap text-gray-500 text-sm">
+                                        {new Date(expense.date).toLocaleDateString('fa-IR')}
+                                        <div className="font-mono text-xs text-gray-400">{formatGregorianForDisplay(expense.date)}</div>
+                                    </td>
                                     <td className="p-4 text-gray-800 font-semibold">{expense.amount.toLocaleString()}</td>
                                     <td className="p-4">
                                         <div className="flex items-center space-x-2 space-x-reverse">

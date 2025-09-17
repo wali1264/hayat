@@ -1,9 +1,6 @@
-
-
-
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User } from './Settings';
+import { WriteOffReason, StockRequisition, StockRequisitionItem } from './App';
 
 // Declare global libraries
 declare var Html5Qrcode: any;
@@ -19,7 +16,8 @@ const Icon = ({ path, className = "w-5 h-5" }) => (
 const PlusIcon = () => <Icon path="M12 4v16m8-8H4" />;
 const SearchIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" className="w-5 h-5 text-gray-400" />;
 const EditIcon = () => <Icon path="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />;
-const TrashIcon = () => <Icon path="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />;
+const TrashIcon = ({ className = "w-5 h-5"}: {className?: string}) => <Icon path="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" className={className} />;
+const WasteIcon = () => <Icon path="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />;
 const SortIcon = ({ direction }: { direction: 'ascending' | 'descending' | null }) => {
     if (direction === null) {
         return <Icon path="M8 9l4-4 4 4m0 6l-4 4-4-4" className="w-4 h-4 ml-2 text-gray-300 group-hover:text-gray-500" />;
@@ -32,6 +30,8 @@ const SortIcon = ({ direction }: { direction: 'ascending' | 'descending' | null 
 const CameraIcon = () => <Icon path="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z M15 13a3 3 0 11-6 0 3 3 0 016 0z" className="w-4 h-4" />;
 const QrCodeIcon = () => <Icon path="M3.75 4.5A.75.75 0 003 5.25v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5zm4.5 0a.75.75 0 00-.75.75v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5zm4.5 0a.75.75 0 00-.75.75v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5zm4.5 0a.75.75 0 00-.75.75v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5z" className="w-4 h-4" />;
 const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0 00-2 2v4a2 2 0 002 2h2m8 0v4H9v-4m4 0h-2" />;
+const RequestIcon = () => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />;
+
 const CloseIcon = ({ className = "w-6 h-6" }: { className?: string}) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -108,6 +108,16 @@ const getRowStyle = (statusText: string) => {
             return `${baseStyle} hover:bg-gray-50`;
     }
 };
+
+const getRequisitionStatusStyle = (status: StockRequisition['status']) => {
+    switch (status) {
+        case 'تکمیل شده': return { text: 'text-green-700', bg: 'bg-green-100' };
+        case 'در انتظار': return { text: 'text-yellow-700', bg: 'bg-yellow-100' };
+        case 'رد شده': return { text: 'text-red-700', bg: 'bg-red-100' };
+        default: return { text: 'text-gray-700', bg: 'bg-gray-100' };
+    }
+};
+
 
 //=========== MODAL COMPONENTS ===========//
 type BarcodeScannerModalProps = {
@@ -416,19 +426,224 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
     );
 };
 
+type WriteOffModalProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: (quantity: number, reason: WriteOffReason, notes: string) => void;
+    drug: Drug | null;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+};
+
+const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfirm, drug, addToast }) => {
+    const [quantity, setQuantity] = useState('');
+    const [reason, setReason] = useState<WriteOffReason>('تاریخ گذشته');
+    const [notes, setNotes] = useState('');
+
+    useEffect(() => {
+        if(isOpen) {
+            setQuantity('');
+            setReason('تاریخ گذشته');
+            setNotes('');
+        }
+    }, [isOpen]);
+
+    if (!isOpen || !drug) return null;
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const numQuantity = Number(quantity);
+        if (numQuantity <= 0) {
+            addToast("لطفا تعداد معتبر وارد کنید.", 'error');
+            return;
+        }
+        if (numQuantity > drug.quantity) {
+            addToast(`تعداد ضایعات (${numQuantity}) نمی‌تواند بیشتر از موجودی انبار (${drug.quantity}) باشد.`, 'error');
+            return;
+        }
+        onConfirm(numQuantity, reason, notes);
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <h3 className="text-2xl font-bold text-gray-800 mb-2">ثبت ضایعات برای <span className="text-teal-600">{drug.name}</span></h3>
+                <p className="text-sm text-gray-500 mb-6">موجودی فعلی: {formatQuantity(drug.quantity, drug.unitsPerCarton)}</p>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-bold mb-2">تعداد ضایع شده (واحد)</label>
+                        <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={drug.quantity} className="w-full p-2 border rounded-lg" required autoFocus />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold mb-2">دلیل</label>
+                        <select value={reason} onChange={e => setReason(e.target.value as WriteOffReason)} className="w-full p-2 border rounded-lg bg-white">
+                            <option value="تاریخ گذشته">تاریخ گذشته</option>
+                            <option value="آسیب دیده">آسیب دیده</option>
+                            <option value="مفقود شده">مفقود شده</option>
+                            <option value="سایر">سایر</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold mb-2">توضیحات (اختیاری)</label>
+                        <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-2 border rounded-lg h-20 resize-none"></textarea>
+                    </div>
+                    <div className="flex justify-end space-x-4 space-x-reverse pt-4 border-t">
+                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 font-semibold">انصراف</button>
+                        <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold">ثبت ضایعات</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+type RequisitionModalProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onSave: (requisition: Omit<StockRequisition, 'id' | 'status' | 'requestedBy' | 'date'>) => void;
+    mainWarehouseDrugs: Drug[];
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+};
+
+const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, onSave, mainWarehouseDrugs, addToast }) => {
+    const [items, setItems] = useState<Omit<StockRequisitionItem, 'quantityFulfilled'>[]>([]);
+    const [notes, setNotes] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
+    const [quantity, setQuantity] = useState('');
+    const searchWrapperRef = useRef<HTMLDivElement>(null);
+
+     const availableDrugs = useMemo(() => {
+        if (!searchTerm) return [];
+        return mainWarehouseDrugs
+            .filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()) && !items.some(i => i.drugId === d.id))
+            .slice(0, 5);
+    }, [mainWarehouseDrugs, searchTerm, items]);
+    
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target as Node)) {
+                setSearchTerm('');
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [searchWrapperRef]);
+
+    if (!isOpen) return null;
+
+    const handleAddItem = () => {
+        if (!selectedDrug || !quantity || Number(quantity) <= 0) {
+            addToast("لطفا دارو و تعداد معتبر را انتخاب کنید.", "error");
+            return;
+        }
+        if (Number(quantity) > selectedDrug.quantity) {
+             addToast(`تعداد درخواستی (${quantity}) بیشتر از موجودی انبار اصلی (${selectedDrug.quantity}) است.`, "error");
+            return;
+        }
+        setItems(prev => [...prev, { drugId: selectedDrug.id, drugName: selectedDrug.name, quantityRequested: Number(quantity) }]);
+        setSelectedDrug(null);
+        setSearchTerm('');
+        setQuantity('');
+    };
+    
+    const handleRemoveItem = (drugId: number) => {
+        setItems(prev => prev.filter(item => item.drugId !== drugId));
+    };
+
+    const handleSubmit = () => {
+        if (items.length === 0) {
+            addToast("لطفا حداقل یک قلم به درخواست اضافه کنید.", "error");
+            return;
+        }
+        // FIX: Map items to include quantityFulfilled property, which is required by StockRequisitionItem type.
+        const itemsToSave: StockRequisitionItem[] = items.map(item => ({...item, quantityFulfilled: 0}));
+        onSave({ items: itemsToSave, notes });
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-3xl" onClick={e => e.stopPropagation()}>
+                <h3 className="text-2xl font-bold text-gray-800 mb-6">ایجاد درخواست جدید کالا از انبار اصلی</h3>
+                <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end p-4 border rounded-lg bg-gray-50">
+                        <div className="md:col-span-2 relative" ref={searchWrapperRef}>
+                            <label className="block text-sm font-bold mb-1">انتخاب دارو</label>
+                            <input type="text" placeholder="جستجو..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full p-2 border rounded-lg" />
+                            {searchTerm && availableDrugs.length > 0 && (
+                                <div className="absolute top-full left-0 right-0 bg-white border shadow-lg mt-1 z-10 max-h-48 overflow-y-auto">
+                                    {availableDrugs.map(drug => (
+                                        <div key={drug.id} onClick={() => { setSelectedDrug(drug); setSearchTerm(drug.name); }} className="p-2 hover:bg-teal-50 cursor-pointer">
+                                            {drug.name} <span className="text-xs text-gray-500">(موجودی: {drug.quantity})</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                         <div>
+                            <label className="block text-sm font-bold mb-1">تعداد</label>
+                            <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={selectedDrug?.quantity} className="w-full p-2 border rounded-lg" disabled={!selectedDrug} />
+                        </div>
+                        <button onClick={handleAddItem} className="w-full bg-teal-500 text-white p-2 rounded-lg hover:bg-teal-600 font-semibold h-10">افزودن</button>
+                    </div>
+
+                    <div className="max-h-48 overflow-y-auto border rounded-lg">
+                        <table className="w-full text-sm text-right">
+                            <thead className="bg-gray-100">
+                                <tr>
+                                    <th className="p-2">نام دارو</th>
+                                    <th className="p-2">تعداد درخواستی</th>
+                                    <th className="p-2"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {items.map(item => (
+                                    <tr key={item.drugId}>
+                                        <td className="p-2">{item.drugName}</td>
+                                        <td className="p-2">{item.quantityRequested.toLocaleString()}</td>
+                                        <td className="p-2 text-center"><button onClick={() => handleRemoveItem(item.drugId)} className="text-red-500"><TrashIcon className="w-4 h-4" /></button></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                     <div>
+                        <label className="block text-sm font-bold mb-1">ملاحظات (اختیاری)</label>
+                        <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-2 border rounded-lg h-20 resize-none"></textarea>
+                    </div>
+                </div>
+                 <div className="flex justify-end space-x-4 space-x-reverse pt-6 mt-4 border-t">
+                    <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 font-semibold">انصراف</button>
+                    <button type="button" onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold shadow-md">ثبت و ارسال درخواست</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 //=========== MAIN COMPONENT ===========//
 type InventoryProps = {
     drugs: Drug[];
-    onSave: (drug: Drug) => void;
+    mainWarehouseDrugs: Drug[];
+    stockRequisitions: StockRequisition[];
+    onSaveDrug: (drug: Drug) => void;
     onDelete: (id: number) => void;
+    onWriteOff: (drug: Drug, quantity: number, reason: WriteOffReason, notes: string) => void;
+    onSaveRequisition: (requisition: Omit<StockRequisition, 'id' | 'status' | 'requestedBy' | 'date'>) => void;
     currentUser: User;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentUser, addToast }) => {
+type Tab = 'stock' | 'requisitions';
+
+const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockRequisitions, onSaveDrug, onDelete, onWriteOff, onSaveRequisition, currentUser, addToast }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isWriteOffModalOpen, setIsWriteOffModalOpen] = useState(false);
+    const [isRequisitionModalOpen, setIsRequisitionModalOpen] = useState(false);
     const [editingDrug, setEditingDrug] = useState<Drug | null>(null);
+    const [drugForWriteOff, setDrugForWriteOff] = useState<Drug | null>(null);
     const [isSheetModalOpen, setIsSheetModalOpen] = useState(false);
     const [drugsToPrint, setDrugsToPrint] = useState<Drug[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -438,6 +653,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentU
         key: null,
         direction: 'ascending',
     });
+    const [activeTab, setActiveTab] = useState<Tab>('stock');
 
     const canManageInventory = useMemo(() => 
         currentUser.role === 'مدیر کل' || currentUser.role === 'انباردار', 
@@ -451,6 +667,11 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentU
     const handleOpenEditModal = (drug: Drug) => {
         setEditingDrug(drug);
         setIsModalOpen(true);
+    };
+
+    const handleOpenWriteOffModal = (drug: Drug) => {
+        setDrugForWriteOff(drug);
+        setIsWriteOffModalOpen(true);
     };
 
     const handleDeleteDrug = (id: number) => {
@@ -528,13 +749,36 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentU
         </th>
     );
 
+    const TabButton = ({ tabId, children }: { tabId: Tab, children: React.ReactNode }) => (
+        <button 
+            onClick={() => setActiveTab(tabId)}
+            className={`px-4 py-2 text-lg font-semibold rounded-t-lg border-b-4 transition-colors ${activeTab === tabId ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+        >
+            {children}
+        </button>
+    );
+
     return (
         <div className="p-8">
              {canManageInventory && <DrugModal 
                 isOpen={isModalOpen} 
                 onClose={() => setIsModalOpen(false)}
-                onSave={onSave}
+                onSave={onSaveDrug}
                 initialData={editingDrug}
+                addToast={addToast}
+            />}
+            {canManageInventory && <WriteOffModal
+                isOpen={isWriteOffModalOpen}
+                onClose={() => setIsWriteOffModalOpen(false)}
+                drug={drugForWriteOff}
+                onConfirm={(quantity, reason, notes) => onWriteOff(drugForWriteOff!, quantity, reason, notes)}
+                addToast={addToast}
+            />}
+            {canManageInventory && <RequisitionModal
+                isOpen={isRequisitionModalOpen}
+                onClose={() => setIsRequisitionModalOpen(false)}
+                onSave={onSaveRequisition}
+                mainWarehouseDrugs={mainWarehouseDrugs}
                 addToast={addToast}
             />}
             <BarcodeSheetModal
@@ -544,9 +788,10 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentU
             />
             <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-800">مدیریت انبار و موجودی</h2>
-                    <p className="text-gray-500">لیست کامل داروهای موجود در انبار</p>
+                    <h2 className="text-2xl font-bold text-gray-800">مدیریت انبار فروش</h2>
+                    <p className="text-gray-500">لیست داروهای موجود در انبار برای فروش روزانه</p>
                 </div>
+                {activeTab === 'stock' && (
                 <div className="flex items-center space-x-2 space-x-reverse flex-wrap gap-2">
                     <div className="relative">
                         <input
@@ -587,102 +832,149 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, onSave, onDelete, currentU
                         </select>
                     </div>
                     {canManageInventory && (
-                        <>
-                        {/* <button onClick={handlePrintBarcodeSheet} className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg">
-                           <PrintIcon />
-                           <span className="mr-2">چاپ برگه بارکدها</span>
-                        </button> */}
-                        <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md hover:shadow-lg">
+                        <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md">
                             <PlusIcon />
                             <span className="mr-2">افزودن داروی جدید</span>
                         </button>
-                        </>
                     )}
                 </div>
+                )}
             </div>
-
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-right">
-                        <thead className="bg-gray-50 border-b-2 border-gray-200">
-                            <tr>
-                                <SortableHeader label="نام دارو" columnKey="name" />
-                                <SortableHeader label="کمپانی" columnKey="manufacturer" />
-                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">کد محصول</th>
-                                <SortableHeader label="دسته‌بندی" columnKey="category" />
-                                <SortableHeader label="قیمت فروش" columnKey="price" />
-                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">تخفیف</th>
-                                <SortableHeader label="تعداد موجود" columnKey="quantity" />
-                                <SortableHeader label="تاریخ انقضا" columnKey="expiryDate" />
-                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">وضعیت</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">عملیات</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                            {sortedAndFilteredDrugs.length === 0 ? (
+            
+            <div className="border-b border-gray-200 mb-6">
+                <nav className="flex -mb-px">
+                    <TabButton tabId="stock">موجودی انبار</TabButton>
+                    <TabButton tabId="requisitions">درخواست‌های کالا</TabButton>
+                </nav>
+            </div>
+            
+            {activeTab === 'stock' && (
+                <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-right">
+                            <thead className="bg-gray-50 border-b-2 border-gray-200">
                                 <tr>
-                                    <td colSpan={10} className="text-center p-8 text-gray-500">
-                                        هیچ دارویی با این مشخصات یافت نشد.
-                                    </td>
+                                    <SortableHeader label="نام دارو" columnKey="name" />
+                                    <SortableHeader label="کمپانی" columnKey="manufacturer" />
+                                    <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">کد محصول</th>
+                                    <SortableHeader label="دسته‌بندی" columnKey="category" />
+                                    <SortableHeader label="قیمت فروش" columnKey="price" />
+                                    <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">تخفیف</th>
+                                    <SortableHeader label="تعداد موجود" columnKey="quantity" />
+                                    <SortableHeader label="تاریخ انقضا" columnKey="expiryDate" />
+                                    <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">وضعیت</th>
+                                    <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">عملیات</th>
                                 </tr>
-                            ) : (
-                                sortedAndFilteredDrugs.map(drug => {
-                                    const status = getStatus(drug.expiryDate, drug.quantity);
-                                    let indicatorElement = null;
-                                    if (status.text === 'منقضی شده' || status.text === 'انقضا فوری') {
-                                        indicatorElement = <span className="w-2.5 h-2.5 bg-red-500 rounded-full ml-3 flex-shrink-0" title={status.text}></span>;
-                                    } else if (status.text === 'نزدیک به انقضا') {
-                                        indicatorElement = <span className="w-2.5 h-2.5 bg-yellow-400 rounded-full ml-3 flex-shrink-0" title={status.text}></span>;
-                                    }
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                {sortedAndFilteredDrugs.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={10} className="text-center p-8 text-gray-500">
+                                            هیچ دارویی با این مشخصات یافت نشد.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    sortedAndFilteredDrugs.map(drug => {
+                                        const status = getStatus(drug.expiryDate, drug.quantity);
+                                        let indicatorElement = null;
+                                        if (status.text === 'منقضی شده' || status.text === 'انقضا فوری') {
+                                            indicatorElement = <span className="w-2.5 h-2.5 bg-red-500 rounded-full ml-3 flex-shrink-0" title={status.text}></span>;
+                                        } else if (status.text === 'نزدیک به انقضا') {
+                                            indicatorElement = <span className="w-2.5 h-2.5 bg-yellow-400 rounded-full ml-3 flex-shrink-0" title={status.text}></span>;
+                                        }
 
-                                    return (
-                                        <tr key={drug.id} className={getRowStyle(status.text)}>
-                                            <td className="p-4 whitespace-nowrap text-gray-800 font-medium">
-                                                <div className="flex items-center">
-                                                    {indicatorElement}
-                                                    <span>{drug.name}</span>
-                                                </div>
-                                            </td>
-                                            <td className="p-4 whitespace-nowrap text-gray-500">{drug.manufacturer}</td>
-                                            <td className="p-4 whitespace-nowrap text-gray-500 font-mono text-xs">{drug.code || '-'}</td>
-                                            <td className="p-4 whitespace-nowrap text-gray-500">{drug.category || '-'}</td>
-                                            <td className="p-4 whitespace-nowrap text-gray-600">{drug.price.toLocaleString()}</td>
-                                            <td className="p-4 whitespace-nowrap">
-                                                {drug.discountPercentage > 0 ? (
-                                                    <span className="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700">
-                                                        {drug.discountPercentage}%
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-gray-400">-</span>
-                                                )}
-                                            </td>
-                                            <td className="p-4 whitespace-nowrap text-gray-800 font-semibold">
-                                                {formatQuantity(drug.quantity, drug.unitsPerCarton)}
-                                            </td>
-                                            <td className="p-4 whitespace-nowrap text-gray-500">{new Date(drug.expiryDate).toLocaleDateString('fa-IR')}</td>
-                                            <td className="p-4 whitespace-nowrap">
-                                                <span className={`px-3 py-1 text-xs font-bold rounded-full ${status.bg} ${status.color}`}>
-                                                    {status.text}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 whitespace-nowrap">
-                                                <div className="flex items-center space-x-2 space-x-reverse">
-                                                    {canManageInventory && (
-                                                        <>
-                                                            <button onClick={() => handleOpenEditModal(drug)} title="ویرایش" className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>
-                                                            <button onClick={() => handleDeleteDrug(drug.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
-                                                        </>
+                                        return (
+                                            <tr key={drug.id} className={getRowStyle(status.text)}>
+                                                <td className="p-4 whitespace-nowrap text-gray-800 font-medium">
+                                                    <div className="flex items-center">
+                                                        {indicatorElement}
+                                                        <span>{drug.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4 whitespace-nowrap text-gray-500">{drug.manufacturer}</td>
+                                                <td className="p-4 whitespace-nowrap text-gray-500 font-mono text-xs">{drug.code || '-'}</td>
+                                                <td className="p-4 whitespace-nowrap text-gray-500">{drug.category || '-'}</td>
+                                                <td className="p-4 whitespace-nowrap text-gray-600">{drug.price.toLocaleString()}</td>
+                                                <td className="p-4 whitespace-nowrap">
+                                                    {drug.discountPercentage > 0 ? (
+                                                        <span className="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700">
+                                                            {drug.discountPercentage}%
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-400">-</span>
                                                     )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
+                                                </td>
+                                                <td className="p-4 whitespace-nowrap text-gray-800 font-semibold">
+                                                    {formatQuantity(drug.quantity, drug.unitsPerCarton)}
+                                                </td>
+                                                <td className="p-4 whitespace-nowrap text-gray-500">{new Date(drug.expiryDate).toLocaleDateString('fa-IR')}</td>
+                                                <td className="p-4 whitespace-nowrap">
+                                                    <span className={`px-3 py-1 text-xs font-bold rounded-full ${status.bg} ${status.color}`}>
+                                                        {status.text}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 whitespace-nowrap">
+                                                    <div className="flex items-center space-x-2 space-x-reverse">
+                                                        {canManageInventory && (
+                                                            <>
+                                                                <button onClick={() => handleOpenEditModal(drug)} title="ویرایش" className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>
+                                                                <button onClick={() => handleDeleteDrug(drug.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
+                                                                <button onClick={() => handleOpenWriteOffModal(drug)} title="ثبت ضایعات" className="text-yellow-600 hover:text-yellow-800 p-1"><WasteIcon /></button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
+            )}
+            
+             {activeTab === 'requisitions' && (
+                <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                    <div className="p-4 bg-gray-50 flex justify-between items-center">
+                        <h3 className="font-bold text-lg">تاریخچه درخواست‌های کالا</h3>
+                         <button onClick={() => setIsRequisitionModalOpen(true)} className="flex items-center bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 transition-colors shadow-md">
+                            <RequestIcon />
+                            <span className="mr-2">ایجاد درخواست جدید</span>
+                        </button>
+                    </div>
+                     <div className="overflow-x-auto">
+                        <table className="w-full text-right">
+                            <thead className="bg-gray-50 border-b-2 border-gray-200">
+                                <tr>
+                                    <th className="p-4">#</th>
+                                    <th className="p-4">تاریخ</th>
+                                    <th className="p-4">درخواست‌کننده</th>
+                                    <th className="p-4">تکمیل‌کننده</th>
+                                    <th className="p-4">اقلام</th>
+                                    <th className="p-4">وضعیت</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                {stockRequisitions.map(req => {
+                                    const statusStyle = getRequisitionStatusStyle(req.status);
+                                    return (
+                                    <tr key={req.id}>
+                                        <td className="p-4 font-mono text-sm">{req.id}</td>
+                                        <td className="p-4">{new Date(req.date).toLocaleDateString('fa-IR')}</td>
+                                        <td className="p-4">{req.requestedBy}</td>
+                                        <td className="p-4">{req.fulfilledBy || '-'}</td>
+                                        <td className="p-4 text-xs">{req.items.map(i => i.drugName).join(', ')}</td>
+                                        <td className="p-4">
+                                            <span className={`px-3 py-1 text-xs font-bold rounded-full ${statusStyle.bg} ${statusStyle.text}`}>{req.status}</span>
+                                        </td>
+                                    </tr>
+                                )})}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+             )}
         </div>
     );
 };

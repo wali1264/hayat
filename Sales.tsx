@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Drug, drugCategories } from './Inventory';
 import { Customer } from './Customers';
@@ -48,6 +47,12 @@ export type OrderItem = {
     isPriceOverridden?: boolean;
 };
 
+export type ExtraCharge = {
+    id: number;
+    description: string;
+    amount: number;
+};
+
 export type Order = {
     id: number;
     type: 'sale' | 'sale_return';
@@ -55,6 +60,7 @@ export type Order = {
     customerName: string;
     orderDate: string;
     items: OrderItem[];
+    extraCharges: ExtraCharge[];
     totalAmount: number;
     amountPaid: number;
     status: OrderStatus;
@@ -82,8 +88,264 @@ const getPaymentStatusStyle = (status: PaymentStatus) => {
     }
 };
 
+const formatGregorianForDisplay = (dateStr: string): string => {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    } catch (e) {
+        return '';
+    }
+};
+
 
 //=========== MODAL COMPONENTS ===========//
+
+// --- Copied from Inventory.tsx for reuse ---
+type DrugModalBarcodeScannerProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onScanSuccess: (decodedText: string) => void;
+};
+
+const DrugModalBarcodeScanner: React.FC<DrugModalBarcodeScannerProps> = ({ isOpen, onClose, onScanSuccess }) => {
+    useEffect(() => {
+        if (!isOpen) return;
+        const html5QrCode = new Html5Qrcode("drug-modal-reader");
+        const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+            onScanSuccess(decodedText);
+            html5QrCode.stop().catch(err => console.error("Failed to stop scanner", err));
+        };
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+        html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback, (errorMessage) => {})
+            .catch((err) => { console.error("Unable to start scanning.", err); });
+
+        return () => {
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().catch(err => console.log("Scanner already stopped or failed to stop.", err));
+            }
+        };
+    }, [isOpen, onScanSuccess]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[99] flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <h3 className="text-lg font-bold text-center mb-4">اسکن بارکد / QR کد</h3>
+                <div id="drug-modal-reader" className="w-full"></div>
+                <button onClick={onClose} className="mt-4 w-full py-2 bg-gray-200 rounded-lg">انصراف</button>
+            </div>
+        </div>
+    );
+};
+
+type DrugModalProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onSave: (drug: Drug) => void;
+    initialData: Drug | null;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+};
+
+const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
+    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', cartonQuantity: '', unitQuantity: '', unitsPerCarton: '', expiryDate: '', productionDate: '', price: '', purchasePrice: '', discountPercentage: '', category: 'سایر' };
+    const [drug, setDrug] = useState(defaultState);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const isEditMode = initialData !== null;
+
+    useEffect(() => {
+        if (isOpen) {
+             if (initialData) {
+                 const totalQuantity = initialData.quantity;
+                 const unitsPerCarton = initialData.unitsPerCarton && initialData.unitsPerCarton > 1 ? initialData.unitsPerCarton : 1;
+                 const cartons = unitsPerCarton > 1 ? Math.floor(totalQuantity / unitsPerCarton) : 0;
+                 const units = unitsPerCarton > 1 ? totalQuantity % unitsPerCarton : totalQuantity;
+                 
+                 setDrug({
+                     name: initialData.name,
+                     barcode: initialData.barcode || '',
+                     code: initialData.code,
+                     manufacturer: initialData.manufacturer,
+                     cartonQuantity: String(cartons),
+                     unitQuantity: String(units),
+                     unitsPerCarton: String(initialData.unitsPerCarton || ''),
+                     expiryDate: initialData.expiryDate,
+                     productionDate: initialData.productionDate || '',
+                     price: String(initialData.price),
+                     purchasePrice: String(initialData.purchasePrice),
+                     discountPercentage: String(initialData.discountPercentage),
+                     category: initialData.category || 'سایر'
+                 });
+             } else {
+                setDrug(defaultState);
+             }
+        }
+    }, [isOpen, initialData]);
+
+    const calculatedTotal = useMemo(() => {
+        const unitsPerCarton = Number(drug.unitsPerCarton);
+        const cartons = Number(drug.cartonQuantity) || 0;
+        const units = Number(drug.unitQuantity) || 0;
+        if (!unitsPerCarton || unitsPerCarton <= 1) {
+            return units;
+        }
+        return (cartons * unitsPerCarton) + units;
+    }, [drug.unitsPerCarton, drug.cartonQuantity, drug.unitQuantity]);
+
+    if (!isOpen) return null;
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setDrug(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const priceValue = Number(drug.price) || 0;
+        const purchasePriceValue = Number(drug.purchasePrice) || 0;
+        if (!drug.name || !drug.expiryDate || priceValue <= 0 || purchasePriceValue <= 0) {
+            addToast("لطفا تمام فیلدهای ضروری (نام، تاریخ انقضا، قیمت خرید و فروش) را با مقادیر معتبر پر کنید.", 'error');
+            return;
+        }
+
+        const drugToSave: Drug = {
+            id: isEditMode ? initialData.id : Date.now(),
+            name: drug.name,
+            barcode: drug.barcode,
+            code: drug.code,
+            manufacturer: drug.manufacturer,
+            category: drug.category,
+            expiryDate: drug.expiryDate,
+            productionDate: drug.productionDate,
+            quantity: calculatedTotal,
+            unitsPerCarton: Number(drug.unitsPerCarton) || 1,
+            price: priceValue,
+            purchasePrice: purchasePriceValue,
+            discountPercentage: Number(drug.discountPercentage) || 0,
+        };
+        
+        onSave(drugToSave);
+        onClose();
+    };
+    
+    const inputStyles = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition-shadow disabled:bg-gray-100 disabled:cursor-not-allowed";
+    const labelStyles = "block text-gray-700 text-sm font-bold mb-2";
+
+    return (
+        <>
+        <DrugModalBarcodeScanner
+            isOpen={isScannerOpen}
+            onClose={() => setIsScannerOpen(false)}
+            onScanSuccess={(text) => {
+                setDrug(prev => ({...prev, barcode: text}));
+                setIsScannerOpen(false);
+            }}
+        />
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[90] flex justify-center items-center p-4 transition-opacity duration-300" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-2xl transform transition-all duration-300" onClick={e => e.stopPropagation()}>
+                <h3 className="text-2xl font-bold text-gray-800 mb-6">{isEditMode ? 'ویرایش دارو' : 'افزودن داروی جدید'}</h3>
+                <form onSubmit={handleSubmit}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                         <div>
+                            <label htmlFor="name" className={labelStyles}>نام دارو (ضروری)</label>
+                            <input type="text" name="name" id="name" value={drug.name} onChange={handleChange} className={inputStyles} required autoFocus />
+                        </div>
+                        <div>
+                           <label htmlFor="manufacturer" className={labelStyles}>کمپانی</label>
+                           <input type="text" name="manufacturer" id="manufacturer" value={drug.manufacturer} onChange={handleChange} className={inputStyles} />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label htmlFor="category" className={labelStyles}>دسته‌بندی</label>
+                            <select name="category" id="category" value={drug.category} onChange={handleChange} className={inputStyles}>
+                                {drugCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                            </select>
+                        </div>
+                         <div>
+                            <label htmlFor="code" className={labelStyles}>کد محصول</label>
+                            <input type="text" name="code" id="code" value={drug.code} onChange={handleChange} className={inputStyles} />
+                        </div>
+                    </div>
+                    
+                    <div className="mb-4">
+                        <label htmlFor="barcode" className={labelStyles}>بارکد / QR Code</label>
+                        <div className="flex gap-2">
+                             <input type="text" name="barcode" id="barcode" value={drug.barcode} onChange={handleChange} className={inputStyles} />
+                             <button type="button" title="اسکن با دوربین" onClick={() => setIsScannerOpen(true)} className="p-2 border rounded-lg hover:bg-gray-100"><CameraIcon className="w-4 h-4" /></button>
+                        </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                         <div>
+                            <label htmlFor="purchasePrice" className={labelStyles}>قیمت خرید (ضروری)</label>
+                            <input type="number" name="purchasePrice" id="purchasePrice" value={drug.purchasePrice} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 120" />
+                        </div>
+                         <div>
+                            <label htmlFor="price" className={labelStyles}>قیمت فروش (ضروری)</label>
+                            <input type="number" name="price" id="price" value={drug.price} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 150" />
+                        </div>
+                        <div>
+                            <label htmlFor="discountPercentage" className={labelStyles}>تخفیف (٪)</label>
+                            <input type="number" name="discountPercentage" id="discountPercentage" value={drug.discountPercentage} onChange={handleChange} className={inputStyles} min="0" max="100" placeholder="مثلا: 5"/>
+                        </div>
+                    </div>
+                    
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                         <div>
+                            <label htmlFor="productionDate" className={labelStyles}>تاریخ تولید</label>
+                            <input type="date" name="productionDate" id="productionDate" value={drug.productionDate} onChange={handleChange} className={inputStyles} />
+                        </div>
+                         <div>
+                            <label htmlFor="expiryDate" className={labelStyles}>تاریخ انقضا (ضروری)</label>
+                            <input type="date" name="expiryDate" id="expiryDate" value={drug.expiryDate} onChange={handleChange} className={inputStyles} required />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div>
+                            <label htmlFor="unitsPerCarton" className={labelStyles}>تعداد در کارتن</label>
+                            <input type="number" name="unitsPerCarton" id="unitsPerCarton" value={drug.unitsPerCarton} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 100" />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className={labelStyles}>موجودی انبار</label>
+                            <div className="flex items-center gap-2">
+                                <input type="number" name="cartonQuantity" value={drug.cartonQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد کارتن" disabled={!drug.unitsPerCarton || Number(drug.unitsPerCarton) <= 1} />
+                                <span className="text-gray-500 flex-shrink-0">کارتن</span>
+                                <input type="number" name="unitQuantity" value={drug.unitQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد واحد" />
+                                <span className="text-gray-500 flex-shrink-0">عدد</span>
+                            </div>
+                        </div>
+                    </div>
+
+                     <div className="mb-6 text-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+                        <span>مجموع کل: </span>
+                        <span className="font-bold font-mono text-base text-teal-700">{calculatedTotal.toLocaleString()}</span>
+                        <span> واحد</span>
+                    </div>
+
+                    <div className="flex justify-end space-x-4 space-x-reverse pt-4 border-t border-gray-200">
+                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold transition-colors">انصراف</button>
+                        <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors shadow-md hover:shadow-lg">
+                            {isEditMode ? 'ذخیره تغییرات' : 'ذخیره'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        </>
+    );
+};
+// --- End of copied components ---
+
+
 type BarcodeScannerModalProps = {
     isOpen: boolean;
     onClose: () => void;
@@ -148,6 +410,8 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         customerName: '', amountPaid: '', status: 'ارسال شده' as OrderStatus,
     });
     const [items, setItems] = useState<OrderItem[]>([]);
+    const [extraCharges, setExtraCharges] = useState<ExtraCharge[]>([]);
+    const [newCharge, setNewCharge] = useState({ description: '', amount: '' });
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     
     const [drugSearchTerm, setDrugSearchTerm] = useState('');
@@ -162,7 +426,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     const isEditMode = initialData !== null && mode === 'sale';
 
     const totalAmount = useMemo(() => {
-        return items.reduce((sum, item) => {
+        const itemsTotal = items.reduce((sum, item) => {
             const pricePerUnit = item.isPriceOverridden
                 ? item.finalPrice
                 : (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
@@ -170,7 +434,9 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                     : item.finalPrice;
             return sum + (item.quantity * pricePerUnit);
         }, 0);
-    }, [items]);
+        const chargesTotal = extraCharges.reduce((sum, charge) => sum + charge.amount, 0);
+        return itemsTotal + chargesTotal;
+    }, [items, extraCharges]);
 
     const availableDrugs = useMemo(() => {
         if (!drugSearchTerm) return [];
@@ -206,12 +472,15 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
              if (initialData) {
                 setOrderInfo({ customerName: initialData.customerName, amountPaid: String(initialData.amountPaid), status: initialData.status });
                 setItems(initialData.items.map(item => ({...item, bonusQuantity: item.bonusQuantity || 0})));
+                setExtraCharges(initialData.extraCharges || []);
                 if(mode === 'return') {
                      setOrderInfo(prev => ({...prev, status: 'تکمیل شده'}));
                 }
             } else {
                 setOrderInfo({ customerName: '', amountPaid: '', status: 'ارسال شده' });
                 setItems([]);
+                setExtraCharges([]);
+                setNewCharge({ description: '', amount: '' });
                 setDrugSearchTerm('');
                 setDeviceScanInput('');
                 setAddQuantity('1');
@@ -369,20 +638,37 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     
     const handleManualPriceChange = (drugId: number, newPriceStr: string) => {
         const newFinalPrice = Number(newPriceStr);
-        if (isNaN(newFinalPrice) || newFinalPrice < 0) {
-            addToast('لطفا قیمت معتبر وارد کنید.', 'error');
+        const itemToUpdate = items.find(it => it.drugId === drugId);
+    
+        if (!itemToUpdate || isNaN(newFinalPrice)) {
             setEditingPriceForDrugId(null);
             return;
         }
-
+    
+        const { originalPrice } = itemToUpdate;
+        let finalPrice = newFinalPrice;
+        let discountPercentage = 0;
+    
+        if (finalPrice < 0) finalPrice = 0;
+        
+        // Calculate discount only if the new price is less than original
+        if (originalPrice > 0 && finalPrice < originalPrice) {
+            discountPercentage = ((originalPrice - finalPrice) / originalPrice) * 100;
+        } else {
+            // If price is higher than or equal to original, there's no discount
+            finalPrice = newFinalPrice;
+            discountPercentage = 0;
+        }
+    
         setItems(currentItems =>
             currentItems.map(it => {
                 if (it.drugId === drugId) {
                     return {
                         ...it,
-                        finalPrice: newFinalPrice,
-                        isPriceOverridden: true,
-                        discountPercentage: 0, // Reset discount as price is now manual
+                        finalPrice: finalPrice,
+                        // Round to 2 decimal places
+                        discountPercentage: Math.round(discountPercentage * 100) / 100,
+                        isPriceOverridden: true, 
                     };
                 }
                 return it;
@@ -395,6 +681,20 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         setItems(currentItems =>
             currentItems.map(it => it.drugId === drugId ? { ...it, applyDiscountWithBonus: isChecked } : it)
         );
+    };
+
+    const handleAddCharge = () => {
+        const amount = Number(newCharge.amount);
+        if (!newCharge.description.trim() || !amount || amount <= 0) {
+            addToast("لطفا شرح و مبلغ معتبر برای هزینه وارد کنید.", 'error');
+            return;
+        }
+        setExtraCharges(prev => [...prev, { id: Date.now(), description: newCharge.description, amount }]);
+        setNewCharge({ description: '', amount: '' });
+    };
+
+    const handleRemoveCharge = (id: number) => {
+        setExtraCharges(prev => prev.filter(charge => charge.id !== id));
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -437,6 +737,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
             status: orderInfo.status,
             amountPaid: finalPaid,
             items,
+            extraCharges,
             totalAmount: finalAmount,
             paymentStatus
         };
@@ -453,7 +754,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         <>
         <BarcodeScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleScanSuccess} />
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-4xl transform transition-all" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-5xl transform transition-all" onClick={e => e.stopPropagation()}>
                 <h3 className="text-2xl font-bold text-gray-800 mb-6">{modalTitle}</h3>
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -593,12 +894,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                                         />
                                                     ) : (
                                                         <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setEditingPriceForDrugId(item.drugId)}>
-                                                            {item.isPriceOverridden ? (
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="font-bold text-purple-600">{item.finalPrice.toLocaleString()}</span>
-                                                                    <span className="text-xs font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">قیمت دستی</span>
-                                                                </div>
-                                                            ) : (item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (
+                                                            {(item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (
                                                                  <div className="flex items-center gap-2">
                                                                     <span className="font-bold text-gray-800">{item.originalPrice.toLocaleString()}</span>
                                                                     <span className="text-xs font-bold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full" title="چون بونس اعمال شده، تخفیف نادیده گرفته شد">بونس</span>
@@ -651,6 +947,40 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                         </div>
                     </div>
                     
+                    {mode === 'sale' && (
+                        <div className="space-y-4 rounded-lg border border-gray-200 p-4">
+                            <h4 className="font-bold text-gray-700">هزینه‌های اضافی</h4>
+                            {extraCharges.length > 0 && (
+                                <div className="max-h-32 overflow-y-auto">
+                                    <ul className="divide-y">
+                                        {extraCharges.map(charge => (
+                                            <li key={charge.id} className="py-2 flex justify-between items-center text-sm">
+                                                <div>
+                                                    <p className="font-semibold">{charge.description}</p>
+                                                </div>
+                                                <div className="flex items-center gap-4">
+                                                     <p className="text-gray-800 font-semibold">{charge.amount.toLocaleString()} افغانی</p>
+                                                    <button type="button" onClick={() => handleRemoveCharge(charge.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                             <div className="flex gap-2 items-end pt-2 border-t">
+                                <div className="flex-grow">
+                                    <label className="text-xs font-semibold text-gray-600">شرح هزینه</label>
+                                    <input type="text" value={newCharge.description} onChange={e => setNewCharge(p => ({...p, description: e.target.value}))} className={inputStyles} placeholder="مثلا: کرایه حمل" />
+                                </div>
+                                <div className="w-32">
+                                     <label className="text-xs font-semibold text-gray-600">مبلغ</label>
+                                    <input type="number" value={newCharge.amount} onChange={e => setNewCharge(p => ({...p, amount: e.target.value}))} className={inputStyles} placeholder="200" />
+                                </div>
+                                <button type="button" onClick={handleAddCharge} className="px-4 h-10 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold">افزودن</button>
+                            </div>
+                        </div>
+                    )}
+
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
                          <div>
                             <label htmlFor="amountPaid" className={labelStyles}>{mode === 'return' ? 'مبلغ بازپرداخت شده' : 'مبلغ پرداخت شده'} (افغانی)</label>
@@ -707,12 +1037,16 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
         }, 100);
     };
     
-    const subtotal = order.items.reduce((sum, item) => {
-        return sum + (item.quantity * item.originalPrice) // Subtotal is based on original price before discounts
+    const itemsSubtotal = order.items.reduce((sum, item) => sum + (item.quantity * item.originalPrice), 0);
+    const itemsTotalAfterDiscount = order.items.reduce((sum, item) => {
+        const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
+            ? item.originalPrice
+            : item.finalPrice;
+        return sum + (item.quantity * pricePerUnit);
     }, 0);
-
-    const totalDiscount = subtotal - order.totalAmount;
-    // FIX: Explicitly cast all amounts to Number to prevent potential string concatenation bugs.
+    const totalItemsDiscount = itemsSubtotal - itemsTotalAfterDiscount;
+    const extraCharges = order.extraCharges || [];
+    
     const finalBalance = Number(previousBalance) + Number(order.totalAmount) - Number(order.amountPaid);
 
 
@@ -749,7 +1083,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
                         </div>
                         <div>
                             <h4 className="text-sm text-gray-500 font-bold mb-1">تاریخ صدور:</h4>
-                            <p className="font-semibold text-gray-800">{new Date(order.orderDate).toLocaleDateString('fa-IR')}</p>
+                            <p className="font-semibold text-gray-800">{new Date(order.orderDate).toLocaleDateString('fa-IR')} / <span className="font-mono text-sm">{formatGregorianForDisplay(order.orderDate)}</span></p>
                         </div>
                     </div>
                     <div className="overflow-x-auto">
@@ -770,16 +1104,16 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
                             <tbody className="divide-y">
                                 {order.items.map((item, index) => {
                                     const hasBonus = item.bonusQuantity > 0;
-                                    const applyDiscount = item.isPriceOverridden ? true : !(hasBonus && !item.applyDiscountWithBonus);
+                                    const applyDiscount = !(hasBonus && !item.applyDiscountWithBonus);
                                     const pricePerUnit = applyDiscount ? item.finalPrice : item.originalPrice;
                                     
                                     let displayDiscount = '-';
-                                    if (item.isPriceOverridden) {
-                                        displayDiscount = 'دستی';
-                                    } else if (hasBonus && !applyDiscount) {
+                                    const roundedDiscount = Math.round(item.discountPercentage * 100) / 100;
+
+                                    if (hasBonus && !applyDiscount) {
                                         displayDiscount = 'بونس';
-                                    } else if (item.discountPercentage > 0) {
-                                        displayDiscount = `${item.discountPercentage}%`;
+                                    } else if (roundedDiscount > 0) {
+                                        displayDiscount = `${roundedDiscount}%`;
                                     }
 
                                     return (
@@ -810,12 +1144,22 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
                         </div>
                         <div className="w-full max-w-sm space-y-2 print-summary pt-4">
                              <div className="flex justify-between text-md">
-                                <span className="text-gray-600">مجموعه افغانی:</span>
-                                <span className="font-semibold">{order.totalAmount.toLocaleString()}</span>
+                                <span className="text-gray-600">جمع جزء اقلام:</span>
+                                <span className="font-semibold">{itemsSubtotal.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-md">
-                                <span className="text-gray-600">مجموع تخفیف:</span>
-                                <span className="font-semibold text-green-600">{totalDiscount.toLocaleString()}</span>
+                                <span className="text-gray-600">مجموع تخفیف اقلام:</span>
+                                <span className="font-semibold text-green-600">{totalItemsDiscount.toLocaleString()}</span>
+                            </div>
+                            {extraCharges.map(charge => (
+                                <div key={charge.id} className="flex justify-between text-md pt-1">
+                                    <span className="text-gray-600">{charge.description}:</span>
+                                    <span className="font-semibold">{charge.amount.toLocaleString()}</span>
+                                </div>
+                            ))}
+                             <div className="flex justify-between text-md font-bold pt-2 border-t">
+                                <span className="text-gray-800">مجموعه افغانی:</span>
+                                <span className="font-semibold">{Number(order.totalAmount).toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-md">
                                 <span className="text-gray-600">باقی گذشته:</span>
@@ -823,7 +1167,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
                             </div>
                              <div className="flex justify-between text-md">
                                 <span className="text-gray-600">رسید نقدی:</span>
-                                <span className="font-semibold">{order.amountPaid.toLocaleString()}</span>
+                                <span className="font-semibold">{Number(order.amountPaid).toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-xl font-bold text-gray-800 pt-2 border-t">
                                 <span>صرف باقی:</span>
@@ -901,14 +1245,16 @@ type SalesProps = {
     currentUser: User;
     documentSettings: DocumentSettings;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    onSaveDrug: (drug: Drug) => void;
 };
 
-const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser, documentSettings, addToast }) => {
+const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser, documentSettings, addToast, onSaveDrug }) => {
     const initialFilters = {
         searchTerm: '', status: 'all', paymentStatus: 'all', startDate: '', endDate: '',
     };
     const [filters, setFilters] = useState(initialFilters);
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+    const [isDrugModalOpen, setIsDrugModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState<'sale' | 'return'>('sale');
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [printData, setPrintData] = useState<{order: Order, previousBalance: number} | null>(null);
@@ -922,22 +1268,26 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
         setFilters(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleOpenAddModal = () => {
+    const handleOpenAddOrderModal = () => {
         setEditingOrder(null);
         setModalMode('sale');
-        setIsModalOpen(true);
+        setIsOrderModalOpen(true);
+    };
+    
+    const handleOpenAddDrugModal = () => {
+        setIsDrugModalOpen(true);
     };
 
     const handleOpenEditModal = (order: Order) => {
         setEditingOrder(order);
         setModalMode('sale');
-        setIsModalOpen(true);
+        setIsOrderModalOpen(true);
     };
 
     const handleOpenReturnModal = (order: Order) => {
         setEditingOrder(order);
         setModalMode('return');
-        setIsModalOpen(true);
+        setIsOrderModalOpen(true);
     };
     
     const handleOpenPrintModal = (orderToPrint: Order) => {
@@ -952,7 +1302,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
     };
 
     const handleCloseModal = () => {
-        setIsModalOpen(false);
+        setIsOrderModalOpen(false);
         setEditingOrder(null);
     };
     
@@ -993,8 +1343,15 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
 
     return (
         <div className="p-8">
+            {canManageSales && <DrugModal 
+                isOpen={isDrugModalOpen} 
+                onClose={() => setIsDrugModalOpen(false)}
+                onSave={onSaveDrug}
+                initialData={null}
+                addToast={addToast}
+            />}
             {canManageSales && <OrderModal 
-                isOpen={isModalOpen} 
+                isOpen={isOrderModalOpen} 
                 onClose={handleCloseModal} 
                 onSave={onSave} 
                 initialData={editingOrder}
@@ -1018,10 +1375,16 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                     <h2 className="text-2xl font-bold text-gray-800">فروش و سفارشات</h2>
                     <p className="text-gray-500">لیست کامل سفارشات و مستردی‌های ثبت شده در سیستم</p>
                 </div>
-                 {canManageSales && <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md hover:shadow-lg">
-                    <PlusIcon />
-                    <span className="mr-2">ثبت سفارش جدید</span>
-                </button>}
+                 <div className="flex items-center gap-2">
+                    {canManageSales && <button onClick={handleOpenAddDrugModal} className="flex items-center bg-blue-600 text-white px-3 py-2 text-sm rounded-lg hover:bg-blue-700 transition-colors shadow-md">
+                        <PlusIcon />
+                        <span className="mr-2">افزودن داروی جدید</span>
+                    </button>}
+                    {canManageSales && <button onClick={handleOpenAddOrderModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md">
+                        <PlusIcon />
+                        <span className="mr-2">ثبت سفارش جدید</span>
+                    </button>}
+                </div>
             </div>
 
             <div className="bg-gray-50 rounded-xl shadow-md p-4 mb-6">
@@ -1117,7 +1480,10 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                                                 </div>
                                             </td>
                                             <td className="p-4 whitespace-nowrap text-gray-500">{order.customerName}</td>
-                                            <td className="p-4 whitespace-nowrap text-gray-500">{new Date(order.orderDate).toLocaleDateString('fa-IR')}</td>
+                                            <td className="p-4 whitespace-nowrap text-gray-500 text-sm">
+                                                {new Date(order.orderDate).toLocaleDateString('fa-IR')}
+                                                <div className="font-mono text-xs text-gray-400">{formatGregorianForDisplay(order.orderDate)}</div>
+                                            </td>
                                             <td className={`p-4 whitespace-nowrap font-semibold ${isReturn ? 'text-red-600' : 'text-gray-800'}`}>{order.totalAmount.toLocaleString()}</td>
                                             <td className={`p-4 whitespace-nowrap font-semibold ${remainingAmount > 0 ? 'text-red-600' : (remainingAmount < 0 ? 'text-green-600' : 'text-gray-800')}`}>{remainingAmount.toLocaleString()}</td>
                                             <td className="p-4 whitespace-nowrap">
