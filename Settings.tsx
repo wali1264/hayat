@@ -16,13 +16,14 @@ const DownloadIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-
 const CloudUploadIcon = () => <Icon path="M7 16a4 4 0 01-4-4V7a4 4 0 014-4h1.586a1 1 0 01.707.293l1.414 1.414a1 1 0 00.707.293h4.586a4 4 0 014 4v5a4 4 0 01-4 4H7z" className="w-6 h-6" />;
 const CloudDownloadIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" className="w-6 h-6" />;
 const RefreshIcon = () => <Icon path="M4 4v5h5M20 20v-5h-5" />;
-
+const KeyIcon = () => <Icon path="M15 7a3 3 0 11-6 0 3 3 0 016 0zm-1.667 3.333H10V14h3.333v-3.667z" />;
 
 //=========== TYPES ===========//
 export type UserRole = 'مدیر کل' | 'انباردار' | 'فروشنده' | 'حسابدار';
 export type User = {
     id: number;
     username: string;
+    password?: string;
     role: UserRole;
     lastLogin: string;
 };
@@ -42,10 +43,7 @@ export type DocumentSettings = {
 
 //=========== MOCK DATA ===========//
 export const mockUsers: User[] = [
-    { id: 1, username: 'admin', role: 'مدیر کل', lastLogin: '1403/05/01 10:30' },
-    { id: 2, username: 'ahmad', role: 'انباردار', lastLogin: '1403/05/01 09:15' },
-    { id: 3, username: 'farid', role: 'فروشنده', lastLogin: '1403/04/30 14:00' },
-    { id: 4, username: 'zohra', role: 'حسابدار', lastLogin: '1403/05/01 11:05' },
+    { id: 1, username: 'admin', password: 'admin', role: 'مدیر کل', lastLogin: 'هرگز وارد نشده' },
 ];
 
 //=========== HELPERS ===========//
@@ -80,13 +78,13 @@ type UserModalProps = {
 };
 
 const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
-    const defaultState = { username: '', role: 'فروشنده' as UserRole };
+    const defaultState = { username: '', role: 'فروشنده' as UserRole, password: '' };
     const [user, setUser] = useState(defaultState);
     const isEditMode = initialData !== null;
 
     useEffect(() => {
         if (isOpen) {
-            setUser(initialData ? { username: initialData.username, role: initialData.role } : defaultState);
+            setUser(initialData ? { username: initialData.username, role: initialData.role, password: '' } : defaultState);
         }
     }, [isOpen, initialData]);
 
@@ -99,7 +97,16 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSave, initialD
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave({ id: isEditMode ? initialData!.id : Date.now(), ...user });
+        const userToSave: Omit<User, 'lastLogin'> = {
+            id: isEditMode ? initialData!.id : Date.now(),
+            username: user.username,
+            role: user.role
+        };
+        // Only add password if it's a new user or the password field is filled
+        if (!isEditMode || user.password) {
+            userToSave.password = user.password;
+        }
+        onSave(userToSave);
         onClose();
     };
 
@@ -111,6 +118,10 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSave, initialD
                     <div>
                         <label className="block text-sm font-bold mb-2">نام کاربری</label>
                         <input type="text" name="username" value={user.username} onChange={handleChange} className="w-full p-2 border rounded-lg" required autoFocus />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold mb-2">رمز عبور</label>
+                        <input type="password" name="password" value={user.password} onChange={handleChange} className="w-full p-2 border rounded-lg" placeholder={isEditMode ? 'برای عدم تغییر خالی بگذارید' : ''} required={!isEditMode} />
                     </div>
                     <div>
                         <label className="block text-sm font-bold mb-2">نقش کاربری</label>
@@ -130,6 +141,36 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSave, initialD
         </div>
     );
 };
+
+const ResetPasswordModal = ({isOpen, onClose, onConfirm, user}) => {
+    const [newPassword, setNewPassword] = useState('');
+    if(!isOpen || !user) return null;
+
+    const handleSubmit = () => {
+        if (newPassword.length < 4) {
+            alert('رمز عبور باید حداقل ۴ کاراکتر باشد.');
+            return;
+        }
+        onConfirm(user.username, newPassword);
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+            <div className="bg-white rounded-xl p-8 w-full max-w-md">
+                <h3 className="text-xl font-bold mb-4">بازنشانی رمز عبور برای {user.username}</h3>
+                <div>
+                    <label className="block text-sm font-bold mb-2">رمز عبور جدید</label>
+                    <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full p-2 border rounded-lg" autoFocus />
+                </div>
+                 <div className="flex justify-end gap-4 mt-6 pt-4 border-t">
+                    <button onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200">انصراف</button>
+                    <button onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-teal-600 text-white">ذخیره رمز جدید</button>
+                 </div>
+            </div>
+        </div>
+    );
+}
 
 
 const CompanyInfoSection = ({ companyInfo, onSetCompanyInfo }) => {
@@ -276,23 +317,30 @@ const DocumentCustomizerSection = ({ settings, onSetSettings, companyInfo }) => 
     );
 };
 
-const UserManagementSection = ({ users, onSaveUser, onDeleteUser }) => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
+const UserManagementSection = ({ users, onSaveUser, onDeleteUser, onPasswordReset }) => {
+    const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [userToReset, setUserToReset] = useState<User | null>(null);
 
     const handleAdd = () => {
         setEditingUser(null);
-        setIsModalOpen(true);
+        setIsUserModalOpen(true);
     };
 
     const handleEdit = (user: User) => {
         setEditingUser(user);
-        setIsModalOpen(true);
+        setIsUserModalOpen(true);
+    };
+
+    const handleResetPassword = (user: User) => {
+        setUserToReset(user);
     };
     
     return (
         <>
-        <UserModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={onSaveUser} initialData={editingUser} />
+        <UserModal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} onSave={onSaveUser} initialData={editingUser} />
+        <ResetPasswordModal isOpen={!!userToReset} onClose={() => setUserToReset(null)} onConfirm={onPasswordReset} user={userToReset} />
+
         <div className="space-y-4">
             <div className="flex justify-end">
                 <button onClick={handleAdd} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 shadow-md">
@@ -309,7 +357,7 @@ const UserManagementSection = ({ users, onSaveUser, onDeleteUser }) => {
                                 <td className="p-3 font-medium">{user.username}</td>
                                 <td className="p-3"><span className={`px-2 py-1 text-xs font-bold rounded-full ${getRoleStyle(user.role)}`}>{user.role}</span></td>
                                 <td className="p-3 text-sm text-gray-500">{user.lastLogin}</td>
-                                <td className="p-3"><div className="flex gap-2"><button onClick={() => handleEdit(user)} className="text-blue-500 p-1"><EditIcon /></button><button onClick={() => onDeleteUser(user.id)} className="text-red-500 p-1"><TrashIcon /></button></div></td>
+                                <td className="p-3"><div className="flex gap-2"><button onClick={() => handleEdit(user)} className="text-blue-500 p-1" title="ویرایش"><EditIcon /></button><button onClick={() => onDeleteUser(user.id)} className="text-red-500 p-1" title="حذف"><TrashIcon /></button><button onClick={() => handleResetPassword(user)} className="text-yellow-600 p-1" title="بازنشانی رمز عبور"><KeyIcon /></button></div></td>
                             </tr>
                         ))}
                     </tbody>
@@ -487,6 +535,55 @@ const DataPurgeSection = ({ onPurgeData, showConfirmation, addToast }) => {
     );
 };
 
+const SecuritySettingsSection = ({ backupKey, onBackupKeyChange, addToast }) => {
+    const [currentKey, setCurrentKey] = useState('');
+    const [newKey, setNewKey] = useState('');
+    const [confirmNewKey, setConfirmNewKey] = useState('');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (currentKey !== backupKey) {
+            addToast('شاه کلید فعلی اشتباه است.', 'error');
+            return;
+        }
+        if (newKey.length < 8) {
+            addToast('شاه کلید جدید باید حداقل ۸ کاراکتر باشد.', 'error');
+            return;
+        }
+        if (newKey !== confirmNewKey) {
+            addToast('شاه کلید جدید و تکرار آن مطابقت ندارند.', 'error');
+            return;
+        }
+        onBackupKeyChange(newKey);
+        addToast('شاه کلید پشتیبان با موفقیت تغییر کرد.', 'success');
+        setCurrentKey('');
+        setNewKey('');
+        setConfirmNewKey('');
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <label className="block text-sm font-bold mb-2">شاه کلید فعلی</label>
+                <input type="password" value={currentKey} onChange={e => setCurrentKey(e.target.value)} className="w-full p-2 border rounded-lg" required />
+            </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-bold mb-2">شاه کلید جدید</label>
+                    <input type="password" value={newKey} onChange={e => setNewKey(e.target.value)} className="w-full p-2 border rounded-lg" required />
+                </div>
+                 <div>
+                    <label className="block text-sm font-bold mb-2">تکرار شاه کلید جدید</label>
+                    <input type="password" value={confirmNewKey} onChange={e => setConfirmNewKey(e.target.value)} className="w-full p-2 border rounded-lg" required />
+                </div>
+            </div>
+            <div className="flex justify-end pt-4">
+                <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold">تغییر شاه کلید</button>
+            </div>
+        </form>
+    );
+}
+
 //=========== MAIN COMPONENT ===========//
 type SettingsProps = {
     companyInfo: CompanyInfo;
@@ -494,6 +591,9 @@ type SettingsProps = {
     users: User[];
     onSaveUser: (user: Omit<User, 'lastLogin'>) => void;
     onDeleteUser: (id: number) => void;
+    onPasswordReset: (username: string, newPass: string) => void;
+    backupKey: string | null;
+    onBackupKeyChange: (newKey: string) => void;
     supabase: SupabaseClient;
     licenseId: string | null;
     onBackupLocal: () => void;
@@ -506,6 +606,7 @@ type SettingsProps = {
     hasUnsavedChanges: boolean;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     showConfirmation: (title: string, message: React.ReactNode, onConfirm: () => void) => void;
+    currentUser: User;
 };
 
 const Settings: React.FC<SettingsProps> = (props) => {
@@ -519,9 +620,15 @@ const Settings: React.FC<SettingsProps> = (props) => {
                 <DocumentCustomizerSection settings={props.documentSettings} onSetSettings={props.onSetDocumentSettings} companyInfo={props.companyInfo} />
             </SettingsCard>
 
-            <SettingsCard title="مدیریت کاربران" description="کاربران جدید تعریف کرده و سطح دسترسی آن‌ها را مشخص کنید.">
-                <UserManagementSection users={props.users} onSaveUser={props.onSaveUser} onDeleteUser={props.onDeleteUser} />
+            <SettingsCard title="مدیریت کاربران" description="کاربران جدید تعریف کرده و سطح دسترسی و رمز عبور آن‌ها را مشخص کنید.">
+                <UserManagementSection users={props.users} onSaveUser={props.onSaveUser} onDeleteUser={props.onDeleteUser} onPasswordReset={props.onPasswordReset} />
             </SettingsCard>
+            
+            {props.currentUser.role === 'مدیر کل' && (
+                <SettingsCard title="تنظیمات امنیتی" description="شاه کلید پشتیبان برای بازیابی اضطراری رمزهای عبور استفاده می‌شود. آن را در جای امنی نگهداری کنید.">
+                    <SecuritySettingsSection backupKey={props.backupKey} onBackupKeyChange={props.onBackupKeyChange} addToast={props.addToast} />
+                </SettingsCard>
+            )}
 
              <SettingsCard title="پشتیبان‌گیری و بازیابی" description="از اطلاعات خود نسخه پشتیبان تهیه کرده یا اطلاعات قبلی را بازیابی کنید.">
                 <BackupAndRestoreSection 

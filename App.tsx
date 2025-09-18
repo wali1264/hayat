@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
-import Inventory, { Drug } from './Inventory';
+import Inventory, { DrugDefinition } from './Inventory';
+// FIX: Corrected import. The module now exports correctly after fixing syntax errors in it.
 import Sales, { Order, OrderItem, ExtraCharge } from './Sales';
 import Customers, { Customer } from './Customers';
 import Accounting, { Expense, Income } from './Accounting';
@@ -190,11 +191,22 @@ const permissions: PermissionsMap = {
 };
 
 //=========== NEW DATA TYPES ===========//
+export type Batch = {
+  id: string; // uuid
+  lotNumber: string;
+  drugId: number; // Foreign key to DrugDefinition
+  quantity: number;
+  expiryDate: string;
+  purchasePrice: number; // cost of goods for this batch
+  location: 'main_warehouse' | 'sales_warehouse';
+};
+
 export type WriteOffReason = 'تاریخ گذشته' | 'آسیب دیده' | 'مفقود شده' | 'سایر';
 export type InventoryWriteOff = {
     id: number;
     drugId: number;
     drugName: string;
+    lotNumber: string; // Added lotNumber
     quantity: number;
     reason: WriteOffReason;
     notes?: string;
@@ -224,138 +236,18 @@ export type StockRequisition = {
 
 
 //=========== MOCK DATA FOR DEMO ===========//
-// --- Sales Warehouse ---
-const initialMockDrugs: Drug[] = [
-    { id: 1, name: 'Amoxicillin 500mg', barcode: '8901234567890', code: 'AMX500', manufacturer: 'Kabul Pharma', quantity: 150, unitsPerCarton: 100, productionDate: '2023-12-01', expiryDate: '2025-12-31', price: 120, purchasePrice: 95, discountPercentage: 5, category: 'آنتی‌بیوتیک' },
-    { id: 2, name: 'Panadol Extra', barcode: '8901234567891', code: 'PAN-EX', manufacturer: 'GSK', quantity: 250, unitsPerCarton: 200, productionDate: '2024-01-01', expiryDate: '2026-06-30', price: 80, purchasePrice: 60, discountPercentage: 0, category: 'مسکن' },
-    { id: 3, name: 'Vitamin C 1000mg', barcode: '8901234567892', code: 'VITC1000', manufacturer: 'Bayer', quantity: 80, unitsPerCarton: 50, productionDate: '2023-05-01', expiryDate: '2024-11-30', price: 250, purchasePrice: 190, discountPercentage: 10, category: 'ویتامین و مکمل' },
-    { id: 4, name: 'Metformin 850mg', barcode: '8901234567893', code: 'MET850', manufacturer: 'Merck', quantity: 45, unitsPerCarton: 60, expiryDate: '2025-02-28', price: 180, purchasePrice: 145, discountPercentage: 0, category: 'دیابت' }, // Low stock
-    { id: 5, name: 'Aspirin 81mg', barcode: '8901234567894', code: 'ASP81', manufacturer: 'Bayer', quantity: 120, unitsPerCarton: 1, expiryDate: '2027-01-31', price: 90, purchasePrice: 70, discountPercentage: 0, category: 'بیماری‌های قلبی' },
-    { id: 6, name: 'Ciprofloxacin 500mg', barcode: '8901234567895', code: 'CIP500', manufacturer: 'Kabul Pharma', quantity: 60, unitsPerCarton: 100, expiryDate: '2024-09-30', price: 300, purchasePrice: 240, discountPercentage: 15, category: 'آنتی‌بیوتیک' }, // Near expiry
-    { id: 7, name: 'Salbutamol Inhaler', barcode: '8901234567896', code: 'SAL-INH', manufacturer: 'GSK', quantity: 30, unitsPerCarton: 1, expiryDate: '2025-08-31', price: 450, purchasePrice: 380, discountPercentage: 0, category: 'تنفسی' },
-    { id: 8, name: 'Paracetamol Syrup', barcode: '8901234567897', code: 'PARA-SYP', manufacturer: 'Herat Medica', quantity: 95, unitsPerCarton: 24, expiryDate: '2025-10-31', price: 60, purchasePrice: 45, discountPercentage: 0, category: 'مسکن' },
-    { id: 9, name: 'Loratadine 10mg', barcode: '8901234567898', code: 'LOR10', manufacturer: 'Bayer', quantity: 0, unitsPerCarton: 100, expiryDate: '2024-05-31', price: 150, purchasePrice: 110, discountPercentage: 0, category: 'ضد حساسیت' }, // Out of stock & expired
-    { id: 10, name: 'Omeprazole 20mg', barcode: '8901234567899', code: 'OME20', manufacturer: 'Herat Medica', quantity: 70, unitsPerCarton: 70, expiryDate: '2026-04-30', price: 220, purchasePrice: 175, discountPercentage: 5, category: 'گوارشی' },
-];
+const initialMockDrugDefinitions: DrugDefinition[] = [];
+const initialMockBatches: Batch[] = [];
 
-// --- Main Warehouse ---
-const initialMockMainWarehouseDrugs: Drug[] = [
-    { id: 1, name: 'Amoxicillin 500mg', barcode: '8901234567890', code: 'AMX500', manufacturer: 'Kabul Pharma', quantity: 5000, unitsPerCarton: 100, productionDate: '2023-12-01', expiryDate: '2025-12-31', price: 120, purchasePrice: 95, discountPercentage: 5, category: 'آنتی‌بیوتیک' },
-    { id: 2, name: 'Panadol Extra', barcode: '8901234567891', code: 'PAN-EX', manufacturer: 'GSK', quantity: 10000, unitsPerCarton: 200, productionDate: '2024-01-01', expiryDate: '2026-06-30', price: 80, purchasePrice: 60, discountPercentage: 0, category: 'مسکن' },
-    { id: 3, name: 'Vitamin C 1000mg', barcode: '8901234567892', code: 'VITC1000', manufacturer: 'Bayer', quantity: 2000, unitsPerCarton: 50, productionDate: '2023-05-01', expiryDate: '2024-11-30', price: 250, purchasePrice: 190, discountPercentage: 10, category: 'ویتامین و مکمل' },
-    { id: 6, name: 'Ciprofloxacin 500mg', barcode: '8901234567895', code: 'CIP500', manufacturer: 'Kabul Pharma', quantity: 2500, unitsPerCarton: 100, expiryDate: '2024-09-30', price: 300, purchasePrice: 240, discountPercentage: 15, category: 'آنتی‌بیوتیک' },
-    { id: 8, name: 'Paracetamol Syrup', barcode: '8901234567897', code: 'PARA-SYP', manufacturer: 'Herat Medica', quantity: 5000, unitsPerCarton: 24, expiryDate: '2025-10-31', price: 60, purchasePrice: 45, discountPercentage: 0, category: 'مسکن' },
-    { id: 10, name: 'Omeprazole 20mg', barcode: '8901234567899', code: 'OME20', manufacturer: 'Herat Medica', quantity: 3000, unitsPerCarton: 70, expiryDate: '2026-04-30', price: 220, purchasePrice: 175, discountPercentage: 5, category: 'گوارشی' },
-];
+const initialMockCustomers: Customer[] = [];
 
+const initialMockOrders: Order[] = [];
 
-const initialMockCustomers: Customer[] = [
-    { id: 1, name: 'داروخانه مرکزی کابل', manager: 'احمد ولی', phone: '0788112233', address: 'چهارراهی انصاری، کابل', registrationDate: '2023-01-15', status: 'فعال' },
-    { id: 2, name: 'شفاخانه صحت', manager: 'دکتر فریبا', phone: '0799445566', address: 'کارته سه، کابل', registrationDate: '2023-03-20', status: 'فعال' },
-    { id: 3, name: 'کلینیک آریانا', manager: 'محمد نادر', phone: '0777889900', address: 'شهرنو، مزار شریف', registrationDate: '2023-05-10', status: 'فعال' },
-    { id: 4, name: 'داروخانه امید', manager: 'زهرا حسینی', phone: '0766123456', address: 'چوک گلها، هرات', registrationDate: '2023-08-01', status: 'غیرفعال' },
-    { id: 5, name: 'شفاخانه امیری', manager: 'علی رضا', phone: '0789987654', address: 'وزیر اکبر خان، کابل', registrationDate: '2024-02-18', status: 'فعال' },
-];
+const initialMockExpenses: Expense[] = [];
 
-const initialMockOrders: Order[] = [
-    {
-        id: 1, type: 'sale', orderNumber: 'ORD-2407-001', customerName: 'داروخانه مرکزی کابل', orderDate: '2024-07-25',
-        items: [
-            { drugId: 1, drugName: 'Amoxicillin 500mg', manufacturer: 'Kabul Pharma', code: 'AMX500', quantity: 50, bonusQuantity: 0, originalPrice: 120, discountPercentage: 5, finalPrice: 114 },
-            { drugId: 2, drugName: 'Panadol Extra', manufacturer: 'GSK', code: 'PAN-EX', quantity: 100, bonusQuantity: 0, originalPrice: 80, discountPercentage: 0, finalPrice: 80 },
-        ],
-        extraCharges: [],
-        totalAmount: 13700,
-        amountPaid: 13700, status: 'تکمیل شده', paymentStatus: 'پرداخت شده', ledgerRefCode: 'C1-001'
-    },
-    {
-        id: 2, type: 'sale', orderNumber: 'ORD-2407-002', customerName: 'شفاخانه صحت', orderDate: '2024-07-26',
-        items: [
-            { drugId: 3, drugName: 'Vitamin C 1000mg', manufacturer: 'Bayer', code: 'VITC1000', quantity: 20, bonusQuantity: 0, originalPrice: 250, discountPercentage: 10, finalPrice: 225 },
-        ],
-        extraCharges: [],
-        totalAmount: 4500,
-        amountPaid: 2000, status: 'ارسال شده', paymentStatus: 'قسمتی پرداخت شده', ledgerRefCode: 'C2-001'
-    },
-    {
-        id: 3, type: 'sale', orderNumber: 'ORD-2407-003', customerName: 'کلینیک آریانا', orderDate: '2024-07-28',
-        items: [
-            { drugId: 7, drugName: 'Salbutamol Inhaler', manufacturer: 'GSK', code: 'SAL-INH', quantity: 10, bonusQuantity: 2, originalPrice: 450, discountPercentage: 0, finalPrice: 450 },
-            { drugId: 5, drugName: 'Aspirin 81mg', manufacturer: 'Bayer', code: 'ASP81', quantity: 200, bonusQuantity: 0, originalPrice: 90, discountPercentage: 0, finalPrice: 90 },
-        ],
-        extraCharges: [],
-        totalAmount: 22500,
-        amountPaid: 0, status: 'ارسال شده', paymentStatus: 'پرداخت نشده', ledgerRefCode: 'C3-001'
-    },
-    {
-        id: 4, type: 'sale', orderNumber: 'ORD-2407-004', customerName: 'شفاخانه امیری', orderDate: new Date().toISOString().split('T')[0], // Today's order
-        items: [
-            { drugId: 8, drugName: 'Paracetamol Syrup', manufacturer: 'Herat Medica', code: 'PARA-SYP', quantity: 60, bonusQuantity: 0, originalPrice: 60, discountPercentage: 0, finalPrice: 60 },
-        ],
-        extraCharges: [],
-        totalAmount: 3600,
-        amountPaid: 0, status: 'در حال پردازش', paymentStatus: 'پرداخت نشده', ledgerRefCode: 'C5-001'
-    },
-     {
-        id: 5, type: 'sale', orderNumber: 'ORD-2407-005', customerName: 'داروخانه مرکزی کابل', orderDate: new Date().toISOString().split('T')[0], // Today's order
-        items: [
-            { drugId: 4, drugName: 'Metformin 850mg', manufacturer: 'Merck', code: 'MET850', quantity: 15, bonusQuantity: 0, originalPrice: 180, discountPercentage: 0, finalPrice: 180 },
-            { drugId: 10, drugName: 'Omeprazole 20mg', manufacturer: 'Herat Medica', code: 'OME20', quantity: 30, bonusQuantity: 0, originalPrice: 220, discountPercentage: 5, finalPrice: 209 },
-        ],
-        extraCharges: [],
-        totalAmount: 8970,
-        amountPaid: 0, status: 'در حال پردازش', paymentStatus: 'پرداخت نشده', ledgerRefCode: 'C1-002'
-    },
-    {
-        id: 6, type: 'sale', orderNumber: 'ORD-2406-015', customerName: 'شفاخانه صحت', orderDate: '2024-06-20',
-        items: [
-            { drugId: 2, drugName: 'Panadol Extra', manufacturer: 'GSK', code: 'PAN-EX', quantity: 200, bonusQuantity: 0, originalPrice: 80, discountPercentage: 0, finalPrice: 80 },
-        ],
-        extraCharges: [],
-        totalAmount: 16000,
-        amountPaid: 16000, status: 'تکمیل شده', paymentStatus: 'پرداخت شده', ledgerRefCode: 'C2-002'
-    }
-];
+const initialMockSuppliers: Supplier[] = [];
 
-const initialMockExpenses: Expense[] = [
-    { id: 1, description: 'پرداخت حقوق کارمندان ماه جولای', amount: 150000, date: '2024-07-30', category: 'حقوق' },
-    { id: 2, description: 'کرایه دفتر مرکزی ماه جولای', amount: 45000, date: '2024-07-28', category: 'کرایه' },
-    { id: 3, description: 'هزینه حمل و نقل سفارشات', amount: 12000, date: '2024-07-25', category: 'حمل و نقل' },
-    { id: 4, description: 'خرید لوازم اداری', amount: 5000, date: '2024-07-15', category: 'سایر' },
-];
-
-const initialMockSuppliers: Supplier[] = [
-    { id: 1, name: 'Kabul Pharma', representative: 'نوراحمد شاه', phone: '0788123123', email: 'info@kabulpharma.af', address: 'پارک صنعتی، کابل', status: 'فعال' },
-    { id: 2, name: 'Herat Medica', representative: 'فاطمه اکبری', phone: '0799456456', email: 'sales@hmedica.af', address: 'شهرک صنعتی، هرات', status: 'فعال' },
-    { id: 3, name: 'Global Impex', representative: 'John Doe', phone: '+97141234567', email: 'contact@globalimpex.ae', address: 'دبی، امارات', status: 'غیرفعال' },
-];
-
-const initialMockPurchaseBills: PurchaseBill[] = [
-    {
-        id: 1, type: 'purchase', billNumber: 'KP-2024-101', supplierName: 'Kabul Pharma', purchaseDate: '2024-07-15',
-        items: [
-            { drugId: 1, drugName: 'Amoxicillin 500mg', quantity: 1000, purchasePrice: 90 },
-            { drugId: 6, drugName: 'Ciprofloxacin 500mg', quantity: 500, purchasePrice: 240 },
-        ],
-        totalAmount: 210000,
-        amountPaid: 210000,
-        status: 'دریافت شده',
-        currency: 'AFN',
-        exchangeRate: 1,
-    },
-    {
-        id: 2, type: 'purchase', billNumber: 'HM-2024-58', supplierName: 'Herat Medica', purchaseDate: '2024-07-20',
-        items: [
-            { drugId: 8, drugName: 'Paracetamol Syrup', quantity: 1000, purchasePrice: 45 },
-            { drugId: 10, drugName: 'Omeprazole 20mg', quantity: 500, purchasePrice: 180 },
-        ],
-        totalAmount: 135000,
-        amountPaid: 50000,
-        status: 'دریافت شده',
-        currency: 'AFN',
-        exchangeRate: 1,
-    }
-];
+const initialMockPurchaseBills: PurchaseBill[] = [];
 
 // --- Checkneh Mock Data (Will be managed by its own hook) ---
 const initialMockChecknehInvoices: ChecknehInvoice[] = [];
@@ -455,12 +347,12 @@ const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout }) => {
                         onClick={() => setActiveItem('settings')}
                     />
                  )}
-                  {/* <NavItem
+                  <NavItem
                     icon={<LogoutIcon />}
                     label="خروج از سیستم"
                     isActive={false} 
                     onClick={onLogout}
-                /> */}
+                />
             </div>
         </aside>
     );
@@ -776,8 +668,8 @@ const ActivationScreen = ({ onActivate, onSwitchToLogin }: { onActivate: () => v
     );
 };
 
-//=========== LOGIN SCREEN ===========//
-const LoginScreen = ({ onLoginSuccess, onSwitchToActivation }: { onLoginSuccess: () => void, onSwitchToActivation: () => void }) => {
+//=========== LOGIN SCREEN (for online sync) ===========//
+const OnlineLoginScreen = ({ onLoginSuccess, onSwitchToActivation }: { onLoginSuccess: () => void, onSwitchToActivation: () => void }) => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -882,6 +774,83 @@ const LoginScreen = ({ onLoginSuccess, onSwitchToActivation }: { onLoginSuccess:
     );
 };
 
+//=========== NEW: USER LOGIN SCREEN ===========//
+const UserLoginScreen = ({ users, onLogin, onBackupKeyReset, backupKey, addToast }) => {
+    const [selectedUser, setSelectedUser] = useState(users[0]?.username || '');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+    const [recoveryKey, setRecoveryKey] = useState('');
+    const [recoveryPassword, setRecoveryPassword] = useState('');
+    const [recoveryUser, setRecoveryUser] = useState(users[0]?.username || '');
+
+
+    const handleLoginSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        const success = onLogin(selectedUser, password);
+        if (!success) {
+            setError('نام کاربری یا رمز عبور اشتباه است.');
+        }
+    };
+    
+    const handleRecoverySubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (recoveryKey !== backupKey) {
+            addToast('شاه کلید پشتیبان اشتباه است.', 'error');
+            return;
+        }
+        if (recoveryPassword.length < 4) {
+             addToast('رمز عبور جدید باید حداقل ۴ کاراکتر باشد.', 'error');
+            return;
+        }
+        onBackupKeyReset(recoveryUser, recoveryPassword);
+        addToast(`رمز عبور کاربر ${recoveryUser} با موفقیت بازنشانی شد.`, 'success');
+        setIsRecoveryMode(false);
+        setRecoveryKey('');
+        setRecoveryPassword('');
+    };
+
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100" dir="rtl">
+             {isRecoveryMode && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4">
+                    <div className="bg-white rounded-xl p-8 max-w-md w-full space-y-4">
+                        <h2 className="text-xl font-bold text-gray-800 text-center">بازیابی اضطراری رمز عبور</h2>
+                        <form onSubmit={handleRecoverySubmit} className="space-y-4">
+                            <div><label className="block text-sm font-bold mb-1">شاه کلید پشتیبان</label><input type="password" value={recoveryKey} onChange={e => setRecoveryKey(e.target.value)} className="w-full p-2 border rounded" required /></div>
+                            <div><label className="block text-sm font-bold mb-1">کاربر مورد نظر</label><select value={recoveryUser} onChange={e => setRecoveryUser(e.target.value)} className="w-full p-2 border rounded bg-white"><option value="" disabled>انتخاب کنید</option>{users.map(u => <option key={u.id} value={u.username}>{u.username} ({u.role})</option>)}</select></div>
+                            <div><label className="block text-sm font-bold mb-1">رمز عبور جدید</label><input type="password" value={recoveryPassword} onChange={e => setRecoveryPassword(e.target.value)} className="w-full p-2 border rounded" required /></div>
+                            <div className="flex justify-center gap-4 pt-4">
+                                <button type="button" onClick={() => setIsRecoveryMode(false)} className="px-6 py-2 rounded-lg bg-gray-200 font-semibold">انصراف</button>
+                                <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold">بازنشانی رمز</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+             )}
+            <div className="w-full max-w-sm p-8 space-y-6 bg-white rounded-2xl shadow-2xl">
+                <div className="flex flex-col items-center">
+                    <div className="p-4 bg-teal-600 rounded-full mb-4"><LogoIcon /></div>
+                    <h1 className="text-3xl font-bold text-gray-800">ورود به حیات</h1>
+                    <p className="text-gray-500 mt-2">لطفاً کاربر خود را انتخاب و وارد شوید</p>
+                </div>
+                <form className="space-y-4" onSubmit={handleLoginSubmit}>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-2">نام کاربری</label><select value={selectedUser} onChange={e => setSelectedUser(e.target.value)} className="w-full px-4 py-3 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"><option value="" disabled>کاربر را انتخاب کنید</option>{users.map(u => <option key={u.id} value={u.username}>{u.username}</option>)}</select></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-2">رمز عبور</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" required /></div>
+                    {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+                    <div><button type="submit" className="w-full flex justify-center py-3 px-4 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 shadow-lg">ورود</button></div>
+                </form>
+                <div className="text-center text-sm">
+                    <button onClick={() => alert("لطفاً برای بازنشانی رمز عبور به مدیر سیستم مراجعه کنید.")} className="font-medium text-teal-600 hover:text-teal-800">رمز عبور خود را فراموش کرده‌اید؟</button>
+                    <span className="mx-2 text-gray-300">|</span>
+                    <button onClick={() => setIsRecoveryMode(true)} className="font-medium text-gray-500 hover:text-gray-800">بازیابی اضطراری</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 //=========== MAIN APP ===========//
 const App: React.FC = () => {
@@ -899,8 +868,12 @@ const App: React.FC = () => {
     
     // Centralized, Persistent State
     const [users, setUsers] = usePersistentState<User[]>('hayat_users', initialMockUsers);
-    const [drugs, setDrugs] = usePersistentState<Drug[]>('hayat_drugs', initialMockDrugs);
-    const [mainWarehouseDrugs, setMainWarehouseDrugs] = usePersistentState<Drug[]>('hayat_mainWarehouseDrugs', initialMockMainWarehouseDrugs);
+    const [backupKey, setBackupKey] = usePersistentState<string | null>('hayat_backupKey', 'HAYAT-BACKUP-2024');
+    
+    // NEW BATCH-BASED INVENTORY STATE
+    const [drugDefinitions, setDrugDefinitions] = usePersistentState<DrugDefinition[]>('hayat_drugDefinitions', initialMockDrugDefinitions);
+    const [batches, setBatches] = usePersistentState<Batch[]>('hayat_batches', initialMockBatches);
+
     const [internalTransfers, setInternalTransfers] = usePersistentState<InternalTransfer[]>('hayat_internalTransfers', []);
     const [stockRequisitions, setStockRequisitions] = usePersistentState<StockRequisition[]>('hayat_stockRequisitions', []);
     const [orders, setOrders] = usePersistentState<Order[]>('hayat_orders', initialMockOrders);
@@ -960,28 +933,134 @@ const App: React.FC = () => {
     const [showUpdateNotification, setShowUpdateNotification] = useState(false);
     const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
 
+    // FIX: Moved toast handlers before usage in useEffect to prevent "used before its declaration" error.
+    // --- Toast & Confirmation Handlers ---
+    const addToast = (message: string, type: ToastType = 'info') => {
+        setToasts(prev => [...prev, { id: Date.now(), message, type }]);
+    };
+    
+    const showConfirmation = (title: string, message: React.ReactNode, onConfirm: () => void, onCancel?: () => void) => {
+        setConfirmationState({ isOpen: true, title, message, onConfirm, onCancel: onCancel || (() => {}) });
+    };
+
+    const closeConfirmation = () => {
+        confirmationState.onCancel?.();
+        setConfirmationState(prev => ({ ...prev, isOpen: false }));
+    };
+
+    const handleConfirm = () => {
+        confirmationState.onConfirm();
+        setConfirmationState(prev => ({ ...prev, isOpen: false }));
+    };
+
+    // --- ONE-TIME DATA MIGRATION ---
+    useEffect(() => {
+        const migrationDone = JSON.parse(window.localStorage.getItem('hayat_migrated_to_batches_v1') || 'false');
+        if (!migrationDone) {
+            console.log("Running one-time migration to batch-based inventory...");
+            try {
+                const oldDrugs = JSON.parse(window.localStorage.getItem('hayat_drugs') || '[]');
+                const oldMainWarehouseDrugs = JSON.parse(window.localStorage.getItem('hayat_mainWarehouseDrugs') || '[]');
+                
+                if (oldDrugs.length === 0 && oldMainWarehouseDrugs.length === 0) {
+                    console.log("No old data to migrate.");
+                    window.localStorage.setItem('hayat_migrated_to_batches_v1', 'true');
+                    return;
+                }
+
+                const allOldDrugs = [
+                    ...oldDrugs.map(d => ({ ...d, isMain: false })),
+                    ...oldMainWarehouseDrugs.map(d => ({ ...d, isMain: true }))
+                ];
+                
+                const newDrugDefinitions: DrugDefinition[] = [];
+                const newBatches: Batch[] = [];
+                const seenDrugIds = new Set();
+
+                for (const oldDrug of allOldDrugs) {
+                    if (!seenDrugIds.has(oldDrug.id)) {
+                        newDrugDefinitions.push({
+                            id: oldDrug.id,
+                            name: oldDrug.name,
+                            barcode: oldDrug.barcode,
+                            code: oldDrug.code,
+                            manufacturer: oldDrug.manufacturer,
+                            unitsPerCarton: oldDrug.unitsPerCarton,
+                            price: oldDrug.price,
+                            discountPercentage: oldDrug.discountPercentage,
+                            category: oldDrug.category,
+                        });
+                        seenDrugIds.add(oldDrug.id);
+                    }
+
+                    if (oldDrug.quantity > 0) {
+                         newBatches.push({
+                            id: `migrated-${oldDrug.id}-${oldDrug.isMain ? 'main' : 'sales'}`,
+                            lotNumber: 'UNKNOWN_LOT',
+                            drugId: oldDrug.id,
+                            quantity: oldDrug.quantity,
+                            expiryDate: oldDrug.expiryDate,
+                            purchasePrice: oldDrug.purchasePrice,
+                            location: oldDrug.isMain ? 'main_warehouse' : 'sales_warehouse',
+                        });
+                    }
+                }
+                
+                // Set the new state directly into localStorage
+                window.localStorage.setItem('hayat_drugDefinitions', JSON.stringify(newDrugDefinitions));
+                window.localStorage.setItem('hayat_batches', JSON.stringify(newBatches));
+                
+                // Mark migration as done and clean up old keys
+                window.localStorage.setItem('hayat_migrated_to_batches_v1', 'true');
+                window.localStorage.removeItem('hayat_drugs');
+                window.localStorage.removeItem('hayat_mainWarehouseDrugs');
+                
+                addToast("ساختار داده با موفقیت به‌روزرسانی شد!", "success");
+                console.log("Migration successful! Reloading to apply new state.");
+                // Reload to apply new state from localStorage
+                setTimeout(() => window.location.reload(), 1500);
+            } catch (error) {
+                console.error("Migration failed:", error);
+                addToast("مهاجرت به ساختار داده جدید با خطا مواجه شد.", "error");
+            }
+        }
+    }, [addToast]);
+
+
     // --- ALERTS ENGINE ---
     const activeAlerts = useMemo<ActiveAlert[]>(() => {
         const generatedAlerts: ActiveAlert[] = [];
         const now = new Date();
+        const drugQuantities = new Map<number, { sales: number; main: number; allBatches: Batch[] }>();
+
+        drugDefinitions.forEach(def => drugQuantities.set(def.id, { sales: 0, main: 0, allBatches: [] }));
+        batches.forEach(batch => {
+            const entry = drugQuantities.get(batch.drugId);
+            if(entry) {
+                if (batch.location === 'sales_warehouse') entry.sales += batch.quantity;
+                else entry.main += batch.quantity;
+                entry.allBatches.push(batch);
+            }
+        });
 
         // 1. Drug Expiry
         if (alertSettings.expiry.enabled) {
             const thresholdDate = new Date();
             thresholdDate.setMonth(now.getMonth() + alertSettings.expiry.months);
-            const allDrugs = [...drugs, ...mainWarehouseDrugs];
-            const uniqueDrugs = Array.from(new Map(allDrugs.map(d => [d.id, d])).values());
 
-            uniqueDrugs.forEach(drug => {
-                const expiryDate = new Date(drug.expiryDate);
-                if (drug.quantity > 0 && expiryDate < thresholdDate && expiryDate > now) {
+            batches.forEach(batch => {
+                const drugDef = drugDefinitions.find(d => d.id === batch.drugId);
+                if (!drugDef) return;
+
+                const expiryDate = new Date(batch.expiryDate);
+                if (batch.quantity > 0 && expiryDate < thresholdDate && expiryDate > now) {
                     const monthsLeft = (expiryDate.getFullYear() - now.getFullYear()) * 12 + (expiryDate.getMonth() - now.getMonth());
                     generatedAlerts.push({
-                        id: `expiry-${drug.id}`,
+                        id: `expiry-batch-${batch.id}`,
                         type: 'expiry',
                         severity: monthsLeft < 3 ? 'error' : 'warning',
-                        message: `انقضای داروی ${drug.name} نزدیک است (${monthsLeft} ماه باقی مانده).`,
-                        navigateTo: 'inventory'
+                        message: `انقضای ${drugDef.name} (لات: ${batch.lotNumber}) نزدیک است.`,
+                        navigateTo: batch.location === 'sales_warehouse' ? 'inventory' : 'main_warehouse'
                     });
                 }
             });
@@ -989,17 +1068,18 @@ const App: React.FC = () => {
         
         // 2. Low Stock (Only for Sales Warehouse)
         if (alertSettings.lowStock.enabled) {
-             drugs.forEach(drug => {
-                if (drug.quantity > 0 && drug.quantity < alertSettings.lowStock.quantity) {
-                    generatedAlerts.push({
-                        id: `lowstock-${drug.id}`,
+             drugQuantities.forEach((data, drugId) => {
+                const drugDef = drugDefinitions.find(d => d.id === drugId);
+                if (drugDef && data.sales > 0 && data.sales < alertSettings.lowStock.quantity) {
+                     generatedAlerts.push({
+                        id: `lowstock-${drugId}`,
                         type: 'low-stock',
                         severity: 'warning',
-                        message: `موجودی ${drug.name} در انبار فروش کم است (${drug.quantity} عدد).`,
+                        message: `موجودی ${drugDef.name} در انبار فروش کم است (${data.sales} عدد).`,
                         navigateTo: 'inventory'
                     });
                 }
-            });
+             });
         }
 
         // 3. Customer & Total Debt
@@ -1038,8 +1118,15 @@ const App: React.FC = () => {
             }
         }
 
-        return generatedAlerts;
-    }, [drugs, mainWarehouseDrugs, orders, customers, alertSettings]);
+        // Use a map to remove duplicate messages before returning
+        const uniqueAlerts = new Map<string, ActiveAlert>();
+        generatedAlerts.forEach(alert => {
+            if (!uniqueAlerts.has(alert.message)) {
+                uniqueAlerts.set(alert.message, alert);
+            }
+        });
+        return Array.from(uniqueAlerts.values());
+    }, [batches, drugDefinitions, orders, customers, alertSettings]);
 
 
      // --- PWA Update Handler ---
@@ -1100,25 +1187,6 @@ const App: React.FC = () => {
     };
 
 
-    // --- Toast & Confirmation Handlers ---
-    const addToast = (message: string, type: ToastType = 'info') => {
-        setToasts(prev => [...prev, { id: Date.now(), message, type }]);
-    };
-    
-    const showConfirmation = (title: string, message: React.ReactNode, onConfirm: () => void, onCancel?: () => void) => {
-        setConfirmationState({ isOpen: true, title, message, onConfirm, onCancel: onCancel || (() => {}) });
-    };
-
-    const closeConfirmation = () => {
-        confirmationState.onCancel?.();
-        setConfirmationState(prev => ({ ...prev, isOpen: false }));
-    };
-
-    const handleConfirm = () => {
-        confirmationState.onConfirm();
-        setConfirmationState(prev => ({ ...prev, isOpen: false }));
-    };
-
     // --- Unsaved Changes Warning ---
     useEffect(() => {
         const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -1170,14 +1238,23 @@ const App: React.FC = () => {
 
     // --- Auth Handlers ---
     const handleLogout = () => {
-        window.localStorage.clear(); // Clear everything for a clean logout
-        setIsDeviceActivated(false);
-        setLicenseId(null);
-        setSession(null);
         setCurrentUser(null);
-        setIsLicenseDeactivated(false);
-        setIsUpdateRequired(false);
-        setAuthMode('login'); 
+    };
+
+    const handleLogin = (username: string, password_provided: string): boolean => {
+        const user = users.find(u => u.username === username);
+        if (user && user.password === password_provided) {
+            const updatedUser = { ...user, lastLogin: new Date().toLocaleString('fa-IR') };
+            setCurrentUser(updatedUser);
+            setUsers(prevUsers => prevUsers.map(u => u.id === user.id ? updatedUser : u));
+            return true;
+        }
+        return false;
+    };
+    
+    const handlePasswordReset = (username: string, newPassword_provided: string) => {
+        setUsers(prev => prev.map(u => u.username === username ? {...u, password: newPassword_provided} : u));
+        setHasUnsavedChanges(true);
     };
     
     const verifyLicense = async (isManualTrigger = false) => {
@@ -1318,6 +1395,9 @@ const App: React.FC = () => {
 
     // Auto-login/user setup effect after activation
     useEffect(() => {
+        // This effect is no longer needed with the new login screen.
+        // It's commented out to prevent auto-login.
+        /*
         if (isDeviceActivated && !currentUser) {
             const adminUser = users.find(u => u.role === 'مدیر کل') || users[0];
             if (adminUser) {
@@ -1326,6 +1406,7 @@ const App: React.FC = () => {
                 setUsers(prevUsers => prevUsers.map(u => u.id === adminUser.id ? updatedUser : u));
             }
         }
+        */
     }, [isDeviceActivated, currentUser, users, setCurrentUser, setUsers]);
 
 
@@ -1354,7 +1435,7 @@ const App: React.FC = () => {
 
     // --- Backup & Restore Handlers ---
     const getAllData = () => ({
-        users, drugs, mainWarehouseDrugs, internalTransfers, orders, customers, expenses, suppliers, purchaseBills, trash, inventoryWriteOffs, stockRequisitions, companyInfo, documentSettings, alertSettings
+        users, drugDefinitions, batches, internalTransfers, orders, customers, expenses, suppliers, purchaseBills, trash, inventoryWriteOffs, stockRequisitions, companyInfo, documentSettings, alertSettings, backupKey
     });
 
     const setAllData = (data: any) => {
@@ -1363,8 +1444,8 @@ const App: React.FC = () => {
             return;
         }
         if (data.users) setUsers(data.users);
-        if (data.drugs) setDrugs(data.drugs);
-        if (data.mainWarehouseDrugs) setMainWarehouseDrugs(data.mainWarehouseDrugs);
+        if (data.drugDefinitions) setDrugDefinitions(data.drugDefinitions);
+        if (data.batches) setBatches(data.batches);
         if (data.internalTransfers) setInternalTransfers(data.internalTransfers);
         if (data.stockRequisitions) setStockRequisitions(data.stockRequisitions);
         if (data.orders) setOrders(data.orders);
@@ -1377,6 +1458,7 @@ const App: React.FC = () => {
         if (data.companyInfo) setCompanyInfo(data.companyInfo);
         if (data.documentSettings) setDocumentSettings(data.documentSettings);
         if (data.alertSettings) setAlertSettings(data.alertSettings);
+        if (data.backupKey) setBackupKey(data.backupKey);
         setHasUnsavedChanges(false);
     };
 
@@ -1516,93 +1598,95 @@ const App: React.FC = () => {
     };
 
     // --- Inventory Adjustment ---
-    const adjustInventory = (items: (OrderItem[] | PurchaseItem[]), operation: 'add' | 'subtract') => {
-        setDrugs(currentDrugs => {
-            const drugsMap = new Map(currentDrugs.map(d => [d.id, { ...d }]));
+    const adjustInventory = (items: OrderItem[], operation: 'subtract' | 'add') => {
+        setBatches(currentBatches => {
+            const updatedBatches = [...currentBatches];
             
             for (const item of items) {
-                const drugId = 'drugId' in item ? item.drugId : 0;
-                const drug = drugsMap.get(drugId);
-                if (drug) {
-                    const totalQuantity = 'bonusQuantity' in item ? item.quantity + (item.bonusQuantity || 0) : item.quantity;
-                    if (operation === 'subtract') {
-                        drug.quantity -= totalQuantity;
-                    } else {
-                        drug.quantity += totalQuantity;
-                    }
-                    drugsMap.set(drugId, drug);
-                }
-            }
-            return Array.from(drugsMap.values());
-        });
-    };
+                let quantityToProcess = item.quantity + (item.bonusQuantity || 0);
 
-    const adjustMainWarehouseInventory = (items: PurchaseItem[], operation: 'add' | 'subtract') => {
-        setMainWarehouseDrugs(currentDrugs => {
-            const drugsMap = new Map(currentDrugs.map(d => [d.id, { ...d }]));
-            
-            for (const item of items) {
-                const drug = drugsMap.get(item.drugId);
-                if (drug) {
-                    if (operation === 'subtract') {
-                        drug.quantity -= item.quantity;
-                    } else {
-                        drug.quantity += item.quantity;
+                if (operation === 'subtract') {
+                    // FEFO Logic
+                    const relevantBatches = updatedBatches
+                        .filter(b => b.drugId === item.drugId && b.location === 'sales_warehouse' && b.quantity > 0)
+                        .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+
+                    for (const batch of relevantBatches) {
+                        if (quantityToProcess <= 0) break;
+                        const deductAmount = Math.min(quantityToProcess, batch.quantity);
+                        batch.quantity -= deductAmount;
+                        quantityToProcess -= deductAmount;
                     }
-                    drugsMap.set(item.drugId, drug);
+                } else { // 'add' for sales returns
+                    // Create a new batch for returned items
+                    const newReturnBatch: Batch = {
+                        id: `RETURN-${item.drugId}-${Date.now()}`,
+                        drugId: item.drugId,
+                        lotNumber: `RETURN-${item.drugName.substring(0,5)}`,
+                        quantity: quantityToProcess,
+                        expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // Assume 1 year expiry for now
+                        purchasePrice: 0, // No cost basis for returns yet
+                        location: 'sales_warehouse'
+                    };
+                    updatedBatches.push(newReturnBatch);
                 }
             }
-            return Array.from(drugsMap.values());
+            return updatedBatches.filter(b => b.quantity > 0);
         });
     };
     
     // --- Drug Handlers ---
-    const handleSaveDrug = (drugData: Drug) => {
-        const exists = drugs.some(d => d.id === drugData.id);
+    const handleSaveDrugDefinition = (drugData: DrugDefinition) => {
+        const exists = drugDefinitions.some(d => d.id === drugData.id);
         if (exists) {
-            setDrugs(prev => prev.map(d => d.id === drugData.id ? drugData : d));
+            setDrugDefinitions(prev => prev.map(d => d.id === drugData.id ? drugData : d));
             addToast('اطلاعات دارو با موفقیت به‌روزرسانی شد.', 'success');
         } else {
-            setDrugs(prev => [drugData, ...prev]);
+            setDrugDefinitions(prev => [drugData, ...prev]);
             addToast('داروی جدید با موفقیت اضافه شد.', 'success');
         }
         setHasUnsavedChanges(true);
     };
-    const handleDeleteDrug = (id: number) => {
-        showConfirmation('تایید حذف', 'آیا از انتقال این دارو به سطل زباله اطمینان دارید؟', () => {
-             const itemToDelete = drugs.find(d => d.id === id);
+    const handleDeleteDrugDefinition = (id: number) => {
+        const hasBatches = batches.some(b => b.drugId === id);
+        if (hasBatches) {
+            addToast("امکان حذف دارو وجود ندارد چون هنوز در انبار موجودی دارد.", 'error');
+            return;
+        }
+        showConfirmation('تایید حذف', 'آیا از انتقال این تعریف دارو به سطل زباله اطمینان دارید؟', () => {
+             const itemToDelete = drugDefinitions.find(d => d.id === id);
             if (itemToDelete) {
                 softDeleteItem(itemToDelete, 'drug');
-                setDrugs(prev => prev.filter(d => d.id !== id));
-                addToast('دارو با موفقیت به سطل زباله منتقل شد.', 'success');
+                setDrugDefinitions(prev => prev.filter(d => d.id !== id));
+                addToast('تعریف دارو با موفقیت به سطل زباله منتقل شد.', 'success');
             }
         });
     };
     
-    const handleWriteOff = (drug: Drug, quantity: number, reason: WriteOffReason, notes: string) => {
+    const handleWriteOff = (batch: Batch, quantity: number, reason: WriteOffReason, notes: string) => {
         if (!currentUser) return;
+        const drugDef = drugDefinitions.find(d => d.id === batch.drugId);
         
-        // 1. Create the write-off record
         const newWriteOff: InventoryWriteOff = {
             id: Date.now(),
-            drugId: drug.id,
-            drugName: drug.name,
+            drugId: batch.drugId,
+            drugName: drugDef?.name || 'نامشخص',
+            lotNumber: batch.lotNumber,
             quantity,
             reason,
             notes,
             date: new Date().toISOString(),
             adjustedBy: currentUser.username,
-            costAtTime: drug.purchasePrice,
-            totalLossValue: drug.purchasePrice * quantity,
+            costAtTime: batch.purchasePrice,
+            totalLossValue: batch.purchasePrice * quantity,
         };
         setInventoryWriteOffs(prev => [newWriteOff, ...prev]);
     
-        // 2. Adjust inventory
-        setDrugs(currentDrugs => currentDrugs.map(d =>
-            d.id === drug.id ? { ...d, quantity: d.quantity - quantity } : d
-        ));
+        setBatches(currentBatches => currentBatches.map(b =>
+            b.id === batch.id ? { ...b, quantity: b.quantity - quantity } : b
+        ).filter(b => b.quantity > 0));
         
-        addToast(`${quantity.toLocaleString()} عدد از ${drug.name} به عنوان ضایعات ثبت شد.`, 'success');
+        addToast(`${quantity.toLocaleString()} عدد از ${drugDef?.name} (لات: ${batch.lotNumber}) به عنوان ضایعات ثبت شد.`, 'success');
         setHasUnsavedChanges(true);
     };
 
@@ -1720,28 +1804,32 @@ const App: React.FC = () => {
     
     // --- Purchase Bill Handlers ---
     const handleSavePurchaseBill = (billData: PurchaseBill) => {
+        // Since purchase logic now creates batches directly, we just save the bill.
+        // Inventory changes happen on "received" status.
+        if (billData.status === 'دریافت شده') {
+             setBatches(currentBatches => {
+                const newBatches = billData.items.map(item => ({
+                    // FIX: PurchaseItem now contains lotNumber and expiryDate after changes in Purchasing.tsx
+                    id: `${billData.id}-${item.drugId}-${item.lotNumber}`,
+                    drugId: item.drugId,
+                    lotNumber: item.lotNumber,
+                    quantity: item.quantity,
+                    expiryDate: item.expiryDate,
+                    purchasePrice: item.purchasePrice,
+                    location: 'main_warehouse' as 'main_warehouse'
+                }));
+                // This simple add assumes new purchases don't edit existing batches, which is correct.
+                return [...currentBatches, ...newBatches];
+             });
+        }
+        
         const isEditing = purchaseBills.some(b => b.id === billData.id);
-        const oldBill = isEditing ? purchaseBills.find(b => b.id === billData.id) : null;
-    
-        if (isEditing && oldBill) {
-            // Revert old inventory status
-            if (oldBill.status === 'دریافت شده') {
-                const operation = oldBill.type === 'purchase' ? 'subtract' : 'add';
-                adjustMainWarehouseInventory(oldBill.items, operation);
-            }
-            // Apply new inventory status
-            if (billData.status === 'دریافت شده') {
-                const operation = billData.type === 'purchase' ? 'add' : 'subtract';
-                adjustMainWarehouseInventory(billData.items, operation);
-            }
+        if(isEditing) {
+            // NOTE: Editing logic for received bills is complex and not handled in this phase.
+            // A proper implementation would need to find and adjust the created batches.
             setPurchaseBills(prev => prev.map(b => b.id === billData.id ? billData : b));
             addToast(`فاکتور خرید ${billData.billNumber} به‌روزرسانی شد.`, 'success');
         } else {
-            // New bill inventory logic
-            if (billData.status === 'دریافت شده') {
-                const operation = billData.type === 'purchase' ? 'add' : 'subtract';
-                adjustMainWarehouseInventory(billData.items, operation);
-            }
             setPurchaseBills(prev => [billData, ...prev]);
             addToast(`فاکتور ${billData.type === 'purchase' ? 'خرید' : 'مستردی'} ${billData.billNumber} با موفقیت ثبت شد.`, 'success');
         }
@@ -1749,17 +1837,13 @@ const App: React.FC = () => {
     };
     
     const handleDeletePurchaseBill = (id: number) => {
-        showConfirmation('تایید حذف', 'آیا از حذف این فاکتور خرید اطمینان دارید؟ اگر این فاکتور دریافت شده باشد، موجودی کالاها از انبار کسر خواهد شد.', () => {
+        showConfirmation('تایید حذف', 'آیا از حذف این فاکتور خرید اطمینان دارید؟ این عمل، بچ‌های مرتبط را از انبار حذف نمی‌کند (باید دستی انجام شود).', () => {
             const itemToDelete = purchaseBills.find(b => b.id === id);
             if (itemToDelete) {
-                // Revert inventory changes if the bill was received
-                if (itemToDelete.status === 'دریافت شده') {
-                    const operation = itemToDelete.type === 'purchase' ? 'subtract' : 'add';
-                    adjustMainWarehouseInventory(itemToDelete.items, operation);
-                }
+                // Deleting batches is complex, warn user for now.
                 softDeleteItem(itemToDelete, 'purchaseBill');
                 setPurchaseBills(prev => prev.filter(b => b.id !== id));
-                addToast('فاکتور خرید با موفقیت به سطل زباله منتقل شد.', 'success');
+                addToast('فاکتور خرید به سطل زباله منتقل شد. لطفا بچ‌های مربوطه را دستی بررسی کنید.', 'info');
             }
         });
     };
@@ -1837,7 +1921,7 @@ const App: React.FC = () => {
     // --- Recycle Bin Handlers ---
     const handleRestoreItem = (itemToRestore: TrashItem) => {
         switch (itemToRestore.itemType) {
-            case 'drug': setDrugs(prev => [itemToRestore.data as Drug, ...prev].sort((a,b) => a.id - b.id)); break;
+            case 'drug': setDrugDefinitions(prev => [itemToRestore.data as DrugDefinition, ...prev].sort((a,b) => a.id - b.id)); break;
             case 'customer': setCustomers(prev => [itemToRestore.data as Customer, ...prev].sort((a,b) => a.id - b.id)); break;
             case 'supplier': setSuppliers(prev => [itemToRestore.data as Supplier, ...prev].sort((a,b) => a.id - b.id)); break;
             case 'expense': setExpenses(prev => [itemToRestore.data as Expense, ...prev].sort((a,b) => a.id - b.id)); break;
@@ -1852,12 +1936,8 @@ const App: React.FC = () => {
                 setOrders(prev => [restoredOrder, ...prev].sort((a,b) => a.id - b.id));
                 break;
             case 'purchaseBill':
-                const restoredBill = itemToRestore.data as PurchaseBill;
-                if (restoredBill.status === 'دریافت شده') {
-                    const operation = restoredBill.type === 'purchase' ? 'add' : 'subtract';
-                    adjustMainWarehouseInventory(restoredBill.items, operation);
-                }
-                setPurchaseBills(prev => [restoredBill, ...prev].sort((a,b) => a.id - b.id));
+                // Restoring purchase bills does not affect inventory in this phase to prevent data inconsistency.
+                setPurchaseBills(prev => [itemToRestore.data as PurchaseBill, ...prev].sort((a,b) => a.id - b.id));
                 break;
         }
         setTrash(prev => prev.filter(t => t.id !== itemToRestore.id));
@@ -1897,33 +1977,32 @@ const App: React.FC = () => {
     };
 
     const handleFulfillRequisition = (requisition: StockRequisition, fulfilledItems: StockRequisitionItem[], fulfilledBy: string) => {
-        // 1. Update inventories
-        setMainWarehouseDrugs(currentDrugs => {
-            const drugsMap = new Map(currentDrugs.map(d => [d.id, { ...d }]));
+        setBatches(currentBatches => {
+            const updatedBatches = [...currentBatches];
             for (const item of fulfilledItems) {
-                const drug = drugsMap.get(item.drugId);
-                if (drug) {
-                    drug.quantity -= item.quantityFulfilled;
-                    drugsMap.set(item.drugId, drug);
-                }
-            }
-            return Array.from(drugsMap.values());
-        });
+                let quantityToFulfill = item.quantityFulfilled;
+                if (quantityToFulfill <= 0) continue;
 
-        setDrugs(currentDrugs => {
-            const drugsMap = new Map(currentDrugs.map(d => [d.id, { ...d }]));
-            for (const item of fulfilledItems) {
-                const drug = drugsMap.get(item.drugId);
-                const mainWarehouseDrug = mainWarehouseDrugs.find(d => d.id === item.drugId);
-                if (drug) {
-                    drug.quantity += item.quantityFulfilled;
-                    drugsMap.set(item.drugId, drug);
-                } else if (mainWarehouseDrug) {
-                    // Drug doesn't exist in sales warehouse, add it
-                    drugsMap.set(item.drugId, { ...mainWarehouseDrug, quantity: item.quantityFulfilled });
+                const sourceBatches = updatedBatches
+                    .filter(b => b.drugId === item.drugId && b.location === 'main_warehouse' && b.quantity > 0)
+                    .sort((a,b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+
+                for (const sourceBatch of sourceBatches) {
+                    if (quantityToFulfill <= 0) break;
+                    
+                    const moveQuantity = Math.min(quantityToFulfill, sourceBatch.quantity);
+                    sourceBatch.quantity -= moveQuantity;
+                    quantityToFulfill -= moveQuantity;
+
+                    const existingDestBatch = updatedBatches.find(b => b.drugId === item.drugId && b.location === 'sales_warehouse' && b.lotNumber === sourceBatch.lotNumber);
+                    if (existingDestBatch) {
+                        existingDestBatch.quantity += moveQuantity;
+                    } else {
+                        updatedBatches.push({ ...sourceBatch, quantity: moveQuantity, location: 'sales_warehouse' });
+                    }
                 }
             }
-            return Array.from(drugsMap.values());
+            return updatedBatches.filter(b => b.quantity > 0);
         });
 
         // 2. Update requisition status
@@ -1959,7 +2038,7 @@ const App: React.FC = () => {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
             const systemInstruction = `You are 'Hayat Assistant', an expert business analyst for a pharmaceutical distribution company in Afghanistan. Your responses must be in Farsi. Analyze the provided JSON data to answer the user's question. Today's date is ${new Date().toISOString().split('T')[0]}.`;
             
-            const prompt = `${systemInstruction}\n\n## Data:\n\n### Sales Warehouse Drugs:\n${JSON.stringify(drugs, null, 2)}\n\n### Customers:\n${JSON.stringify(customers, null, 2)}\n\n### Orders:\n${JSON.stringify(orders, null, 2)}\n\n## User Question:\n${message}`;
+            const prompt = `${systemInstruction}\n\n## Data:\n\n### Sales Warehouse Stock (Grouped):\n${JSON.stringify(drugDefinitions, null, 2)}\n\n### Customers:\n${JSON.stringify(customers, null, 2)}\n\n### Orders:\n${JSON.stringify(orders, null, 2)}\n\n## User Question:\n${message}`;
 
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
 
@@ -2029,13 +2108,15 @@ const App: React.FC = () => {
         return <DeactivatedScreen />;
     }
 
-    const isAppReady = isDeviceActivated && currentUser;
-    
-    if (!isAppReady) {
+    if (!isDeviceActivated) {
         if (authMode === 'activation') {
             return <ActivationScreen onActivate={handleAuthSuccess} onSwitchToLogin={() => setAuthMode('login')} />;
         }
-        return <LoginScreen onLoginSuccess={handleAuthSuccess} onSwitchToActivation={() => setAuthMode('activation')} />;
+        return <OnlineLoginScreen onLoginSuccess={handleAuthSuccess} onSwitchToActivation={() => setAuthMode('activation')} />;
+    }
+
+    if (!currentUser) {
+        return <UserLoginScreen users={users} onLogin={handleLogin} onBackupKeyReset={handlePasswordReset} backupKey={backupKey} addToast={addToast}/>;
     }
 
 
@@ -2049,10 +2130,13 @@ const App: React.FC = () => {
     const renderContent = () => {
         switch (activeItem) {
             case 'dashboard':
-                return <Dashboard drugs={drugs} orders={orders} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
+                // FIX: Pass drugDefinitions and batches to Dashboard instead of an empty array.
+                return <Dashboard drugDefinitions={drugDefinitions} batches={batches} orders={orders} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
             case 'main_warehouse':
+                // FIX: Pass correct props to MainWarehouse.
                 return <MainWarehouse 
-                    mainWarehouseDrugs={mainWarehouseDrugs}
+                    drugDefinitions={drugDefinitions}
+                    batches={batches}
                     stockRequisitions={stockRequisitions}
                     onFulfillRequisition={handleFulfillRequisition}
                     currentUser={currentUser}
@@ -2060,20 +2144,21 @@ const App: React.FC = () => {
                 />;
             case 'inventory':
                 return <Inventory 
-                    drugs={drugs} 
-                    mainWarehouseDrugs={mainWarehouseDrugs} 
+                    drugDefinitions={drugDefinitions}
+                    batches={batches}
                     stockRequisitions={stockRequisitions}
-                    onSaveDrug={handleSaveDrug} 
-                    onDelete={handleDeleteDrug} 
+                    onSaveDrugDefinition={handleSaveDrugDefinition} 
+                    onDelete={handleDeleteDrugDefinition} 
                     onWriteOff={handleWriteOff} 
                     onSaveRequisition={handleSaveRequisition}
                     currentUser={currentUser} 
                     addToast={addToast} 
                 />;
             case 'sales':
-                return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} documentSettings={documentSettings} addToast={addToast} onSaveDrug={handleSaveDrug} />;
+                return <Sales orders={orders} drugDefinitions={drugDefinitions} batches={batches} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} documentSettings={documentSettings} addToast={addToast} onSaveDrug={handleSaveDrugDefinition} />;
             case 'fulfillment':
-                return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} />;
+                // FIX: Pass correct props to Fulfillment.
+                return <Fulfillment orders={orders} drugDefinitions={drugDefinitions} batches={batches} onUpdateOrder={handleSaveOrder} />;
             case 'customers':
                 return <Customers customers={customers} onSave={handleSaveCustomer} onDelete={handleDeleteCustomer} currentUser={currentUser} addToast={addToast} />;
             case 'customer_accounts':
@@ -2081,13 +2166,15 @@ const App: React.FC = () => {
             case 'suppliers':
                 return <Suppliers suppliers={suppliers} onSave={handleSaveSupplier} onDelete={handleDeleteSupplier} currentUser={currentUser} />;
             case 'purchasing':
-                return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={drugs} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={currentUser} addToast={addToast} />;
+                // FIX: Pass correct props to Purchasing.
+                return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugDefinitions={drugDefinitions} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={currentUser} addToast={addToast} />;
             case 'supplier_accounts':
                 return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} />;
             case 'finance':
                 return <Accounting incomes={incomes} expenses={expenses} onSave={handleSaveExpense} onDelete={handleDeleteExpense} currentUser={currentUser} />;
             case 'reports':
-                return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} companyInfo={companyInfo} documentSettings={documentSettings} />;
+                // FIX: Pass correct props to Reports.
+                return <Reports orders={orders} drugDefinitions={drugDefinitions} batches={batches} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} companyInfo={companyInfo} documentSettings={documentSettings} />;
              case 'checkneh':
                 return <Checkneh 
                     customers={customers} 
@@ -2105,6 +2192,9 @@ const App: React.FC = () => {
                     users={users} 
                     onSaveUser={handleSaveUser} 
                     onDeleteUser={handleDeleteUser} 
+                    onPasswordReset={handlePasswordReset}
+                    backupKey={backupKey}
+                    onBackupKeyChange={setBackupKey}
                     supabase={supabase}
                     licenseId={licenseId}
                     onBackupLocal={handleBackupLocal}
@@ -2117,6 +2207,7 @@ const App: React.FC = () => {
                     hasUnsavedChanges={hasUnsavedChanges}
                     addToast={addToast}
                     showConfirmation={showConfirmation}
+                    currentUser={currentUser}
                 />;
             case 'recycle_bin':
                  return <RecycleBin 
@@ -2126,7 +2217,8 @@ const App: React.FC = () => {
                     onEmptyTrash={handleEmptyTrash} 
                 />;
             default:
-                return <Dashboard drugs={drugs} orders={orders} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
+                // FIX: Pass drugDefinitions and batches to Dashboard instead of an empty array.
+                return <Dashboard drugDefinitions={drugDefinitions} batches={batches} orders={orders} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
         }
     };
 

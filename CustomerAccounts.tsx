@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Customer } from './Customers';
 import { Order } from './Sales';
@@ -273,10 +271,10 @@ const PrintPreviewModal = ({ isOpen, onClose, children, documentSettings }: { is
                     </div>
                 </div>
                 <div id="print-section" className="max-h-[75vh] overflow-y-auto">
-                    {/* FIX: Cast children to a type that accepts className and style to resolve TypeScript error. */}
+                    {/* FIX: Cast the style object to React.CSSProperties to allow for CSS custom properties. */}
                     {React.cloneElement(children as React.ReactElement<{ className?: string, style?: React.CSSProperties }>, {
                         className: `p-10 template-${selectedTemplate} layout-logo-${documentSettings.logoPosition}`,
-                        style: { '--accent-color': documentSettings.accentColor }
+                        style: { '--accent-color': documentSettings.accentColor } as React.CSSProperties
                     })}
                 </div>
             </div>
