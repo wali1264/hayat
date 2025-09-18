@@ -1,5 +1,8 @@
 
 
+
+
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Drug, drugCategories } from './Inventory';
 import { Customer } from './Customers';
@@ -1306,10 +1309,11 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
         setIsOrderModalOpen(false);
         setEditingOrder(null);
     };
-    
+
     const handleDeleteOrder = (id: number) => {
         onDelete(id);
     };
+    
     
     const sortedOrders = useMemo(() => {
         return [...orders].sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
@@ -1369,8 +1373,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                 customer={customers.find(c => c.name === printData?.order?.customerName) || null}
                 companyInfo={companyInfo}
                 documentSettings={documentSettings}
-                // FIX: Explicitly cast `previousBalance` to a number to prevent type errors.
-                previousBalance={Number(printData?.previousBalance || 0)}
+                previousBalance={printData?.previousBalance || 0}
             />
             <div className="flex justify-between items-center mb-6">
                 <div>
