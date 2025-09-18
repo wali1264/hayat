@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
-import Inventory, { DrugDefinition } from './Inventory';
-// FIX: Corrected import. The module now exports correctly after fixing syntax errors in it.
+import Inventory, { Drug } from './Inventory';
 import Sales, { Order, OrderItem, ExtraCharge } from './Sales';
 import Customers, { Customer } from './Customers';
 import Accounting, { Expense, Income } from './Accounting';
@@ -191,22 +190,11 @@ const permissions: PermissionsMap = {
 };
 
 //=========== NEW DATA TYPES ===========//
-export type Batch = {
-  id: string; // uuid
-  lotNumber: string;
-  drugId: number; // Foreign key to DrugDefinition
-  quantity: number;
-  expiryDate: string;
-  purchasePrice: number; // cost of goods for this batch
-  location: 'main_warehouse' | 'sales_warehouse';
-};
-
 export type WriteOffReason = 'تاریخ گذشته' | 'آسیب دیده' | 'مفقود شده' | 'سایر';
 export type InventoryWriteOff = {
     id: number;
     drugId: number;
     drugName: string;
-    lotNumber: string; // Added lotNumber
     quantity: number;
     reason: WriteOffReason;
     notes?: string;
@@ -236,8 +224,12 @@ export type StockRequisition = {
 
 
 //=========== MOCK DATA FOR DEMO ===========//
-const initialMockDrugDefinitions: DrugDefinition[] = [];
-const initialMockBatches: Batch[] = [];
+// --- Sales Warehouse ---
+const initialMockDrugs: Drug[] = [];
+
+// --- Main Warehouse ---
+const initialMockMainWarehouseDrugs: Drug[] = [];
+
 
 const initialMockCustomers: Customer[] = [];
 
@@ -869,11 +861,8 @@ const App: React.FC = () => {
     // Centralized, Persistent State
     const [users, setUsers] = usePersistentState<User[]>('hayat_users', initialMockUsers);
     const [backupKey, setBackupKey] = usePersistentState<string | null>('hayat_backupKey', 'HAYAT-BACKUP-2024');
-    
-    // NEW BATCH-BASED INVENTORY STATE
-    const [drugDefinitions, setDrugDefinitions] = usePersistentState<DrugDefinition[]>('hayat_drugDefinitions', initialMockDrugDefinitions);
-    const [batches, setBatches] = usePersistentState<Batch[]>('hayat_batches', initialMockBatches);
-
+    const [drugs, setDrugs] = usePersistentState<Drug[]>('hayat_drugs', initialMockDrugs);
+    const [mainWarehouseDrugs, setMainWarehouseDrugs] = usePersistentState<Drug[]>('hayat_mainWarehouseDrugs', initialMockMainWarehouseDrugs);
     const [internalTransfers, setInternalTransfers] = usePersistentState<InternalTransfer[]>('hayat_internalTransfers', []);
     const [stockRequisitions, setStockRequisitions] = usePersistentState<StockRequisition[]>('hayat_stockRequisitions', []);
     const [orders, setOrders] = usePersistentState<Order[]>('hayat_orders', initialMockOrders);
@@ -933,134 +922,28 @@ const App: React.FC = () => {
     const [showUpdateNotification, setShowUpdateNotification] = useState(false);
     const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
 
-    // FIX: Moved toast handlers before usage in useEffect to prevent "used before its declaration" error.
-    // --- Toast & Confirmation Handlers ---
-    const addToast = (message: string, type: ToastType = 'info') => {
-        setToasts(prev => [...prev, { id: Date.now(), message, type }]);
-    };
-    
-    const showConfirmation = (title: string, message: React.ReactNode, onConfirm: () => void, onCancel?: () => void) => {
-        setConfirmationState({ isOpen: true, title, message, onConfirm, onCancel: onCancel || (() => {}) });
-    };
-
-    const closeConfirmation = () => {
-        confirmationState.onCancel?.();
-        setConfirmationState(prev => ({ ...prev, isOpen: false }));
-    };
-
-    const handleConfirm = () => {
-        confirmationState.onConfirm();
-        setConfirmationState(prev => ({ ...prev, isOpen: false }));
-    };
-
-    // --- ONE-TIME DATA MIGRATION ---
-    useEffect(() => {
-        const migrationDone = JSON.parse(window.localStorage.getItem('hayat_migrated_to_batches_v1') || 'false');
-        if (!migrationDone) {
-            console.log("Running one-time migration to batch-based inventory...");
-            try {
-                const oldDrugs = JSON.parse(window.localStorage.getItem('hayat_drugs') || '[]');
-                const oldMainWarehouseDrugs = JSON.parse(window.localStorage.getItem('hayat_mainWarehouseDrugs') || '[]');
-                
-                if (oldDrugs.length === 0 && oldMainWarehouseDrugs.length === 0) {
-                    console.log("No old data to migrate.");
-                    window.localStorage.setItem('hayat_migrated_to_batches_v1', 'true');
-                    return;
-                }
-
-                const allOldDrugs = [
-                    ...oldDrugs.map(d => ({ ...d, isMain: false })),
-                    ...oldMainWarehouseDrugs.map(d => ({ ...d, isMain: true }))
-                ];
-                
-                const newDrugDefinitions: DrugDefinition[] = [];
-                const newBatches: Batch[] = [];
-                const seenDrugIds = new Set();
-
-                for (const oldDrug of allOldDrugs) {
-                    if (!seenDrugIds.has(oldDrug.id)) {
-                        newDrugDefinitions.push({
-                            id: oldDrug.id,
-                            name: oldDrug.name,
-                            barcode: oldDrug.barcode,
-                            code: oldDrug.code,
-                            manufacturer: oldDrug.manufacturer,
-                            unitsPerCarton: oldDrug.unitsPerCarton,
-                            price: oldDrug.price,
-                            discountPercentage: oldDrug.discountPercentage,
-                            category: oldDrug.category,
-                        });
-                        seenDrugIds.add(oldDrug.id);
-                    }
-
-                    if (oldDrug.quantity > 0) {
-                         newBatches.push({
-                            id: `migrated-${oldDrug.id}-${oldDrug.isMain ? 'main' : 'sales'}`,
-                            lotNumber: 'UNKNOWN_LOT',
-                            drugId: oldDrug.id,
-                            quantity: oldDrug.quantity,
-                            expiryDate: oldDrug.expiryDate,
-                            purchasePrice: oldDrug.purchasePrice,
-                            location: oldDrug.isMain ? 'main_warehouse' : 'sales_warehouse',
-                        });
-                    }
-                }
-                
-                // Set the new state directly into localStorage
-                window.localStorage.setItem('hayat_drugDefinitions', JSON.stringify(newDrugDefinitions));
-                window.localStorage.setItem('hayat_batches', JSON.stringify(newBatches));
-                
-                // Mark migration as done and clean up old keys
-                window.localStorage.setItem('hayat_migrated_to_batches_v1', 'true');
-                window.localStorage.removeItem('hayat_drugs');
-                window.localStorage.removeItem('hayat_mainWarehouseDrugs');
-                
-                addToast("ساختار داده با موفقیت به‌روزرسانی شد!", "success");
-                console.log("Migration successful! Reloading to apply new state.");
-                // Reload to apply new state from localStorage
-                setTimeout(() => window.location.reload(), 1500);
-            } catch (error) {
-                console.error("Migration failed:", error);
-                addToast("مهاجرت به ساختار داده جدید با خطا مواجه شد.", "error");
-            }
-        }
-    }, [addToast]);
-
-
     // --- ALERTS ENGINE ---
     const activeAlerts = useMemo<ActiveAlert[]>(() => {
         const generatedAlerts: ActiveAlert[] = [];
         const now = new Date();
-        const drugQuantities = new Map<number, { sales: number; main: number; allBatches: Batch[] }>();
-
-        drugDefinitions.forEach(def => drugQuantities.set(def.id, { sales: 0, main: 0, allBatches: [] }));
-        batches.forEach(batch => {
-            const entry = drugQuantities.get(batch.drugId);
-            if(entry) {
-                if (batch.location === 'sales_warehouse') entry.sales += batch.quantity;
-                else entry.main += batch.quantity;
-                entry.allBatches.push(batch);
-            }
-        });
 
         // 1. Drug Expiry
         if (alertSettings.expiry.enabled) {
             const thresholdDate = new Date();
             thresholdDate.setMonth(now.getMonth() + alertSettings.expiry.months);
+            const allDrugs = [...drugs, ...mainWarehouseDrugs];
+            const uniqueDrugs = Array.from(new Map(allDrugs.map(d => [d.id, d])).values());
 
-            batches.forEach(batch => {
-                const drugDef = drugDefinitions.find(d => d.id === batch.drugId);
-                if (!drugDef) return;
-
-                const expiryDate = new Date(batch.expiryDate);
-                if (batch.quantity > 0 && expiryDate < thresholdDate && expiryDate > now) {
+            uniqueDrugs.forEach(drug => {
+                const expiryDate = new Date(drug.expiryDate);
+                if (drug.quantity > 0 && expiryDate < thresholdDate && expiryDate > now) {
                     const monthsLeft = (expiryDate.getFullYear() - now.getFullYear()) * 12 + (expiryDate.getMonth() - now.getMonth());
                     generatedAlerts.push({
-                        id: `expiry-batch-${batch.id}`,
+                        id: `expiry-${drug.id}`,
                         type: 'expiry',
                         severity: monthsLeft < 3 ? 'error' : 'warning',
-                        message: `انقضای ${drugDef.name} (لات: ${batch.lotNumber}) نزدیک است.`,
-                        navigateTo: batch.location === 'sales_warehouse' ? 'inventory' : 'main_warehouse'
+                        message: `انقضای داروی ${drug.name} نزدیک است (${monthsLeft} ماه باقی مانده).`,
+                        navigateTo: 'inventory'
                     });
                 }
             });
@@ -1068,18 +951,17 @@ const App: React.FC = () => {
         
         // 2. Low Stock (Only for Sales Warehouse)
         if (alertSettings.lowStock.enabled) {
-             drugQuantities.forEach((data, drugId) => {
-                const drugDef = drugDefinitions.find(d => d.id === drugId);
-                if (drugDef && data.sales > 0 && data.sales < alertSettings.lowStock.quantity) {
-                     generatedAlerts.push({
-                        id: `lowstock-${drugId}`,
+             drugs.forEach(drug => {
+                if (drug.quantity > 0 && drug.quantity < alertSettings.lowStock.quantity) {
+                    generatedAlerts.push({
+                        id: `lowstock-${drug.id}`,
                         type: 'low-stock',
                         severity: 'warning',
-                        message: `موجودی ${drugDef.name} در انبار فروش کم است (${data.sales} عدد).`,
+                        message: `موجودی ${drug.name} در انبار فروش کم است (${drug.quantity} عدد).`,
                         navigateTo: 'inventory'
                     });
                 }
-             });
+            });
         }
 
         // 3. Customer & Total Debt
@@ -1118,15 +1000,8 @@ const App: React.FC = () => {
             }
         }
 
-        // Use a map to remove duplicate messages before returning
-        const uniqueAlerts = new Map<string, ActiveAlert>();
-        generatedAlerts.forEach(alert => {
-            if (!uniqueAlerts.has(alert.message)) {
-                uniqueAlerts.set(alert.message, alert);
-            }
-        });
-        return Array.from(uniqueAlerts.values());
-    }, [batches, drugDefinitions, orders, customers, alertSettings]);
+        return generatedAlerts;
+    }, [drugs, mainWarehouseDrugs, orders, customers, alertSettings]);
 
 
      // --- PWA Update Handler ---
@@ -1186,6 +1061,25 @@ const App: React.FC = () => {
         }
     };
 
+
+    // --- Toast & Confirmation Handlers ---
+    const addToast = (message: string, type: ToastType = 'info') => {
+        setToasts(prev => [...prev, { id: Date.now(), message, type }]);
+    };
+    
+    const showConfirmation = (title: string, message: React.ReactNode, onConfirm: () => void, onCancel?: () => void) => {
+        setConfirmationState({ isOpen: true, title, message, onConfirm, onCancel: onCancel || (() => {}) });
+    };
+
+    const closeConfirmation = () => {
+        confirmationState.onCancel?.();
+        setConfirmationState(prev => ({ ...prev, isOpen: false }));
+    };
+
+    const handleConfirm = () => {
+        confirmationState.onConfirm();
+        setConfirmationState(prev => ({ ...prev, isOpen: false }));
+    };
 
     // --- Unsaved Changes Warning ---
     useEffect(() => {
@@ -1435,7 +1329,7 @@ const App: React.FC = () => {
 
     // --- Backup & Restore Handlers ---
     const getAllData = () => ({
-        users, drugDefinitions, batches, internalTransfers, orders, customers, expenses, suppliers, purchaseBills, trash, inventoryWriteOffs, stockRequisitions, companyInfo, documentSettings, alertSettings, backupKey
+        users, drugs, mainWarehouseDrugs, internalTransfers, orders, customers, expenses, suppliers, purchaseBills, trash, inventoryWriteOffs, stockRequisitions, companyInfo, documentSettings, alertSettings, backupKey
     });
 
     const setAllData = (data: any) => {
@@ -1444,8 +1338,8 @@ const App: React.FC = () => {
             return;
         }
         if (data.users) setUsers(data.users);
-        if (data.drugDefinitions) setDrugDefinitions(data.drugDefinitions);
-        if (data.batches) setBatches(data.batches);
+        if (data.drugs) setDrugs(data.drugs);
+        if (data.mainWarehouseDrugs) setMainWarehouseDrugs(data.mainWarehouseDrugs);
         if (data.internalTransfers) setInternalTransfers(data.internalTransfers);
         if (data.stockRequisitions) setStockRequisitions(data.stockRequisitions);
         if (data.orders) setOrders(data.orders);
@@ -1598,95 +1492,93 @@ const App: React.FC = () => {
     };
 
     // --- Inventory Adjustment ---
-    const adjustInventory = (items: OrderItem[], operation: 'subtract' | 'add') => {
-        setBatches(currentBatches => {
-            const updatedBatches = [...currentBatches];
+    const adjustInventory = (items: (OrderItem[] | PurchaseItem[]), operation: 'add' | 'subtract') => {
+        setDrugs(currentDrugs => {
+            const drugsMap = new Map(currentDrugs.map(d => [d.id, { ...d }]));
             
             for (const item of items) {
-                let quantityToProcess = item.quantity + (item.bonusQuantity || 0);
-
-                if (operation === 'subtract') {
-                    // FEFO Logic
-                    const relevantBatches = updatedBatches
-                        .filter(b => b.drugId === item.drugId && b.location === 'sales_warehouse' && b.quantity > 0)
-                        .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
-
-                    for (const batch of relevantBatches) {
-                        if (quantityToProcess <= 0) break;
-                        const deductAmount = Math.min(quantityToProcess, batch.quantity);
-                        batch.quantity -= deductAmount;
-                        quantityToProcess -= deductAmount;
+                const drugId = 'drugId' in item ? item.drugId : 0;
+                const drug = drugsMap.get(drugId);
+                if (drug) {
+                    const totalQuantity = 'bonusQuantity' in item ? item.quantity + (item.bonusQuantity || 0) : item.quantity;
+                    if (operation === 'subtract') {
+                        drug.quantity -= totalQuantity;
+                    } else {
+                        drug.quantity += totalQuantity;
                     }
-                } else { // 'add' for sales returns
-                    // Create a new batch for returned items
-                    const newReturnBatch: Batch = {
-                        id: `RETURN-${item.drugId}-${Date.now()}`,
-                        drugId: item.drugId,
-                        lotNumber: `RETURN-${item.drugName.substring(0,5)}`,
-                        quantity: quantityToProcess,
-                        expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // Assume 1 year expiry for now
-                        purchasePrice: 0, // No cost basis for returns yet
-                        location: 'sales_warehouse'
-                    };
-                    updatedBatches.push(newReturnBatch);
+                    drugsMap.set(drugId, drug);
                 }
             }
-            return updatedBatches.filter(b => b.quantity > 0);
+            return Array.from(drugsMap.values());
+        });
+    };
+
+    const adjustMainWarehouseInventory = (items: PurchaseItem[], operation: 'add' | 'subtract') => {
+        setMainWarehouseDrugs(currentDrugs => {
+            const drugsMap = new Map(currentDrugs.map(d => [d.id, { ...d }]));
+            
+            for (const item of items) {
+                const drug = drugsMap.get(item.drugId);
+                if (drug) {
+                    if (operation === 'subtract') {
+                        drug.quantity -= item.quantity;
+                    } else {
+                        drug.quantity += item.quantity;
+                    }
+                    drugsMap.set(item.drugId, drug);
+                }
+            }
+            return Array.from(drugsMap.values());
         });
     };
     
     // --- Drug Handlers ---
-    const handleSaveDrugDefinition = (drugData: DrugDefinition) => {
-        const exists = drugDefinitions.some(d => d.id === drugData.id);
+    const handleSaveDrug = (drugData: Drug) => {
+        const exists = drugs.some(d => d.id === drugData.id);
         if (exists) {
-            setDrugDefinitions(prev => prev.map(d => d.id === drugData.id ? drugData : d));
+            setDrugs(prev => prev.map(d => d.id === drugData.id ? drugData : d));
             addToast('اطلاعات دارو با موفقیت به‌روزرسانی شد.', 'success');
         } else {
-            setDrugDefinitions(prev => [drugData, ...prev]);
+            setDrugs(prev => [drugData, ...prev]);
             addToast('داروی جدید با موفقیت اضافه شد.', 'success');
         }
         setHasUnsavedChanges(true);
     };
-    const handleDeleteDrugDefinition = (id: number) => {
-        const hasBatches = batches.some(b => b.drugId === id);
-        if (hasBatches) {
-            addToast("امکان حذف دارو وجود ندارد چون هنوز در انبار موجودی دارد.", 'error');
-            return;
-        }
-        showConfirmation('تایید حذف', 'آیا از انتقال این تعریف دارو به سطل زباله اطمینان دارید؟', () => {
-             const itemToDelete = drugDefinitions.find(d => d.id === id);
+    const handleDeleteDrug = (id: number) => {
+        showConfirmation('تایید حذف', 'آیا از انتقال این دارو به سطل زباله اطمینان دارید؟', () => {
+             const itemToDelete = drugs.find(d => d.id === id);
             if (itemToDelete) {
                 softDeleteItem(itemToDelete, 'drug');
-                setDrugDefinitions(prev => prev.filter(d => d.id !== id));
-                addToast('تعریف دارو با موفقیت به سطل زباله منتقل شد.', 'success');
+                setDrugs(prev => prev.filter(d => d.id !== id));
+                addToast('دارو با موفقیت به سطل زباله منتقل شد.', 'success');
             }
         });
     };
     
-    const handleWriteOff = (batch: Batch, quantity: number, reason: WriteOffReason, notes: string) => {
+    const handleWriteOff = (drug: Drug, quantity: number, reason: WriteOffReason, notes: string) => {
         if (!currentUser) return;
-        const drugDef = drugDefinitions.find(d => d.id === batch.drugId);
         
+        // 1. Create the write-off record
         const newWriteOff: InventoryWriteOff = {
             id: Date.now(),
-            drugId: batch.drugId,
-            drugName: drugDef?.name || 'نامشخص',
-            lotNumber: batch.lotNumber,
+            drugId: drug.id,
+            drugName: drug.name,
             quantity,
             reason,
             notes,
             date: new Date().toISOString(),
             adjustedBy: currentUser.username,
-            costAtTime: batch.purchasePrice,
-            totalLossValue: batch.purchasePrice * quantity,
+            costAtTime: drug.purchasePrice,
+            totalLossValue: drug.purchasePrice * quantity,
         };
         setInventoryWriteOffs(prev => [newWriteOff, ...prev]);
     
-        setBatches(currentBatches => currentBatches.map(b =>
-            b.id === batch.id ? { ...b, quantity: b.quantity - quantity } : b
-        ).filter(b => b.quantity > 0));
+        // 2. Adjust inventory
+        setDrugs(currentDrugs => currentDrugs.map(d =>
+            d.id === drug.id ? { ...d, quantity: d.quantity - quantity } : d
+        ));
         
-        addToast(`${quantity.toLocaleString()} عدد از ${drugDef?.name} (لات: ${batch.lotNumber}) به عنوان ضایعات ثبت شد.`, 'success');
+        addToast(`${quantity.toLocaleString()} عدد از ${drug.name} به عنوان ضایعات ثبت شد.`, 'success');
         setHasUnsavedChanges(true);
     };
 
@@ -1804,32 +1696,28 @@ const App: React.FC = () => {
     
     // --- Purchase Bill Handlers ---
     const handleSavePurchaseBill = (billData: PurchaseBill) => {
-        // Since purchase logic now creates batches directly, we just save the bill.
-        // Inventory changes happen on "received" status.
-        if (billData.status === 'دریافت شده') {
-             setBatches(currentBatches => {
-                const newBatches = billData.items.map(item => ({
-                    // FIX: PurchaseItem now contains lotNumber and expiryDate after changes in Purchasing.tsx
-                    id: `${billData.id}-${item.drugId}-${item.lotNumber}`,
-                    drugId: item.drugId,
-                    lotNumber: item.lotNumber,
-                    quantity: item.quantity,
-                    expiryDate: item.expiryDate,
-                    purchasePrice: item.purchasePrice,
-                    location: 'main_warehouse' as 'main_warehouse'
-                }));
-                // This simple add assumes new purchases don't edit existing batches, which is correct.
-                return [...currentBatches, ...newBatches];
-             });
-        }
-        
         const isEditing = purchaseBills.some(b => b.id === billData.id);
-        if(isEditing) {
-            // NOTE: Editing logic for received bills is complex and not handled in this phase.
-            // A proper implementation would need to find and adjust the created batches.
+        const oldBill = isEditing ? purchaseBills.find(b => b.id === billData.id) : null;
+    
+        if (isEditing && oldBill) {
+            // Revert old inventory status
+            if (oldBill.status === 'دریافت شده') {
+                const operation = oldBill.type === 'purchase' ? 'subtract' : 'add';
+                adjustMainWarehouseInventory(oldBill.items, operation);
+            }
+            // Apply new inventory status
+            if (billData.status === 'دریافت شده') {
+                const operation = billData.type === 'purchase' ? 'add' : 'subtract';
+                adjustMainWarehouseInventory(billData.items, operation);
+            }
             setPurchaseBills(prev => prev.map(b => b.id === billData.id ? billData : b));
             addToast(`فاکتور خرید ${billData.billNumber} به‌روزرسانی شد.`, 'success');
         } else {
+            // New bill inventory logic
+            if (billData.status === 'دریافت شده') {
+                const operation = billData.type === 'purchase' ? 'add' : 'subtract';
+                adjustMainWarehouseInventory(billData.items, operation);
+            }
             setPurchaseBills(prev => [billData, ...prev]);
             addToast(`فاکتور ${billData.type === 'purchase' ? 'خرید' : 'مستردی'} ${billData.billNumber} با موفقیت ثبت شد.`, 'success');
         }
@@ -1837,13 +1725,17 @@ const App: React.FC = () => {
     };
     
     const handleDeletePurchaseBill = (id: number) => {
-        showConfirmation('تایید حذف', 'آیا از حذف این فاکتور خرید اطمینان دارید؟ این عمل، بچ‌های مرتبط را از انبار حذف نمی‌کند (باید دستی انجام شود).', () => {
+        showConfirmation('تایید حذف', 'آیا از حذف این فاکتور خرید اطمینان دارید؟ اگر این فاکتور دریافت شده باشد، موجودی کالاها از انبار کسر خواهد شد.', () => {
             const itemToDelete = purchaseBills.find(b => b.id === id);
             if (itemToDelete) {
-                // Deleting batches is complex, warn user for now.
+                // Revert inventory changes if the bill was received
+                if (itemToDelete.status === 'دریافت شده') {
+                    const operation = itemToDelete.type === 'purchase' ? 'subtract' : 'add';
+                    adjustMainWarehouseInventory(itemToDelete.items, operation);
+                }
                 softDeleteItem(itemToDelete, 'purchaseBill');
                 setPurchaseBills(prev => prev.filter(b => b.id !== id));
-                addToast('فاکتور خرید به سطل زباله منتقل شد. لطفا بچ‌های مربوطه را دستی بررسی کنید.', 'info');
+                addToast('فاکتور خرید با موفقیت به سطل زباله منتقل شد.', 'success');
             }
         });
     };
@@ -1921,7 +1813,7 @@ const App: React.FC = () => {
     // --- Recycle Bin Handlers ---
     const handleRestoreItem = (itemToRestore: TrashItem) => {
         switch (itemToRestore.itemType) {
-            case 'drug': setDrugDefinitions(prev => [itemToRestore.data as DrugDefinition, ...prev].sort((a,b) => a.id - b.id)); break;
+            case 'drug': setDrugs(prev => [itemToRestore.data as Drug, ...prev].sort((a,b) => a.id - b.id)); break;
             case 'customer': setCustomers(prev => [itemToRestore.data as Customer, ...prev].sort((a,b) => a.id - b.id)); break;
             case 'supplier': setSuppliers(prev => [itemToRestore.data as Supplier, ...prev].sort((a,b) => a.id - b.id)); break;
             case 'expense': setExpenses(prev => [itemToRestore.data as Expense, ...prev].sort((a,b) => a.id - b.id)); break;
@@ -1936,8 +1828,12 @@ const App: React.FC = () => {
                 setOrders(prev => [restoredOrder, ...prev].sort((a,b) => a.id - b.id));
                 break;
             case 'purchaseBill':
-                // Restoring purchase bills does not affect inventory in this phase to prevent data inconsistency.
-                setPurchaseBills(prev => [itemToRestore.data as PurchaseBill, ...prev].sort((a,b) => a.id - b.id));
+                const restoredBill = itemToRestore.data as PurchaseBill;
+                if (restoredBill.status === 'دریافت شده') {
+                    const operation = restoredBill.type === 'purchase' ? 'add' : 'subtract';
+                    adjustMainWarehouseInventory(restoredBill.items, operation);
+                }
+                setPurchaseBills(prev => [restoredBill, ...prev].sort((a,b) => a.id - b.id));
                 break;
         }
         setTrash(prev => prev.filter(t => t.id !== itemToRestore.id));
@@ -1977,32 +1873,33 @@ const App: React.FC = () => {
     };
 
     const handleFulfillRequisition = (requisition: StockRequisition, fulfilledItems: StockRequisitionItem[], fulfilledBy: string) => {
-        setBatches(currentBatches => {
-            const updatedBatches = [...currentBatches];
+        // 1. Update inventories
+        setMainWarehouseDrugs(currentDrugs => {
+            const drugsMap = new Map(currentDrugs.map(d => [d.id, { ...d }]));
             for (const item of fulfilledItems) {
-                let quantityToFulfill = item.quantityFulfilled;
-                if (quantityToFulfill <= 0) continue;
-
-                const sourceBatches = updatedBatches
-                    .filter(b => b.drugId === item.drugId && b.location === 'main_warehouse' && b.quantity > 0)
-                    .sort((a,b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
-
-                for (const sourceBatch of sourceBatches) {
-                    if (quantityToFulfill <= 0) break;
-                    
-                    const moveQuantity = Math.min(quantityToFulfill, sourceBatch.quantity);
-                    sourceBatch.quantity -= moveQuantity;
-                    quantityToFulfill -= moveQuantity;
-
-                    const existingDestBatch = updatedBatches.find(b => b.drugId === item.drugId && b.location === 'sales_warehouse' && b.lotNumber === sourceBatch.lotNumber);
-                    if (existingDestBatch) {
-                        existingDestBatch.quantity += moveQuantity;
-                    } else {
-                        updatedBatches.push({ ...sourceBatch, quantity: moveQuantity, location: 'sales_warehouse' });
-                    }
+                const drug = drugsMap.get(item.drugId);
+                if (drug) {
+                    drug.quantity -= item.quantityFulfilled;
+                    drugsMap.set(item.drugId, drug);
                 }
             }
-            return updatedBatches.filter(b => b.quantity > 0);
+            return Array.from(drugsMap.values());
+        });
+
+        setDrugs(currentDrugs => {
+            const drugsMap = new Map(currentDrugs.map(d => [d.id, { ...d }]));
+            for (const item of fulfilledItems) {
+                const drug = drugsMap.get(item.drugId);
+                const mainWarehouseDrug = mainWarehouseDrugs.find(d => d.id === item.drugId);
+                if (drug) {
+                    drug.quantity += item.quantityFulfilled;
+                    drugsMap.set(item.drugId, drug);
+                } else if (mainWarehouseDrug) {
+                    // Drug doesn't exist in sales warehouse, add it
+                    drugsMap.set(item.drugId, { ...mainWarehouseDrug, quantity: item.quantityFulfilled });
+                }
+            }
+            return Array.from(drugsMap.values());
         });
 
         // 2. Update requisition status
@@ -2038,7 +1935,7 @@ const App: React.FC = () => {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
             const systemInstruction = `You are 'Hayat Assistant', an expert business analyst for a pharmaceutical distribution company in Afghanistan. Your responses must be in Farsi. Analyze the provided JSON data to answer the user's question. Today's date is ${new Date().toISOString().split('T')[0]}.`;
             
-            const prompt = `${systemInstruction}\n\n## Data:\n\n### Sales Warehouse Stock (Grouped):\n${JSON.stringify(drugDefinitions, null, 2)}\n\n### Customers:\n${JSON.stringify(customers, null, 2)}\n\n### Orders:\n${JSON.stringify(orders, null, 2)}\n\n## User Question:\n${message}`;
+            const prompt = `${systemInstruction}\n\n## Data:\n\n### Sales Warehouse Drugs:\n${JSON.stringify(drugs, null, 2)}\n\n### Customers:\n${JSON.stringify(customers, null, 2)}\n\n### Orders:\n${JSON.stringify(orders, null, 2)}\n\n## User Question:\n${message}`;
 
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
 
@@ -2130,13 +2027,10 @@ const App: React.FC = () => {
     const renderContent = () => {
         switch (activeItem) {
             case 'dashboard':
-                // FIX: Pass drugDefinitions and batches to Dashboard instead of an empty array.
-                return <Dashboard drugDefinitions={drugDefinitions} batches={batches} orders={orders} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
+                return <Dashboard drugs={drugs} orders={orders} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
             case 'main_warehouse':
-                // FIX: Pass correct props to MainWarehouse.
                 return <MainWarehouse 
-                    drugDefinitions={drugDefinitions}
-                    batches={batches}
+                    mainWarehouseDrugs={mainWarehouseDrugs}
                     stockRequisitions={stockRequisitions}
                     onFulfillRequisition={handleFulfillRequisition}
                     currentUser={currentUser}
@@ -2144,21 +2038,20 @@ const App: React.FC = () => {
                 />;
             case 'inventory':
                 return <Inventory 
-                    drugDefinitions={drugDefinitions}
-                    batches={batches}
+                    drugs={drugs} 
+                    mainWarehouseDrugs={mainWarehouseDrugs} 
                     stockRequisitions={stockRequisitions}
-                    onSaveDrugDefinition={handleSaveDrugDefinition} 
-                    onDelete={handleDeleteDrugDefinition} 
+                    onSaveDrug={handleSaveDrug} 
+                    onDelete={handleDeleteDrug} 
                     onWriteOff={handleWriteOff} 
                     onSaveRequisition={handleSaveRequisition}
                     currentUser={currentUser} 
                     addToast={addToast} 
                 />;
             case 'sales':
-                return <Sales orders={orders} drugDefinitions={drugDefinitions} batches={batches} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} documentSettings={documentSettings} addToast={addToast} onSaveDrug={handleSaveDrugDefinition} />;
+                return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} documentSettings={documentSettings} addToast={addToast} onSaveDrug={handleSaveDrug} />;
             case 'fulfillment':
-                // FIX: Pass correct props to Fulfillment.
-                return <Fulfillment orders={orders} drugDefinitions={drugDefinitions} batches={batches} onUpdateOrder={handleSaveOrder} />;
+                return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} />;
             case 'customers':
                 return <Customers customers={customers} onSave={handleSaveCustomer} onDelete={handleDeleteCustomer} currentUser={currentUser} addToast={addToast} />;
             case 'customer_accounts':
@@ -2166,15 +2059,13 @@ const App: React.FC = () => {
             case 'suppliers':
                 return <Suppliers suppliers={suppliers} onSave={handleSaveSupplier} onDelete={handleDeleteSupplier} currentUser={currentUser} />;
             case 'purchasing':
-                // FIX: Pass correct props to Purchasing.
-                return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugDefinitions={drugDefinitions} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={currentUser} addToast={addToast} />;
+                return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={drugs} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={currentUser} addToast={addToast} />;
             case 'supplier_accounts':
                 return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} />;
             case 'finance':
                 return <Accounting incomes={incomes} expenses={expenses} onSave={handleSaveExpense} onDelete={handleDeleteExpense} currentUser={currentUser} />;
             case 'reports':
-                // FIX: Pass correct props to Reports.
-                return <Reports orders={orders} drugDefinitions={drugDefinitions} batches={batches} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} companyInfo={companyInfo} documentSettings={documentSettings} />;
+                return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} companyInfo={companyInfo} documentSettings={documentSettings} />;
              case 'checkneh':
                 return <Checkneh 
                     customers={customers} 
@@ -2217,8 +2108,7 @@ const App: React.FC = () => {
                     onEmptyTrash={handleEmptyTrash} 
                 />;
             default:
-                // FIX: Pass drugDefinitions and batches to Dashboard instead of an empty array.
-                return <Dashboard drugDefinitions={drugDefinitions} batches={batches} orders={orders} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
+                return <Dashboard drugs={drugs} orders={orders} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
         }
     };
 

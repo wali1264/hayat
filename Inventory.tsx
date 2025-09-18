@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User } from './Settings';
-// FIX: Corrected import path for Batch type.
-import { WriteOffReason, StockRequisition, StockRequisitionItem, Batch } from './App';
+import { WriteOffReason, StockRequisition, StockRequisitionItem } from './App';
 
 // Declare global libraries
 declare var Html5Qrcode: any;
@@ -41,23 +40,21 @@ const CloseIcon = ({ className = "w-6 h-6" }: { className?: string}) => (
 
 
 //=========== TYPES ===========//
-export type DrugDefinition = {
+export type Drug = {
     id: number;
     name: string;
     barcode?: string;
     code: string;
     manufacturer: string;
+    quantity: number; // Total number of individual units
     unitsPerCarton?: number; // How many units are in a carton
-    price: number; // Default SELLING price
-    discountPercentage: number; // Default discount
+    expiryDate: string;
+    productionDate?: string;
+    price: number;
+    purchasePrice: number;
+    discountPercentage: number;
     category?: string;
 };
-
-type DrugSummary = DrugDefinition & {
-    totalQuantity: number;
-    earliestExpiry: string | null;
-};
-
 
 //=========== CONSTANTS ===========//
 export const drugCategories = ['آنتی‌بیوتیک', 'مسکن', 'ویتامین و مکمل', 'ضد حساسیت', 'بیماری‌های قلبی', 'دیابت', 'تنفسی', 'گوارشی', 'سایر'];
@@ -84,17 +81,15 @@ export const formatQuantity = (totalUnits: number, unitsPerCarton?: number) => {
 };
 
 
-const getStatus = (earliestExpiry: string | null, quantity: number) => {
-    if (quantity <= 0) return { text: 'تمام شده', color: 'text-gray-700', bg: 'bg-gray-200' };
-    if (!earliestExpiry) return { text: 'موجود', color: 'text-green-800', bg: 'bg-green-200' };
-
+const getStatus = (expiryDate: string, quantity: number) => {
     const now = new Date();
-    const expiry = new Date(earliestExpiry);
+    const expiry = new Date(expiryDate);
     const threeMonthsFromNow = new Date();
     threeMonthsFromNow.setMonth(now.getMonth() + 3);
     const sixMonthsFromNow = new Date();
     sixMonthsFromNow.setMonth(now.getMonth() + 6);
 
+    if (quantity <= 0) return { text: 'تمام شده', color: 'text-gray-700', bg: 'bg-gray-200' };
     if (expiry < now) return { text: 'منقضی شده', color: 'text-red-800', bg: 'bg-red-200' };
     if (expiry < threeMonthsFromNow) return { text: 'انقضا فوری', color: 'text-red-800', bg: 'bg-red-200' };
     if (expiry < sixMonthsFromNow) return { text: 'نزدیک به انقضا', color: 'text-yellow-800', bg: 'bg-yellow-200' };
@@ -170,13 +165,13 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClo
 type BarcodeSheetModalProps = {
     isOpen: boolean;
     onClose: () => void;
-    drugDefinitions: DrugDefinition[];
+    drugs: Drug[];
 };
 
-const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({ isOpen, onClose, drugDefinitions }) => {
+const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({ isOpen, onClose, drugs }) => {
     useEffect(() => {
-        if (isOpen && drugDefinitions.length > 0) {
-            drugDefinitions.forEach(drug => {
+        if (isOpen && drugs.length > 0) {
+            drugs.forEach(drug => {
                 if (drug.barcode) {
                     const canvas = document.getElementById(`qr-canvas-${drug.id}`);
                     if (canvas) {
@@ -187,7 +182,7 @@ const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({ isOpen, onClose, 
                 }
             });
         }
-    }, [isOpen, drugDefinitions]);
+    }, [isOpen, drugs]);
 
     if (!isOpen) return null;
 
@@ -210,7 +205,7 @@ const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({ isOpen, onClose, 
                     <div id="print-section">
                          <h2 className="text-2xl font-bold text-center mb-6 hidden print:block">برگه بارکد محصولات</h2>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                            {drugDefinitions.map(drug => (
+                            {drugs.map(drug => (
                                 <div key={drug.id} className="bg-white border rounded-lg p-2 flex flex-col items-center justify-center text-center">
                                     <p className="text-xs font-semibold break-words w-full mb-1">{drug.name}</p>
                                     <canvas id={`qr-canvas-${drug.id}`} className="max-w-full h-auto"></canvas>
@@ -235,13 +230,13 @@ const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({ isOpen, onClose, 
 type DrugModalProps = {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (drug: DrugDefinition) => void;
-    initialData: DrugDefinition | null;
+    onSave: (drug: Drug) => void;
+    initialData: Drug | null;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
 const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
-    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', unitsPerCarton: '', price: '', discountPercentage: '', category: 'سایر' };
+    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', cartonQuantity: '', unitQuantity: '', unitsPerCarton: '', expiryDate: '', productionDate: '', price: '', purchasePrice: '', discountPercentage: '', category: 'سایر' };
     const [drug, setDrug] = useState(defaultState);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const isEditMode = initialData !== null;
@@ -249,13 +244,23 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
     useEffect(() => {
         if (isOpen) {
              if (initialData) {
+                 const totalQuantity = initialData.quantity;
+                 const unitsPerCarton = initialData.unitsPerCarton && initialData.unitsPerCarton > 1 ? initialData.unitsPerCarton : 1;
+                 const cartons = unitsPerCarton > 1 ? Math.floor(totalQuantity / unitsPerCarton) : 0;
+                 const units = unitsPerCarton > 1 ? totalQuantity % unitsPerCarton : totalQuantity;
+                 
                  setDrug({
                      name: initialData.name,
                      barcode: initialData.barcode || '',
                      code: initialData.code,
                      manufacturer: initialData.manufacturer,
+                     cartonQuantity: String(cartons),
+                     unitQuantity: String(units),
                      unitsPerCarton: String(initialData.unitsPerCarton || ''),
+                     expiryDate: initialData.expiryDate,
+                     productionDate: initialData.productionDate || '',
                      price: String(initialData.price),
+                     purchasePrice: String(initialData.purchasePrice),
                      discountPercentage: String(initialData.discountPercentage),
                      category: initialData.category || 'سایر'
                  });
@@ -264,6 +269,16 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
              }
         }
     }, [isOpen, initialData]);
+
+    const calculatedTotal = useMemo(() => {
+        const unitsPerCarton = Number(drug.unitsPerCarton);
+        const cartons = Number(drug.cartonQuantity) || 0;
+        const units = Number(drug.unitQuantity) || 0;
+        if (!unitsPerCarton || unitsPerCarton <= 1) {
+            return units;
+        }
+        return (cartons * unitsPerCarton) + units;
+    }, [drug.unitsPerCarton, drug.cartonQuantity, drug.unitQuantity]);
 
     if (!isOpen) return null;
 
@@ -275,20 +290,25 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const priceValue = Number(drug.price) || 0;
-        if (!drug.name || priceValue <= 0) {
-            addToast("لطفا نام دارو و قیمت فروش را با مقادیر معتبر پر کنید.", 'error');
+        const purchasePriceValue = Number(drug.purchasePrice) || 0;
+        if (!drug.name || !drug.expiryDate || priceValue <= 0 || purchasePriceValue <= 0) {
+            addToast("لطفا تمام فیلدهای ضروری (نام، تاریخ انقضا، قیمت خرید و فروش) را با مقادیر معتبر پر کنید.", 'error');
             return;
         }
 
-        const drugToSave: DrugDefinition = {
+        const drugToSave: Drug = {
             id: isEditMode ? initialData.id : Date.now(),
             name: drug.name,
             barcode: drug.barcode,
             code: drug.code,
             manufacturer: drug.manufacturer,
             category: drug.category,
+            expiryDate: drug.expiryDate,
+            productionDate: drug.productionDate,
+            quantity: calculatedTotal,
             unitsPerCarton: Number(drug.unitsPerCarton) || 1,
             price: priceValue,
+            purchasePrice: purchasePriceValue,
             discountPercentage: Number(drug.discountPercentage) || 0,
         };
         
@@ -312,8 +332,7 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 transition-opacity duration-300" onClick={onClose} role="dialog" aria-modal="true">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 <header className="p-8 pb-4 flex-shrink-0">
-                    <h3 className="text-2xl font-bold text-gray-800">{isEditMode ? 'ویرایش تعریف دارو' : 'افزودن داروی جدید'}</h3>
-                    <p className="text-sm text-gray-500">در این بخش فقط اطلاعات شناسنامه‌ای دارو ثبت می‌شود. موجودی انبار از طریق فاکتور خرید اضافه می‌گردد.</p>
+                    <h3 className="text-2xl font-bold text-gray-800">{isEditMode ? 'ویرایش دارو' : 'افزودن داروی جدید'}</h3>
                 </header>
                 <main className="flex-1 overflow-y-auto px-8">
                     <form id="drug-modal-form" onSubmit={handleSubmit}>
@@ -351,17 +370,50 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
                         
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                              <div>
-                                <label htmlFor="price" className={labelStyles}>قیمت فروش پیش‌فرض</label>
+                                <label htmlFor="purchasePrice" className={labelStyles}>قیمت خرید (ضروری)</label>
+                                <input type="number" name="purchasePrice" id="purchasePrice" value={drug.purchasePrice} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 120" />
+                            </div>
+                             <div>
+                                <label htmlFor="price" className={labelStyles}>قیمت فروش (ضروری)</label>
                                 <input type="number" name="price" id="price" value={drug.price} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 150" />
                             </div>
                             <div>
-                                <label htmlFor="discountPercentage" className={labelStyles}>تخفیف پیش‌فرض (٪)</label>
+                                <label htmlFor="discountPercentage" className={labelStyles}>تخفیف (٪)</label>
                                 <input type="number" name="discountPercentage" id="discountPercentage" value={drug.discountPercentage} onChange={handleChange} className={inputStyles} min="0" max="100" placeholder="مثلا: 5"/>
                             </div>
+                        </div>
+                        
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                              <div>
+                                <label htmlFor="productionDate" className={labelStyles}>تاریخ تولید</label>
+                                <input type="date" name="productionDate" id="productionDate" value={drug.productionDate} onChange={handleChange} className={inputStyles} />
+                            </div>
+                             <div>
+                                <label htmlFor="expiryDate" className={labelStyles}>تاریخ انقضا (ضروری)</label>
+                                <input type="date" name="expiryDate" id="expiryDate" value={drug.expiryDate} onChange={handleChange} className={inputStyles} required />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <div>
                                 <label htmlFor="unitsPerCarton" className={labelStyles}>تعداد در کارتن</label>
                                 <input type="number" name="unitsPerCarton" id="unitsPerCarton" value={drug.unitsPerCarton} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 100" />
                             </div>
+                            <div className="md:col-span-2">
+                                <label className={labelStyles}>موجودی انبار</label>
+                                <div className="flex items-center gap-2">
+                                    <input type="number" name="cartonQuantity" value={drug.cartonQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد کارتن" disabled={!drug.unitsPerCarton || Number(drug.unitsPerCarton) <= 1} />
+                                    <span className="text-gray-500 flex-shrink-0">کارتن</span>
+                                    <input type="number" name="unitQuantity" value={drug.unitQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد واحد" />
+                                    <span className="text-gray-500 flex-shrink-0">عدد</span>
+                                </div>
+                            </div>
+                        </div>
+
+                         <div className="my-6 text-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+                            <span>مجموع کل: </span>
+                            <span className="font-bold font-mono text-base text-teal-700">{calculatedTotal.toLocaleString()}</span>
+                            <span> واحد</span>
                         </div>
                     </form>
                 </main>
@@ -380,51 +432,38 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
 type WriteOffModalProps = {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: (batch: Batch, quantity: number, reason: WriteOffReason, notes: string) => void;
-    drug: DrugSummary | null;
-    batches: Batch[];
+    onConfirm: (quantity: number, reason: WriteOffReason, notes: string) => void;
+    drug: Drug | null;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfirm, drug, batches, addToast }) => {
+const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfirm, drug, addToast }) => {
     const [quantity, setQuantity] = useState('');
     const [reason, setReason] = useState<WriteOffReason>('تاریخ گذشته');
     const [notes, setNotes] = useState('');
-    const [selectedBatchId, setSelectedBatchId] = useState('');
-
-    const drugBatches = useMemo(() => {
-        if (!drug) return [];
-        return batches.filter(b => b.drugId === drug.id && b.location === 'sales_warehouse');
-    }, [drug, batches]);
 
     useEffect(() => {
         if(isOpen) {
             setQuantity('');
             setReason('تاریخ گذشته');
             setNotes('');
-            setSelectedBatchId(drugBatches[0]?.id || '');
         }
-    }, [isOpen, drugBatches]);
+    }, [isOpen]);
 
     if (!isOpen || !drug) return null;
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const selectedBatch = drugBatches.find(b => b.id === selectedBatchId);
-        if (!selectedBatch) {
-            addToast("لطفا یک بچ معتبر را انتخاب کنید.", 'error');
-            return;
-        }
         const numQuantity = Number(quantity);
         if (numQuantity <= 0) {
             addToast("لطفا تعداد معتبر وارد کنید.", 'error');
             return;
         }
-        if (numQuantity > selectedBatch.quantity) {
-            addToast(`تعداد ضایعات (${numQuantity}) نمی‌تواند بیشتر از موجودی بچ (${selectedBatch.quantity}) باشد.`, 'error');
+        if (numQuantity > drug.quantity) {
+            addToast(`تعداد ضایعات (${numQuantity}) نمی‌تواند بیشتر از موجودی انبار (${drug.quantity}) باشد.`, 'error');
             return;
         }
-        onConfirm(selectedBatch, numQuantity, reason, notes);
+        onConfirm(numQuantity, reason, notes);
         onClose();
     };
 
@@ -432,21 +471,11 @@ const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfir
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md" onClick={e => e.stopPropagation()}>
                 <h3 className="text-2xl font-bold text-gray-800 mb-2">ثبت ضایعات برای <span className="text-teal-600">{drug.name}</span></h3>
-                <p className="text-sm text-gray-500 mb-6">موجودی کل: {formatQuantity(drug.totalQuantity, drug.unitsPerCarton)}</p>
+                <p className="text-sm text-gray-500 mb-6">موجودی فعلی: {formatQuantity(drug.quantity, drug.unitsPerCarton)}</p>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                     <div>
-                        <label className="block text-sm font-bold mb-2">انتخاب بچ/لات</label>
-                        <select value={selectedBatchId} onChange={e => setSelectedBatchId(e.target.value)} className="w-full p-2 border rounded-lg bg-white">
-                            {drugBatches.map(b => (
-                                <option key={b.id} value={b.id}>
-                                    لات: {b.lotNumber} (موجودی: {b.quantity}, انقضا: {new Date(b.expiryDate).toLocaleDateString('fa-IR')})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
                     <div>
                         <label className="block text-sm font-bold mb-2">تعداد ضایع شده (واحد)</label>
-                        <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={drugBatches.find(b=>b.id===selectedBatchId)?.quantity} className="w-full p-2 border rounded-lg" required autoFocus />
+                        <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={drug.quantity} className="w-full p-2 border rounded-lg" required autoFocus />
                     </div>
                     <div>
                         <label className="block text-sm font-bold mb-2">دلیل</label>
@@ -475,25 +504,24 @@ type RequisitionModalProps = {
     isOpen: boolean;
     onClose: () => void;
     onSave: (requisition: Omit<StockRequisition, 'id' | 'status' | 'requestedBy' | 'date'>) => void;
-    drugDefinitions: DrugDefinition[];
-    batches: Batch[];
+    mainWarehouseDrugs: Drug[];
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, onSave, drugDefinitions, batches, addToast }) => {
+const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, onSave, mainWarehouseDrugs, addToast }) => {
     const [items, setItems] = useState<Omit<StockRequisitionItem, 'quantityFulfilled'>[]>([]);
     const [notes, setNotes] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedDrug, setSelectedDrug] = useState<DrugDefinition | null>(null);
+    const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
     const [quantity, setQuantity] = useState('');
     const searchWrapperRef = useRef<HTMLDivElement>(null);
 
      const availableDrugs = useMemo(() => {
         if (!searchTerm) return [];
-        return drugDefinitions
+        return mainWarehouseDrugs
             .filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()) && !items.some(i => i.drugId === d.id))
             .slice(0, 5);
-    }, [drugDefinitions, searchTerm, items]);
+    }, [mainWarehouseDrugs, searchTerm, items]);
     
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -512,10 +540,8 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
             addToast("لطفا دارو و تعداد معتبر را انتخاب کنید.", "error");
             return;
         }
-        const mainWarehouseStock = batches.filter(b => b.drugId === selectedDrug.id && b.location === 'main_warehouse').reduce((sum, b) => sum + b.quantity, 0);
-
-        if (Number(quantity) > mainWarehouseStock) {
-             addToast(`تعداد درخواستی (${quantity}) بیشتر از موجودی انبار اصلی (${mainWarehouseStock}) است.`, "error");
+        if (Number(quantity) > selectedDrug.quantity) {
+             addToast(`تعداد درخواستی (${quantity}) بیشتر از موجودی انبار اصلی (${selectedDrug.quantity}) است.`, "error");
             return;
         }
         setItems(prev => [...prev, { drugId: selectedDrug.id, drugName: selectedDrug.name, quantityRequested: Number(quantity) }]);
@@ -549,19 +575,17 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
                             <input type="text" placeholder="جستجو..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full p-2 border rounded-lg" />
                             {searchTerm && availableDrugs.length > 0 && (
                                 <div className="absolute top-full left-0 right-0 bg-white border shadow-lg mt-1 z-10 max-h-48 overflow-y-auto">
-                                    {availableDrugs.map(drug => {
-                                        const stock = batches.filter(b => b.drugId === drug.id && b.location === 'main_warehouse').reduce((sum, b) => sum + b.quantity, 0);
-                                        return (
+                                    {availableDrugs.map(drug => (
                                         <div key={drug.id} onClick={() => { setSelectedDrug(drug); setSearchTerm(drug.name); }} className="p-2 hover:bg-teal-50 cursor-pointer">
-                                            {drug.name} <span className="text-xs text-gray-500">(موجودی: {stock})</span>
+                                            {drug.name} <span className="text-xs text-gray-500">(موجودی: {drug.quantity})</span>
                                         </div>
-                                    )})}
+                                    ))}
                                 </div>
                             )}
                         </div>
                          <div>
                             <label className="block text-sm font-bold mb-1">تعداد</label>
-                            <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" className="w-full p-2 border rounded-lg" disabled={!selectedDrug} />
+                            <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={selectedDrug?.quantity} className="w-full p-2 border rounded-lg" disabled={!selectedDrug} />
                         </div>
                         <button onClick={handleAddItem} className="w-full bg-teal-500 text-white p-2 rounded-lg hover:bg-teal-600 font-semibold h-10">افزودن</button>
                     </div>
@@ -603,9 +627,358 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
 
 //=========== MAIN COMPONENT ===========//
 type InventoryProps = {
-    drugDefinitions: DrugDefinition[];
-    batches: Batch[];
+    drugs: Drug[];
+    mainWarehouseDrugs: Drug[];
     stockRequisitions: StockRequisition[];
-    onSaveDrugDefinition: (drug: DrugDefinition) => void;
+    onSaveDrug: (drug: Drug) => void;
     onDelete: (id: number) => void;
-    onWrite
+    onWriteOff: (drug: Drug, quantity: number, reason: WriteOffReason, notes: string) => void;
+    onSaveRequisition: (requisition: Omit<StockRequisition, 'id' | 'status' | 'requestedBy' | 'date'>) => void;
+    currentUser: User;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+};
+
+type Tab = 'stock' | 'requisitions';
+
+const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockRequisitions, onSaveDrug, onDelete, onWriteOff, onSaveRequisition, currentUser, addToast }) => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isWriteOffModalOpen, setIsWriteOffModalOpen] = useState(false);
+    const [isRequisitionModalOpen, setIsRequisitionModalOpen] = useState(false);
+    const [editingDrug, setEditingDrug] = useState<Drug | null>(null);
+    const [drugForWriteOff, setDrugForWriteOff] = useState<Drug | null>(null);
+    const [isSheetModalOpen, setIsSheetModalOpen] = useState(false);
+    const [drugsToPrint, setDrugsToPrint] = useState<Drug[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [sortConfig, setSortConfig] = useState<{ key: keyof Drug | null; direction: 'ascending' | 'descending' }>({
+        key: null,
+        direction: 'ascending',
+    });
+    const [activeTab, setActiveTab] = useState<Tab>('stock');
+
+    const canManageInventory = useMemo(() => 
+        currentUser.role === 'مدیر کل' || currentUser.role === 'انباردار', 
+    [currentUser.role]);
+
+    const handleOpenAddModal = () => {
+        setEditingDrug(null);
+        setIsModalOpen(true);
+    };
+    
+    const handleOpenEditModal = (drug: Drug) => {
+        setEditingDrug(drug);
+        setIsModalOpen(true);
+    };
+
+    const handleOpenWriteOffModal = (drug: Drug) => {
+        setDrugForWriteOff(drug);
+        setIsWriteOffModalOpen(true);
+    };
+
+    const handleDeleteDrug = (id: number) => {
+        onDelete(id);
+    };
+    
+    const filteredDrugs = useMemo(() => {
+        return drugs.filter(drug => {
+            const searchTermMatch = searchTerm === '' ||
+                drug.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (drug.code && drug.code.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                (drug.barcode && drug.barcode.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                (drug.manufacturer && drug.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()));
+            
+            const statusMatch = statusFilter === 'all' || getStatus(drug.expiryDate, drug.quantity).text === statusFilter;
+            const categoryMatch = categoryFilter === 'all' || drug.category === categoryFilter;
+
+            return searchTermMatch && statusMatch && categoryMatch;
+        });
+    }, [drugs, searchTerm, statusFilter, categoryFilter]);
+
+    const sortedAndFilteredDrugs = useMemo(() => {
+        let sortableItems = [...filteredDrugs];
+        if (sortConfig.key !== null) {
+            sortableItems.sort((a, b) => {
+                const valA = a[sortConfig.key!];
+                const valB = b[sortConfig.key!];
+
+                if (valA === undefined || valA === null) return 1;
+                if (valB === undefined || valB === null) return -1;
+                
+                if (valA < valB) {
+                    return sortConfig.direction === 'ascending' ? -1 : 1;
+                }
+                if (valA > valB) {
+                    return sortConfig.direction === 'ascending' ? 1 : -1;
+                }
+                return 0;
+            });
+        }
+        return sortableItems;
+    }, [filteredDrugs, sortConfig]);
+
+    const handlePrintBarcodeSheet = () => {
+        const drugsWithBarcodes = sortedAndFilteredDrugs.filter(d => d.barcode && d.barcode.trim() !== '');
+        if (drugsWithBarcodes.length === 0) {
+            addToast("هیچ دارویی با بارکد برای چاپ یافت نشد.", "info");
+            return;
+        }
+        setDrugsToPrint(drugsWithBarcodes);
+        setIsSheetModalOpen(true);
+    };
+    
+    const requestSort = (key: keyof Drug) => {
+        let direction: 'ascending' | 'descending' = 'ascending';
+        if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+            direction = 'descending';
+        } else if (sortConfig.key === key && sortConfig.direction === 'descending') {
+            setSortConfig({ key: null, direction: 'ascending' });
+            return;
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const SortableHeader = ({ label, columnKey }: { label: string; columnKey: keyof Drug }) => (
+        <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">
+            <button
+                type="button"
+                onClick={() => requestSort(columnKey)}
+                className="flex items-center group focus:outline-none"
+            >
+                {label}
+                <SortIcon direction={sortConfig.key === columnKey ? sortConfig.direction : null} />
+            </button>
+        </th>
+    );
+
+    const TabButton = ({ tabId, children }: { tabId: Tab, children: React.ReactNode }) => (
+        <button 
+            onClick={() => setActiveTab(tabId)}
+            className={`px-4 py-2 text-lg font-semibold rounded-t-lg border-b-4 transition-colors ${activeTab === tabId ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+        >
+            {children}
+        </button>
+    );
+
+    return (
+        <div className="p-8">
+             {canManageInventory && <DrugModal 
+                isOpen={isModalOpen} 
+                onClose={() => setIsModalOpen(false)}
+                onSave={onSaveDrug}
+                initialData={editingDrug}
+                addToast={addToast}
+            />}
+            {canManageInventory && <WriteOffModal
+                isOpen={isWriteOffModalOpen}
+                onClose={() => setIsWriteOffModalOpen(false)}
+                drug={drugForWriteOff}
+                onConfirm={(quantity, reason, notes) => onWriteOff(drugForWriteOff!, quantity, reason, notes)}
+                addToast={addToast}
+            />}
+            {canManageInventory && <RequisitionModal
+                isOpen={isRequisitionModalOpen}
+                onClose={() => setIsRequisitionModalOpen(false)}
+                onSave={onSaveRequisition}
+                mainWarehouseDrugs={mainWarehouseDrugs}
+                addToast={addToast}
+            />}
+            <BarcodeSheetModal
+                isOpen={isSheetModalOpen}
+                onClose={() => setIsSheetModalOpen(false)}
+                drugs={drugsToPrint}
+            />
+            <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-800">مدیریت انبار فروش</h2>
+                    <p className="text-gray-500">لیست داروهای موجود در انبار برای فروش روزانه</p>
+                </div>
+                {activeTab === 'stock' && (
+                <div className="flex items-center space-x-2 space-x-reverse flex-wrap gap-2">
+                    <div className="relative">
+                        <input
+                            type="text"
+                            placeholder="جستجوی دارو..."
+                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                           <SearchIcon />
+                        </div>
+                    </div>
+                    <div>
+                        <select 
+                            value={categoryFilter} 
+                            onChange={(e) => setCategoryFilter(e.target.value)}
+                            className="pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                            aria-label="فیلتر بر اساس دسته‌بندی"
+                        >
+                            <option value="all">همه دسته‌بندی‌ها</option>
+                            {drugCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <select 
+                            value={statusFilter} 
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                            aria-label="فیلتر بر اساس وضعیت"
+                        >
+                            <option value="all">همه وضعیت‌ها</option>
+                            <option value="موجود">موجود</option>
+                            <option value="نزدیک به انقضا">نزدیک به انقضا</option>
+                            <option value="انقضا فوری">انقضا فوری</option>
+                            <option value="منقضی شده">منقضی شده</option>
+                            <option value="تمام شده">تمام شده</option>
+                        </select>
+                    </div>
+                    {canManageInventory && (
+                        <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md">
+                            <PlusIcon />
+                            <span className="mr-2">افزودن داروی جدید</span>
+                        </button>
+                    )}
+                </div>
+                )}
+            </div>
+            
+            <div className="border-b border-gray-200 mb-6">
+                <nav className="flex -mb-px">
+                    <TabButton tabId="stock">موجودی انبار</TabButton>
+                    <TabButton tabId="requisitions">درخواست‌های کالا</TabButton>
+                </nav>
+            </div>
+            
+            {activeTab === 'stock' && (
+                <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-right">
+                            <thead className="bg-gray-50 border-b-2 border-gray-200">
+                                <tr>
+                                    <SortableHeader label="نام دارو" columnKey="name" />
+                                    <SortableHeader label="کمپانی" columnKey="manufacturer" />
+                                    <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">کد محصول</th>
+                                    <SortableHeader label="دسته‌بندی" columnKey="category" />
+                                    <SortableHeader label="قیمت فروش" columnKey="price" />
+                                    <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">تخفیف</th>
+                                    <SortableHeader label="تعداد موجود" columnKey="quantity" />
+                                    <SortableHeader label="تاریخ انقضا" columnKey="expiryDate" />
+                                    <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">وضعیت</th>
+                                    <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                {sortedAndFilteredDrugs.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={10} className="text-center p-8 text-gray-500">
+                                            هیچ دارویی با این مشخصات یافت نشد.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    sortedAndFilteredDrugs.map(drug => {
+                                        const status = getStatus(drug.expiryDate, drug.quantity);
+                                        let indicatorElement = null;
+                                        if (status.text === 'منقضی شده' || status.text === 'انقضا فوری') {
+                                            indicatorElement = <span className="w-2.5 h-2.5 bg-red-500 rounded-full ml-3 flex-shrink-0" title={status.text}></span>;
+                                        } else if (status.text === 'نزدیک به انقضا') {
+                                            indicatorElement = <span className="w-2.5 h-2.5 bg-yellow-400 rounded-full ml-3 flex-shrink-0" title={status.text}></span>;
+                                        }
+
+                                        return (
+                                            <tr key={drug.id} className={getRowStyle(status.text)}>
+                                                <td className="p-4 whitespace-nowrap text-gray-800 font-medium">
+                                                    <div className="flex items-center">
+                                                        {indicatorElement}
+                                                        <span>{drug.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4 whitespace-nowrap text-gray-500">{drug.manufacturer}</td>
+                                                <td className="p-4 whitespace-nowrap text-gray-500 font-mono text-xs">{drug.code || '-'}</td>
+                                                <td className="p-4 whitespace-nowrap text-gray-500">{drug.category || '-'}</td>
+                                                <td className="p-4 whitespace-nowrap text-gray-600">{drug.price.toLocaleString()}</td>
+                                                <td className="p-4 whitespace-nowrap">
+                                                    {drug.discountPercentage > 0 ? (
+                                                        <span className="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700">
+                                                            {drug.discountPercentage}%
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-400">-</span>
+                                                    )}
+                                                </td>
+                                                <td className="p-4 whitespace-nowrap text-gray-800 font-semibold">
+                                                    {formatQuantity(drug.quantity, drug.unitsPerCarton)}
+                                                </td>
+                                                <td className="p-4 whitespace-nowrap text-gray-500">{new Date(drug.expiryDate).toLocaleDateString('fa-IR')}</td>
+                                                <td className="p-4 whitespace-nowrap">
+                                                    <span className={`px-3 py-1 text-xs font-bold rounded-full ${status.bg} ${status.color}`}>
+                                                        {status.text}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 whitespace-nowrap">
+                                                    <div className="flex items-center space-x-2 space-x-reverse">
+                                                        {canManageInventory && (
+                                                            <>
+                                                                <button onClick={() => handleOpenEditModal(drug)} title="ویرایش" className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>
+                                                                <button onClick={() => handleDeleteDrug(drug.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
+                                                                <button onClick={() => handleOpenWriteOffModal(drug)} title="ثبت ضایعات" className="text-yellow-600 hover:text-yellow-800 p-1"><WasteIcon /></button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+            
+             {activeTab === 'requisitions' && (
+                <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                    <div className="p-4 bg-gray-50 flex justify-between items-center">
+                        <h3 className="font-bold text-lg">تاریخچه درخواست‌های کالا</h3>
+                         <button onClick={() => setIsRequisitionModalOpen(true)} className="flex items-center bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 transition-colors shadow-md">
+                            <RequestIcon />
+                            <span className="mr-2">ایجاد درخواست جدید</span>
+                        </button>
+                    </div>
+                     <div className="overflow-x-auto">
+                        <table className="w-full text-right">
+                            <thead className="bg-gray-50 border-b-2 border-gray-200">
+                                <tr>
+                                    <th className="p-4">#</th>
+                                    <th className="p-4">تاریخ</th>
+                                    <th className="p-4">درخواست‌کننده</th>
+                                    <th className="p-4">تکمیل‌کننده</th>
+                                    <th className="p-4">اقلام</th>
+                                    <th className="p-4">وضعیت</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                {stockRequisitions.map(req => {
+                                    const statusStyle = getRequisitionStatusStyle(req.status);
+                                    return (
+                                    <tr key={req.id}>
+                                        <td className="p-4 font-mono text-sm">{req.id}</td>
+                                        <td className="p-4">{new Date(req.date).toLocaleDateString('fa-IR')}</td>
+                                        <td className="p-4">{req.requestedBy}</td>
+                                        <td className="p-4">{req.fulfilledBy || '-'}</td>
+                                        <td className="p-4 text-xs">{req.items.map(i => i.drugName).join(', ')}</td>
+                                        <td className="p-4">
+                                            <span className={`px-3 py-1 text-xs font-bold rounded-full ${statusStyle.bg} ${statusStyle.text}`}>{req.status}</span>
+                                        </td>
+                                    </tr>
+                                )})}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+             )}
+        </div>
+    );
+};
+
+export default Inventory;
