@@ -6,11 +6,9 @@ import { Supplier } from './Suppliers';
 import { CompanyInfo, DocumentSettings } from './Settings';
 import { Drug, formatQuantity } from './Inventory';
 import { InventoryWriteOff } from './App';
-import { vazirFont } from './VazirFont';
 
 // Declare global libraries
 declare var Chart: any;
-declare var jsPDF: any;
 declare var XLSX: any;
 
 //=========== ICONS ===========//
@@ -27,7 +25,6 @@ const WasteIcon = () => <Icon path="M18.364 18.364A9 9 0 005.636 5.636m12.728 12
 const InventoryIcon = () => <Icon path="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />;
 const ExportIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a4 4 0 01-4-4V9a4 4 0 014-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V16a4 4 0 01-4 4z" className="w-5 h-5"/>;
 const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0 00-2 2v4a2 2 0 002 2h2m8 0v4H9v-4m4 0h-2" className="w-5 h-5"/>;
-const PdfIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3M3 10a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2v-10z" className="w-5 h-5"/>;
 const ExcelIcon = () => <Icon path="M4 6h16v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 13h1m3 0h1" className="w-5 h-5"/>;
 
 
@@ -383,6 +380,79 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
     );
 };
 
+// --- New Printable Report Component ---
+const ReportPrintView = ({ title, dateRange, headers, rows, companyInfo, documentSettings, className, style }: { title: string, dateRange: string, headers: string[], rows: (string|number)[][], companyInfo: CompanyInfo, documentSettings: DocumentSettings, className?: string, style?: React.CSSProperties }) => {
+    return (
+        <div className={className} style={style}>
+            <header className="print-header">
+                <div className="print-company-info">
+                    <h1 className="text-3xl font-bold text-gray-800 print-title">{companyInfo.name}</h1>
+                </div>
+                {companyInfo.logo && <img src={companyInfo.logo} alt="Company Logo" className="print-logo" />}
+            </header>
+            <div className="text-center my-8">
+                <h2 className="text-2xl font-bold">{title}</h2>
+                <p className="text-sm text-gray-500 mt-2">{dateRange}</p>
+            </div>
+            <table className="w-full text-right text-sm">
+                <thead>
+                    <tr>{headers.map(h => <th key={h} className="p-3">{h}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y">
+                    {rows.map((row, rowIndex) => (
+                        <tr key={rowIndex}>
+                            {row.map((cell, cellIndex) => 
+                                <td key={cellIndex} className="p-2">
+                                    {typeof cell === 'number' ? cell.toLocaleString() : cell}
+                                </td>
+                            )}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+// --- New Unified Print Preview Modal ---
+const PrintPreviewModal = ({ isOpen, onClose, children, documentSettings }: { isOpen: boolean; onClose: () => void; children: React.ReactNode; documentSettings: DocumentSettings }) => {
+    const [selectedTemplate, setSelectedTemplate] = useState('report-classic');
+    if (!isOpen) return null;
+
+    const handlePrint = () => {
+        setTimeout(() => window.print(), 100);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start p-4 overflow-y-auto" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl mt-8 mb-8 w-full max-w-4xl" onClick={e => e.stopPropagation()}>
+                <div className="p-4 bg-gray-50 rounded-b-xl border-t print:hidden flex justify-between items-center">
+                    <div>
+                        <label className="text-sm font-semibold mr-2">قالب:</label>
+                        <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="bg-white border border-gray-300 rounded-md px-2 py-1">
+                            <option value="report-classic">گزارش کلاسیک</option>
+                            <option value="modern">مدرن</option>
+                            <option value="classic">کلاسیک</option>
+                            <option value="minimalist">ساده</option>
+                        </select>
+                    </div>
+                    <div className='flex gap-2'>
+                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 font-semibold">بستن</button>
+                        <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold"><PrintIcon /> <span className="mr-2">چاپ</span></button>
+                    </div>
+                </div>
+                <div id="print-section" className="max-h-[75vh] overflow-y-auto">
+                    {/* FIX: Cast children to a type that accepts className and style to resolve TypeScript error. */}
+                    {React.cloneElement(children as React.ReactElement<{ className?: string, style?: React.CSSProperties }>, {
+                        className: `p-10 template-${selectedTemplate} layout-logo-${documentSettings.logoPosition}`,
+                        style: { '--accent-color': documentSettings.accentColor }
+                    })}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 //=========== MAIN COMPONENT ===========//
 type ReportsProps = {
@@ -407,6 +477,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
         endDate: new Date().toISOString().split('T')[0],
     });
     const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+    const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
 
 
@@ -444,8 +515,9 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
     }, [exportMenuRef]);
 
     const getCurrentReportData = () => {
-        // This function will gather data from the active tab for export
         const { sales, purchases, wastedStock } = filteredData;
+        const dateRange = `از ${new Date(filters.startDate).toLocaleDateString('fa-IR')} تا ${new Date(filters.endDate).toLocaleDateString('fa-IR')}`;
+        
         switch (activeTab) {
             case 'profitability': {
                 const drugsMap = new Map(drugs.map(d => [d.id, d]));
@@ -470,6 +542,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
 
                 return {
                     title: 'گزارش سودآوری',
+                    dateRange,
                     headers: ['نام محصول', 'تعداد فروش', 'مجموع درآمد', 'مجموع هزینه', 'سود کل'],
                     rows: profitItems.sort((a,b) => b.profit - a.profit).map(i => [i.name, i.qty, i.revenue, i.cogs, i.profit]),
                 };
@@ -484,6 +557,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
 
                 return {
                     title: 'خلاصه فروش',
+                    dateRange,
                     headers: ['نام مشتری', 'مجموع فروش', 'مجموع دریافتی', 'مانده حساب'],
                     rows: summary.sort((a,b) => b.totalAmount - a.totalAmount).map(s => [s.name, s.totalAmount, s.amountPaid, s.balance]),
                 };
@@ -497,69 +571,14 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 }, {} as { [key: string]: { totalAmount: number; amountPaid: number } })).map(([name, values]) => ({ name, ...values, balance: values.totalAmount - values.amountPaid }));
                  return {
                     title: 'خلاصه خرید',
+                    dateRange,
                     headers: ['نام شرکت', 'مجموع خرید', 'مجموع پرداختی', 'مانده حساب'],
                     rows: summary.sort((a,b) => b.totalAmount - a.totalAmount).map(s => [s.name, s.totalAmount, s.amountPaid, s.balance]),
                 };
             }
-            // Add other cases...
             default:
-                return { title: 'گزارش', headers: [], rows: [] };
+                return { title: `گزارش ${activeTab}`, dateRange, headers: [], rows: [] };
         }
-    };
-
-    const handlePrint = () => {
-        const doc = new (window as any).jspdf.jsPDF();
-        
-        doc.addFileToVFS('Vazirmatn-Regular.ttf', vazirFont);
-        doc.addFont('Vazirmatn-Regular.ttf', 'Vazirmatn-Regular', 'normal');
-        doc.setFont('Vazirmatn-Regular');
-        
-        const { title, headers, rows } = getCurrentReportData();
-        const body = rows.map(row => row.map(cell => typeof cell === 'number' ? cell.toLocaleString() : cell));
-        
-        doc.text(title, 14, 22);
-        (doc as any).autoTable({
-            head: [headers],
-            body: body,
-            startY: 30,
-            styles: { font: 'Vazirmatn-Regular', halign: 'right' },
-            headStyles: { fillColor: [13, 148, 136] }, // teal-600
-        });
-        
-        doc.autoPrint();
-        window.open(doc.output('bloburl'), '_blank');
-        setIsExportMenuOpen(false);
-    };
-
-    const handlePdfExport = () => {
-        const doc = new (window as any).jspdf.jsPDF();
-        
-        doc.addFileToVFS('Vazirmatn-Regular.ttf', vazirFont);
-        doc.addFont('Vazirmatn-Regular.ttf', 'Vazirmatn-Regular', 'normal');
-        doc.setFont('Vazirmatn-Regular');
-        
-        const { title, headers, rows } = getCurrentReportData();
-        const body = rows.map(row => row.map(cell => typeof cell === 'number' ? cell.toLocaleString() : cell));
-        
-        // Add header
-        doc.setFontSize(18);
-        doc.text(companyInfo.name, 200, 20, { align: 'right' });
-        doc.setFontSize(12);
-        doc.text(title, 200, 30, { align: 'right' });
-        doc.setFontSize(10);
-        const dateRange = `از ${new Date(filters.startDate).toLocaleDateString('fa-IR')} تا ${new Date(filters.endDate).toLocaleDateString('fa-IR')}`;
-        doc.text(dateRange, 200, 38, { align: 'right' });
-        
-        (doc as any).autoTable({
-            head: [headers],
-            body: body,
-            startY: 45,
-            styles: { font: 'Vazirmatn-Regular', halign: 'right' },
-            headStyles: { fillColor: [13, 148, 136] }, // teal-600
-        });
-
-        doc.save(`${title.replace(/ /g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
-        setIsExportMenuOpen(false);
     };
     
     const handleExcelExport = () => {
@@ -587,9 +606,19 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
             {children}
         </button>
     );
+    
+    const reportPrintData = getCurrentReportData();
 
     return (
         <div className="p-8 bg-gray-50 min-h-full space-y-6">
+            <PrintPreviewModal
+                isOpen={isPrintPreviewOpen}
+                onClose={() => setIsPrintPreviewOpen(false)}
+                documentSettings={documentSettings}
+            >
+                <ReportPrintView {...reportPrintData} companyInfo={companyInfo} documentSettings={documentSettings} />
+            </PrintPreviewModal>
+
             <div>
                 <h2 className="text-3xl font-bold text-gray-800">مرکز گزارشات</h2>
                 <p className="text-gray-500 mt-1">تحلیل عملکرد کسب‌وکار با داشبوردهای هوشمند</p>
@@ -613,8 +642,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                     </button>
                     {isExportMenuOpen && (
                         <div className="absolute left-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border">
-                            <button onClick={handlePrint} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PrintIcon /> چاپ</button>
-                            <button onClick={handlePdfExport} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PdfIcon /> دانلود PDF</button>
+                            <button onClick={() => { setIsPrintPreviewOpen(true); setIsExportMenuOpen(false); }} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PrintIcon /> چاپ / پیش‌نمایش</button>
                             <button onClick={handleExcelExport} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><ExcelIcon /> دانلود Excel</button>
                         </div>
                     )}

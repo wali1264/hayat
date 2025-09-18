@@ -4,10 +4,9 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Customer } from './Customers';
 import { Order } from './Sales';
 import { CompanyInfo, DocumentSettings } from './Settings';
-import { vazirFont } from './VazirFont';
 
 // Declare global libraries
-declare var jsPDF: any;
+// declare var jsPDF: any; // No longer needed
 
 //=========== ICONS ===========//
 const Icon = ({ path, className = "w-5 h-5" }) => (
@@ -22,8 +21,6 @@ const CloseIcon = ({ className = "w-6 h-6" }) => (
     </svg>
 );
 const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0 00-2 2v4a2 2 0 002 2h2m8 0v4H9v-4m4 0h-2" className="w-5 h-5" />;
-const ExportIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a4 4 0 01-4-4V9a4 4 0 014-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V16a4 4 0 01-4 4z" className="w-5 h-5"/>;
-const PdfIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3M3 10a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2v-10z" className="w-5 h-5"/>;
 
 
 //=========== TYPES ===========//
@@ -36,10 +33,10 @@ type CustomerFinancialSummary = {
 };
 
 type ReportData = {
-    customerName: string;
+    customer: Customer;
     startDate: string;
     endDate: string;
-    invoices: Order[];
+    transactions: {date: string, desc: string, debit: number, credit: number, id: number, refCode?: string}[];
     summary: {
         totalBilled: number;
         totalPaid: number;
@@ -184,138 +181,103 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, customer, or
     );
 };
 
-type CustomerReportModalProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    reportData: ReportData | null;
-    companyInfo: CompanyInfo;
-    documentSettings: DocumentSettings;
-}
+// --- New Printable Statement Component ---
+const CustomerAccountStatement = ({ reportData, companyInfo, documentSettings, className, style }: { reportData: ReportData, companyInfo: CompanyInfo, documentSettings: DocumentSettings, className?: string, style?: React.CSSProperties }) => {
+    return (
+         <div className={className} style={style}>
+            <header className="print-header">
+                <div className="print-company-info">
+                    <h1 className="text-3xl font-bold text-gray-800 print-title">{companyInfo.name}</h1>
+                    <p className="text-gray-500">{companyInfo.address}</p>
+                    <p className="text-gray-500">{companyInfo.phone}</p>
+                </div>
+                {companyInfo.logo && <img src={companyInfo.logo} alt="Company Logo" className="print-logo" />}
+            </header>
+            <div className="text-center my-8">
+                <h2 className="text-2xl font-bold">صورت حساب مشتری</h2>
+                <p className="text-lg mt-1">{reportData.customer.name}</p>
+                <p className="text-sm text-gray-500 mt-2">
+                    برای دوره از {new Date(reportData.startDate).toLocaleDateString('fa-IR')} تا {new Date(reportData.endDate).toLocaleDateString('fa-IR')}
+                </p>
+            </div>
+             <table className="w-full text-right text-sm">
+                <thead>
+                    <tr>
+                        <th className="p-3">تاریخ</th>
+                        <th className="p-3">شرح</th>
+                        <th className="p-3">بدهکار</th>
+                        <th className="p-3">بستانکار</th>
+                        <th className="p-3">مانده</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y">
+                    {reportData.transactions.map((entry, index) => (
+                        <tr key={index}>
+                            <td className="p-2 whitespace-nowrap">{new Date(entry.date).toLocaleDateString('fa-IR')}</td>
+                            <td className="p-2">{entry.desc}</td>
+                            <td className="p-2 text-red-600">{entry.debit > 0 ? entry.debit.toLocaleString() : '-'}</td>
+                            <td className="p-2 text-green-600">{entry.credit > 0 ? entry.credit.toLocaleString() : '-'}</td>
+                            <td className="p-2 font-bold">{(entry.debit - entry.credit).toLocaleString()}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+             <div className="flex justify-end mt-8">
+                <div className="w-full max-w-sm space-y-3 print-summary pt-4">
+                    <div className="flex justify-between text-md">
+                        <span className="text-gray-600">مجموع بدهکار (فاکتورها):</span>
+                        <span className="font-semibold">{reportData.summary.totalBilled.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-md">
+                        <span className="text-gray-600">مجموع بستانکار (پرداختی‌ها):</span>
+                        <span className="font-semibold">{reportData.summary.totalPaid.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-xl font-bold text-gray-800 pt-2 border-t">
+                        <span>مانده نهایی حساب:</span>
+                        <span>{reportData.summary.finalBalance.toLocaleString()} افغانی</span>
+                    </div>
+                </div>
+            </div>
+             <footer className="mt-16 pt-6 border-t text-sm text-gray-500 text-center">
+                <span>تاریخ و زمان چاپ: {new Date().toLocaleString('fa-IR')}</span>
+            </footer>
+         </div>
+    );
+};
 
-const CustomerReportModal: React.FC<CustomerReportModalProps> = ({ isOpen, onClose, reportData, companyInfo, documentSettings }) => {
-    const exportMenuRef = useRef<HTMLDivElement>(null);
-    const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
-    
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
-                setIsExportMenuOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [exportMenuRef]);
+// --- New Unified Print Preview Modal ---
+const PrintPreviewModal = ({ isOpen, onClose, children, documentSettings }: { isOpen: boolean; onClose: () => void; children: React.ReactNode; documentSettings: DocumentSettings }) => {
+    const [selectedTemplate, setSelectedTemplate] = useState('report-classic');
+    if (!isOpen) return null;
 
-    if (!isOpen || !reportData) return null;
-
-    const generatePdf = (action: 'print' | 'save') => {
-        const doc = new (window as any).jspdf.jsPDF();
-
-        doc.addFileToVFS('Vazirmatn-Regular.ttf', vazirFont);
-        doc.addFont('Vazirmatn-Regular.ttf', 'Vazirmatn-Regular', 'normal');
-        doc.setFont('Vazirmatn-Regular');
-
-        // Main Header
-        doc.setFontSize(18);
-        doc.text(companyInfo.name, 200, 20, { align: 'right' });
-        doc.setFontSize(12);
-        doc.text('گزارش تفصیلی معاملات', 200, 30, { align: 'right' });
-        doc.setFontSize(10);
-        doc.text(`برای: ${reportData.customerName}`, 200, 38, { align: 'right' });
-        const dateRange = `از ${new Date(reportData.startDate).toLocaleDateString('fa-IR')} تا ${new Date(reportData.endDate).toLocaleDateString('fa-IR')}`;
-        doc.text(dateRange, 200, 46, { align: 'right' });
-        
-        const head = [['#', 'شرح محصول', 'تعداد', 'قیمت واحد', 'تخفیف', 'مبلغ نهایی']];
-        const body: any[] = [];
-        
-        reportData.invoices.forEach(invoice => {
-            body.push([
-                { content: `فاکتور: ${invoice.orderNumber} (${invoice.ledgerRefCode}) - تاریخ: ${new Date(invoice.orderDate).toLocaleDateString('fa-IR')}`, colSpan: 6, styles: { fillColor: [243, 244, 246], fontStyle: 'bold' } }
-            ]);
-            invoice.items.forEach((item, index) => {
-                body.push([
-                    index + 1,
-                    item.drugName,
-                    item.quantity.toLocaleString(),
-                    item.originalPrice.toLocaleString(),
-                    item.discountPercentage > 0 ? `${item.discountPercentage}%` : '-',
-                    (item.finalPrice * item.quantity).toLocaleString()
-                ]);
-            });
-             body.push([
-                { content: `مبلغ کل فاکتور: ${invoice.totalAmount.toLocaleString()} - پرداختی: ${invoice.amountPaid.toLocaleString()} - مانده: ${(invoice.totalAmount - invoice.amountPaid).toLocaleString()}`, colSpan: 6, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } }
-            ]);
-        });
-
-        (doc as any).autoTable({
-            head: head,
-            body: body,
-            startY: 55,
-            styles: { font: 'Vazirmatn-Regular', halign: 'right' },
-            headStyles: { fillColor: [13, 148, 136] }, // teal-600
-        });
-        
-        // Final Summary
-        const finalY = (doc as any).autoTable.previous.finalY;
-        doc.setFontSize(12);
-        doc.text('خلاصه کلی گزارش', 200, finalY + 15, { align: 'right' });
-        doc.setFontSize(10);
-        doc.text(`مجموع کل خرید در بازه زمانی: ${reportData.summary.totalBilled.toLocaleString()}`, 200, finalY + 22, { align: 'right' });
-        doc.text(`مجموع کل پرداختی در بازه زمانی: ${reportData.summary.totalPaid.toLocaleString()}`, 200, finalY + 29, { align: 'right' });
-        doc.setFontSize(12);
-        doc.setFont('Vazirmatn-Regular', 'bold');
-        doc.text(`مانده حساب نهایی: ${reportData.summary.finalBalance.toLocaleString()} افغانی`, 200, finalY + 38, { align: 'right' });
-
-        if (action === 'print') {
-            doc.autoPrint();
-            window.open(doc.output('bloburl'), '_blank');
-        } else {
-            doc.save(`Report_${reportData.customerName}.pdf`);
-        }
-        setIsExportMenuOpen(false);
+    const handlePrint = () => {
+        setTimeout(() => window.print(), 100);
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-start p-4 overflow-y-auto" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl my-8" onClick={e => e.stopPropagation()}>
-                <div className="p-4 bg-gray-50 rounded-t-xl border-b print:hidden flex justify-between items-center">
-                    <h3 className="font-bold text-lg text-gray-700">پیش‌نمایش گزارش تفصیلی</h3>
-                     <div className="flex gap-2">
-                         <div className="relative" ref={exportMenuRef}>
-                            <button onClick={() => setIsExportMenuOpen(p => !p)} className="flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors text-sm bg-gray-600 text-white hover:bg-gray-700 shadow">
-                                <ExportIcon />
-                                چاپ / خروجی
-                            </button>
-                            {isExportMenuOpen && (
-                                <div className="absolute left-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border">
-                                    <button onClick={() => generatePdf('print')} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PrintIcon /> چاپ</button>
-                                    <button onClick={() => generatePdf('save')} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PdfIcon /> دانلود PDF</button>
-                                </div>
-                            )}
-                        </div>
-                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">بستن</button>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start p-4 overflow-y-auto" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl mt-8 mb-8 w-full max-w-4xl" onClick={e => e.stopPropagation()}>
+                <div className="p-4 bg-gray-50 rounded-b-xl border-t print:hidden flex justify-between items-center">
+                    <div>
+                        <label className="text-sm font-semibold mr-2">قالب:</label>
+                        <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="bg-white border border-gray-300 rounded-md px-2 py-1">
+                            <option value="report-classic">گزارش کلاسیک</option>
+                            <option value="modern">مدرن</option>
+                            <option value="classic">کلاسیک</option>
+                            <option value="minimalist">ساده</option>
+                        </select>
+                    </div>
+                    <div className='flex gap-2'>
+                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 font-semibold">بستن</button>
+                        <button type="button" onClick={handlePrint} className="flex items-center px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold"><PrintIcon /> <span className="mr-2">چاپ</span></button>
                     </div>
                 </div>
-                 <div className="p-10 max-h-[75vh] overflow-y-auto">
-                    {/* Simplified preview for UI, actual print/pdf is generated by jsPDF */}
-                     <h2 className='text-xl font-bold text-center'>گزارش تفصیلی معاملات برای {reportData.customerName}</h2>
-                     <p className="text-sm text-gray-500 text-center mb-6">از {new Date(reportData.startDate).toLocaleDateString('fa-IR')} تا {new Date(reportData.endDate).toLocaleDateString('fa-IR')}</p>
-                     {reportData.invoices.map(invoice => (
-                        <div key={invoice.id} className="p-4 border rounded-lg mb-4">
-                           <div className='flex justify-between items-center bg-gray-50 p-3 rounded-t-md'>
-                               <h4 className='font-bold text-lg'>فاکتور شماره: {invoice.orderNumber}</h4>
-                               <p className='text-sm font-semibold'>تاریخ: {new Date(invoice.orderDate).toLocaleDateString('fa-IR')}</p>
-                           </div>
-                            <table className="w-full text-right text-sm mt-2">
-                                <thead className="border-b"><tr className="font-semibold text-gray-600">
-                                    <th className="p-2">شرح محصول</th><th className="p-2">تعداد</th><th className="p-2">مبلغ نهایی</th>
-                                </tr></thead>
-                                <tbody>{invoice.items.map(item => <tr key={item.drugId}>
-                                    <td className="p-2">{item.drugName}</td><td className="p-2">{item.quantity.toLocaleString()}</td><td className="p-2 font-semibold">{(item.finalPrice * item.quantity).toLocaleString()}</td>
-                                </tr>)}</tbody>
-                            </table>
-                        </div>
-                     ))}
+                <div id="print-section" className="max-h-[75vh] overflow-y-auto">
+                    {/* FIX: Cast children to a type that accepts className and style to resolve TypeScript error. */}
+                    {React.cloneElement(children as React.ReactElement<{ className?: string, style?: React.CSSProperties }>, {
+                        className: `p-10 template-${selectedTemplate} layout-logo-${documentSettings.logoPosition}`,
+                        style: { '--accent-color': documentSettings.accentColor }
+                    })}
                 </div>
             </div>
         </div>
@@ -380,23 +342,42 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
         const customer = customers.find(c => c.id === Number(customerId));
         if (!customer) return;
 
-        const filteredInvoices = orders.filter(o => {
+        const customerOrders = orders.filter(o => {
             const orderDate = new Date(o.orderDate);
             return o.customerName === customer.name &&
                    orderDate >= new Date(startDate) &&
                    orderDate <= new Date(endDate);
-        }).sort((a,b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
+        });
 
+        const transactions: {date: string, desc: string, debit: number, credit: number, id: number, refCode?: string}[] = [];
+        let totalBilled = 0;
+        let totalPaid = 0;
+
+        customerOrders.forEach(order => {
+            if (order.type === 'sale') {
+                transactions.push({ date: order.orderDate, desc: `فاکتور فروش - ${order.orderNumber}`, debit: order.totalAmount, credit: 0, id: order.id, refCode: order.ledgerRefCode });
+                totalBilled += order.totalAmount;
+            } else {
+                transactions.push({ date: order.orderDate, desc: `مستردی فروش - ${order.orderNumber}`, debit: 0, credit: Math.abs(order.totalAmount), id: order.id, refCode: order.ledgerRefCode });
+                totalBilled -= Math.abs(order.totalAmount);
+            }
+            if (order.amountPaid !== 0) {
+                 transactions.push({ date: order.orderDate, desc: `پرداخت برای سفارش - ${order.orderNumber}`, debit: 0, credit: order.amountPaid, id: order.id + 0.1, refCode: '' });
+                 totalPaid += order.amountPaid;
+            }
+        });
+        transactions.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        
         const summary = customerSummaries.find(s => s.customerId === Number(customerId));
 
         const reportData: ReportData = {
-            customerName: customer.name,
+            customer,
             startDate,
             endDate,
-            invoices: filteredInvoices,
+            transactions,
             summary: {
-                totalBilled: filteredInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0),
-                totalPaid: filteredInvoices.reduce((sum, inv) => sum + Number(inv.amountPaid), 0),
+                totalBilled,
+                totalPaid,
                 finalBalance: summary ? Number(summary.balance) : 0
             }
         };
@@ -413,13 +394,14 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
                 customer={selectedCustomer}
                 orders={orders}
             />
-            <CustomerReportModal
+            <PrintPreviewModal
                 isOpen={isReportModalOpen}
                 onClose={() => setIsReportModalOpen(false)}
-                reportData={generatedReportData}
-                companyInfo={companyInfo}
                 documentSettings={documentSettings}
-            />
+            >
+                {generatedReportData && <CustomerAccountStatement reportData={generatedReportData} companyInfo={companyInfo} documentSettings={documentSettings}/>}
+            </PrintPreviewModal>
+
             <div className="mb-8">
                 <h2 className="text-3xl font-bold text-gray-800">مدیریت حسابات مشتریان</h2>
                 <p className="text-gray-500 mt-2">بررسی وضعیت مالی، بدهی‌ها و صورت حساب هر مشتری.</p>

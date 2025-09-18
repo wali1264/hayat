@@ -1,5 +1,5 @@
 // Incrementing cache name for updates to trigger the 'activate' event.
-const CACHE_NAME = 'hayat-cache-v12';
+const CACHE_NAME = 'hayat-cache-v13';
 
 // List of essential files for the app shell to work offline.
 const urlsToCache = [
@@ -34,6 +34,7 @@ const urlsToCache = [
   'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   
   // Import map dependencies (matching the import map in index.html)
   'https://aistudiocdn.com/react@^19.1.1',

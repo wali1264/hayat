@@ -1,10 +1,5 @@
 
 
-
-
-
-
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Drug, drugCategories } from './Inventory';
 import { Customer } from './Customers';
@@ -411,7 +406,7 @@ type OrderModalProps = {
 const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initialData, drugs, customers, orders, addToast, mode }) => {
     
     const [orderInfo, setOrderInfo] = useState({
-        customerName: '', amountPaid: '', status: 'ارسال شده' as OrderStatus,
+        customerName: '', amountPaid: '' as number | '', status: 'ارسال شده' as OrderStatus,
     });
     const [items, setItems] = useState<OrderItem[]>([]);
     const [extraCharges, setExtraCharges] = useState<ExtraCharge[]>([]);
@@ -474,7 +469,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     useEffect(() => {
         if (isOpen) {
              if (initialData) {
-                setOrderInfo({ customerName: initialData.customerName, amountPaid: String(initialData.amountPaid), status: initialData.status });
+                setOrderInfo({ customerName: initialData.customerName, amountPaid: initialData.amountPaid, status: initialData.status });
                 setItems(initialData.items.map(item => ({...item, bonusQuantity: item.bonusQuantity || 0})));
                 setExtraCharges(initialData.extraCharges || []);
                 if(mode === 'return') {
@@ -510,7 +505,12 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
 
     const handleInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setOrderInfo(prev => ({ ...prev, [name]: value }));
+        // FIX: Store amountPaid as a number or an empty string for better type safety.
+        if (name === 'amountPaid') {
+            setOrderInfo(prev => ({ ...prev, amountPaid: value === '' ? '' : Number(value) }));
+        } else {
+            setOrderInfo(prev => ({ ...prev, [name]: value }));
+        }
     };
 
     const addItemToOrder = (drug: Drug, quantity: number) => {
@@ -1012,7 +1012,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     );
 };
 
-type InvoiceModalProps = {
+type PrintPreviewModalProps = {
     isOpen: boolean;
     onClose: () => void;
     order: Order | null;
@@ -1022,7 +1022,7 @@ type InvoiceModalProps = {
     previousBalance: number;
 };
 
-const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, customer, companyInfo, documentSettings, previousBalance }) => {
+const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, order, customer, companyInfo, documentSettings, previousBalance }) => {
     const [selectedTemplate, setSelectedTemplate] = useState('modern');
     const [notes, setNotes] = useState('');
     const [showBonusInPrint, setShowBonusInPrint] = useState(false);
@@ -1043,13 +1043,12 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
         }, 100);
     };
     
-    // FIX: Explicitly cast values to Number to avoid potential type errors from inconsistent data.
-    const itemsSubtotal = order.items.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.originalPrice)), 0);
+    const itemsSubtotal = order.items.reduce((sum, item) => sum + (item.quantity * item.originalPrice), 0);
     const itemsTotalAfterDiscount = order.items.reduce((sum, item) => {
         const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
             ? item.originalPrice
             : item.finalPrice;
-        return sum + (Number(item.quantity) * Number(pricePerUnit));
+        return sum + (item.quantity * pricePerUnit);
     }, 0);
     const totalItemsDiscount = itemsSubtotal - itemsTotalAfterDiscount;
     const extraCharges = order.extraCharges || [];
@@ -1312,11 +1311,10 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
         setIsOrderModalOpen(false);
         setEditingOrder(null);
     };
-
+    
     const handleDeleteOrder = (id: number) => {
         onDelete(id);
     };
-    
     
     const sortedOrders = useMemo(() => {
         return [...orders].sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
@@ -1369,14 +1367,14 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                 addToast={addToast}
                 mode={modalMode}
             />}
-             <InvoiceModal
+             <PrintPreviewModal
                 isOpen={!!printData}
                 onClose={() => setPrintData(null)}
                 order={printData?.order || null}
                 customer={customers.find(c => c.name === printData?.order?.customerName) || null}
                 companyInfo={companyInfo}
                 documentSettings={documentSettings}
-                previousBalance={printData?.previousBalance || 0}
+                previousBalance={Number(printData?.previousBalance || 0)}
             />
             <div className="flex justify-between items-center mb-6">
                 <div>
