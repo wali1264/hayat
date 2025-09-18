@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Drug, drugCategories } from './Inventory';
+import { Drug, drugCategories, Batch } from './Inventory';
 import { Customer } from './Customers';
 import { CompanyInfo, User, DocumentSettings } from './Settings';
 
@@ -33,6 +33,12 @@ const ReturnIcon = () => <Icon path="M9 15l-6-6 6-6" />;
 export type OrderStatus = 'در حال پردازش' | 'ارسال شده' | 'تکمیل شده' | 'لغو شده';
 export type PaymentStatus = 'پرداخت شده' | 'پرداخت نشده' | 'قسمتی پرداخت شده';
 
+export type BatchAllocation = {
+    lotNumber: string;
+    quantity: number;
+    purchasePrice: number;
+};
+
 export type OrderItem = {
     drugId: number;
     drugName: string;
@@ -45,6 +51,7 @@ export type OrderItem = {
     finalPrice: number;
     applyDiscountWithBonus?: boolean;
     isPriceOverridden?: boolean;
+    batchAllocations?: BatchAllocation[];
 };
 
 export type ExtraCharge = {
@@ -148,13 +155,13 @@ const DrugModalBarcodeScanner: React.FC<DrugModalBarcodeScannerProps> = ({ isOpe
 type DrugModalProps = {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (drug: Drug) => void;
+    onSave: (drug: Omit<Drug, 'batches'>) => void;
     initialData: Drug | null;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
 const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
-    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', cartonQuantity: '', unitQuantity: '', unitsPerCarton: '', expiryDate: '', productionDate: '', price: '', purchasePrice: '', discountPercentage: '', category: 'سایر' };
+    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', unitsPerCarton: '', price: '', discountPercentage: '0', category: 'سایر' };
     const [drug, setDrug] = useState(defaultState);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const isEditMode = initialData !== null;
@@ -162,24 +169,14 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
     useEffect(() => {
         if (isOpen) {
              if (initialData) {
-                 const totalQuantity = initialData.quantity;
-                 const unitsPerCarton = initialData.unitsPerCarton && initialData.unitsPerCarton > 1 ? initialData.unitsPerCarton : 1;
-                 const cartons = unitsPerCarton > 1 ? Math.floor(totalQuantity / unitsPerCarton) : 0;
-                 const units = unitsPerCarton > 1 ? totalQuantity % unitsPerCarton : totalQuantity;
-                 
                  setDrug({
                      name: initialData.name,
                      barcode: initialData.barcode || '',
                      code: initialData.code,
                      manufacturer: initialData.manufacturer,
-                     cartonQuantity: String(cartons),
-                     unitQuantity: String(units),
                      unitsPerCarton: String(initialData.unitsPerCarton || ''),
-                     expiryDate: initialData.expiryDate,
-                     productionDate: initialData.productionDate || '',
                      price: String(initialData.price),
-                     purchasePrice: String(initialData.purchasePrice),
-                     discountPercentage: String(initialData.discountPercentage),
+                     discountPercentage: String(initialData.discountPercentage || '0'),
                      category: initialData.category || 'سایر'
                  });
              } else {
@@ -187,16 +184,6 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
              }
         }
     }, [isOpen, initialData]);
-
-    const calculatedTotal = useMemo(() => {
-        const unitsPerCarton = Number(drug.unitsPerCarton);
-        const cartons = Number(drug.cartonQuantity) || 0;
-        const units = Number(drug.unitQuantity) || 0;
-        if (!unitsPerCarton || unitsPerCarton <= 1) {
-            return units;
-        }
-        return (cartons * unitsPerCarton) + units;
-    }, [drug.unitsPerCarton, drug.cartonQuantity, drug.unitQuantity]);
 
     if (!isOpen) return null;
 
@@ -208,25 +195,20 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const priceValue = Number(drug.price) || 0;
-        const purchasePriceValue = Number(drug.purchasePrice) || 0;
-        if (!drug.name || !drug.expiryDate || priceValue <= 0 || purchasePriceValue <= 0) {
-            addToast("لطفا تمام فیلدهای ضروری (نام، تاریخ انقضا، قیمت خرید و فروش) را با مقادیر معتبر پر کنید.", 'error');
+        if (!drug.name || priceValue <= 0) {
+            addToast("لطفا نام محصول و قیمت فروش معتبر را وارد کنید.", 'error');
             return;
         }
 
-        const drugToSave: Drug = {
-            id: isEditMode ? initialData.id : Date.now(),
+        const drugToSave: Omit<Drug, 'batches'> = {
+            id: isEditMode ? initialData!.id : Date.now(),
             name: drug.name,
             barcode: drug.barcode,
             code: drug.code,
             manufacturer: drug.manufacturer,
             category: drug.category,
-            expiryDate: drug.expiryDate,
-            productionDate: drug.productionDate,
-            quantity: calculatedTotal,
             unitsPerCarton: Number(drug.unitsPerCarton) || 1,
             price: priceValue,
-            purchasePrice: purchasePriceValue,
             discountPercentage: Number(drug.discountPercentage) || 0,
         };
         
@@ -250,13 +232,13 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[90] flex justify-center items-center p-4 transition-opacity duration-300" onClick={onClose} role="dialog" aria-modal="true">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 <header className="p-8 pb-4 flex-shrink-0">
-                    <h3 className="text-2xl font-bold text-gray-800">{isEditMode ? 'ویرایش دارو' : 'افزودن داروی جدید'}</h3>
+                    <h3 className="text-2xl font-bold text-gray-800">{isEditMode ? 'ویرایش اطلاعات محصول' : 'افزودن محصول جدید'}</h3>
                 </header>
                 <main className="flex-1 overflow-y-auto px-8">
                     <form id="drug-modal-form" onSubmit={handleSubmit}>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                              <div>
-                                <label htmlFor="name" className={labelStyles}>نام دارو (ضروری)</label>
+                                <label htmlFor="name" className={labelStyles}>نام محصول (ضروری)</label>
                                 <input type="text" name="name" id="name" value={drug.name} onChange={handleChange} className={inputStyles} required autoFocus />
                             </div>
                             <div>
@@ -285,10 +267,6 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                              <div>
-                                <label htmlFor="purchasePrice" className={labelStyles}>قیمت خرید (ضروری)</label>
-                                <input type="number" name="purchasePrice" id="purchasePrice" value={drug.purchasePrice} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 120" />
-                            </div>
-                             <div>
                                 <label htmlFor="price" className={labelStyles}>قیمت فروش (ضروری)</label>
                                 <input type="number" name="price" id="price" value={drug.price} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 150" />
                             </div>
@@ -296,43 +274,17 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
                                 <label htmlFor="discountPercentage" className={labelStyles}>تخفیف (٪)</label>
                                 <input type="number" name="discountPercentage" id="discountPercentage" value={drug.discountPercentage} onChange={handleChange} className={inputStyles} min="0" max="100" placeholder="مثلا: 5"/>
                             </div>
-                        </div>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                              <div>
-                                <label htmlFor="productionDate" className={labelStyles}>تاریخ تولید</label>
-                                <input type="date" name="productionDate" id="productionDate" value={drug.productionDate} onChange={handleChange} className={inputStyles} />
-                            </div>
-                             <div>
-                                <label htmlFor="expiryDate" className={labelStyles}>تاریخ انقضا (ضروری)</label>
-                                <input type="date" name="expiryDate" id="expiryDate" value={drug.expiryDate} onChange={handleChange} className={inputStyles} required />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                            <div>
                                 <label htmlFor="unitsPerCarton" className={labelStyles}>تعداد در کارتن</label>
                                 <input type="number" name="unitsPerCarton" id="unitsPerCarton" value={drug.unitsPerCarton} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 100" />
                             </div>
-                            <div className="md:col-span-2">
-                                <label className={labelStyles}>موجودی انبار</label>
-                                <div className="flex items-center gap-2">
-                                    <input type="number" name="cartonQuantity" value={drug.cartonQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد کارتن" disabled={!drug.unitsPerCarton || Number(drug.unitsPerCarton) <= 1} />
-                                    <span className="text-gray-500 flex-shrink-0">کارتن</span>
-                                    <input type="number" name="unitQuantity" value={drug.unitQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد واحد" />
-                                    <span className="text-gray-500 flex-shrink-0">عدد</span>
-                                </div>
-                            </div>
-                        </div>
-                         <div className="my-6 text-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-                            <span>مجموع کل: </span>
-                            <span className="font-bold font-mono text-base text-teal-700">{calculatedTotal.toLocaleString()}</span>
-                            <span> واحد</span>
                         </div>
                     </form>
                 </main>
                 <footer className="flex justify-end space-x-4 space-x-reverse p-8 pt-4 border-t border-gray-200 flex-shrink-0">
                     <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold transition-colors">انصراف</button>
                     <button type="submit" form="drug-modal-form" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors shadow-md hover:shadow-lg">
-                        {isEditMode ? 'ذخیره تغییرات' : 'ذخیره'}
+                        {isEditMode ? 'ذخیره تغییرات' : 'ذخیره محصول'}
                     </button>
                 </footer>
             </div>
@@ -437,8 +389,9 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
 
     const availableDrugs = useMemo(() => {
         if (!drugSearchTerm) return [];
-        return drugs
-            .filter(d => (mode === 'sale' ? d.quantity > 0 : true)) // For returns, show all drugs
+        const drugsWithStock = drugs.filter(d => d.batches.some(b => b.quantity > 0));
+        return drugsWithStock
+            .filter(d => (mode === 'sale' ? true : true)) // For returns, show all drugs
             .filter(d => d.name.toLowerCase().includes(drugSearchTerm.toLowerCase()))
             .slice(0, 10);
     }, [drugs, drugSearchTerm, mode]);
@@ -512,10 +465,11 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
 
     const addItemToOrder = (drug: Drug, quantity: number) => {
          const existingItemIndex = items.findIndex(item => item.drugId === drug.id);
+         const totalStock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
          const totalRequired = existingItemIndex > -1 ? items[existingItemIndex].quantity + quantity + (items[existingItemIndex].bonusQuantity || 0) : quantity;
 
-         if (mode === 'sale' && totalRequired > drug.quantity) {
-            addToast(`تعداد درخواستی (${totalRequired}) بیشتر از موجودی انبار (${drug.quantity}) است.`, 'error');
+         if (mode === 'sale' && totalRequired > totalStock) {
+            addToast(`تعداد درخواستی (${totalRequired}) بیشتر از موجودی انبار (${totalStock}) است.`, 'error');
             return false;
          }
         
@@ -600,8 +554,10 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         if (!item) return;
 
         const drugInStock = drugs.find(d => d.id === drugId);
-        if (mode === 'sale' && drugInStock && (newQuantity + item.bonusQuantity) > drugInStock.quantity) {
-            addToast(`مجموع تعداد فروش و بونس (${newQuantity + item.bonusQuantity}) بیشتر از موجودی انبار (${drugInStock.quantity}) است.`, 'error');
+        const totalStock = drugInStock ? drugInStock.batches.reduce((sum, b) => sum + b.quantity, 0) : 0;
+
+        if (mode === 'sale' && drugInStock && (newQuantity + item.bonusQuantity) > totalStock) {
+            addToast(`مجموع تعداد فروش و بونس (${newQuantity + item.bonusQuantity}) بیشتر از موجودی انبار (${totalStock}) است.`, 'error');
             return;
         }
 
@@ -627,8 +583,9 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         if (!item) return;
 
         const drugInStock = drugs.find(d => d.id === drugId);
-        if (drugInStock && (item.quantity + newBonusQuantity) > drugInStock.quantity) {
-            addToast(`مجموع تعداد فروش و بونس (${item.quantity + newBonusQuantity}) بیشتر از موجودی انbar (${drugInStock.quantity}) است.`, 'error');
+        const totalStock = drugInStock ? drugInStock.batches.reduce((sum, b) => sum + b.quantity, 0) : 0;
+        if (drugInStock && (item.quantity + newBonusQuantity) > totalStock) {
+            addToast(`مجموع تعداد فروش و بونس (${item.quantity + newBonusQuantity}) بیشتر از موجودی انبار (${totalStock}) است.`, 'error');
             return;
         }
 
@@ -806,12 +763,14 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                         />
                                         {isSearchFocused && availableDrugs.length > 0 && (
                                             <div className="absolute top-full left-0 right-0 z-10 bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">
-                                                {availableDrugs.map(drug => (
+                                                {availableDrugs.map(drug => {
+                                                    const totalStock = drug.batches.reduce((s, b) => s + b.quantity, 0);
+                                                    return (
                                                     <div key={drug.id} onClick={() => handleSelectDrug(drug)} className="p-3 hover:bg-teal-50 cursor-pointer border-b">
                                                         <p className="font-semibold text-gray-800">{drug.name}</p>
-                                                        <p className="text-xs text-gray-500">موجودی: <span className="font-mono">{drug.quantity}</span></p>
+                                                        <p className="text-xs text-gray-500">موجودی: <span className="font-mono">{totalStock}</span></p>
                                                     </div>
-                                                ))}
+                                                )})}
                                             </div>
                                         )}
                                     </div>
@@ -1177,7 +1136,7 @@ type SalesProps = {
     currentUser: User;
     documentSettings: DocumentSettings;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
-    onSaveDrug: (drug: Drug) => void; // For quick-add
+    onSaveDrug: (drug: Omit<Drug, 'batches'>) => void; // For quick-add
 };
 
 const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser, documentSettings, addToast, onSaveDrug }) => {

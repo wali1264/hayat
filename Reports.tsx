@@ -90,7 +90,15 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
             
             for (const item of order.items) {
                 const drug = drugsMap.get(item.drugId);
-                const purchasePrice = drug ? drug.purchasePrice : 0;
+                // FIX: Property 'purchasePrice' does not exist on type 'Drug'.
+                // Calculate an average purchase price from the drug's batches as an approximation.
+                // A better solution would use batchAllocations from the OrderItem, but that data seems unavailable.
+                let purchasePrice = 0;
+                if (drug && drug.batches.length > 0) {
+                    const totalQuantityInStock = drug.batches.reduce((acc, b) => acc + b.quantity, 0);
+                    const totalValueInStock = drug.batches.reduce((acc, b) => acc + (b.quantity * b.purchasePrice), 0);
+                    purchasePrice = totalQuantityInStock > 0 ? totalValueInStock / totalQuantityInStock : 0;
+                }
                 
                 const itemRevenue = item.finalPrice * item.quantity;
                 const itemCogs = purchasePrice * (item.quantity + item.bonusQuantity);
@@ -137,7 +145,14 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
 
             for (const item of order.items) {
                  const drug = drugsMap.get(item.drugId);
-                 monthlyData[month].cogs += (drug?.purchasePrice || 0) * (item.quantity + item.bonusQuantity);
+                 // FIX: Property 'purchasePrice' does not exist on type 'Drug'. Calculate average price.
+                 let purchasePrice = 0;
+                 if (drug && drug.batches.length > 0) {
+                    const totalQuantityInStock = drug.batches.reduce((acc, b) => acc + b.quantity, 0);
+                    const totalValueInStock = drug.batches.reduce((acc, b) => acc + (b.quantity * b.purchasePrice), 0);
+                    purchasePrice = totalQuantityInStock > 0 ? totalValueInStock / totalQuantityInStock : 0;
+                 }
+                 monthlyData[month].cogs += purchasePrice * (item.quantity + item.bonusQuantity);
             }
         }
         
@@ -273,7 +288,14 @@ const BonusSummaryView = ({ filteredSales, drugs }: { filteredSales: Order[], dr
 
         const tableRows = bonusItems.map(item => {
             const drug = drugsMap.get(item.drugId);
-            const cost = drug ? drug.purchasePrice * item.bonusQuantity : 0;
+            // FIX: Property 'purchasePrice' does not exist on type 'Drug'. Calculate average price.
+            let purchasePrice = 0;
+            if (drug && drug.batches.length > 0) {
+                const totalQuantityInStock = drug.batches.reduce((acc, b) => acc + b.quantity, 0);
+                const totalValueInStock = drug.batches.reduce((acc, b) => acc + (b.quantity * b.purchasePrice), 0);
+                purchasePrice = totalQuantityInStock > 0 ? totalValueInStock / totalQuantityInStock : 0;
+            }
+            const cost = purchasePrice * item.bonusQuantity;
             totalBonusUnits += item.bonusQuantity;
             totalBonusValue += cost;
             return [
@@ -324,7 +346,11 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
     const [searchTerm, setSearchTerm] = useState('');
     
     const inventoryData = useMemo(() => {
-        const calcValue = (drugs: Drug[]) => drugs.reduce((sum, drug) => sum + (drug.quantity * drug.purchasePrice), 0);
+        // FIX: Property 'quantity' and 'purchasePrice' does not exist on type 'Drug'.
+        // Calculate value by iterating through batches for each drug.
+        const calcValue = (drugs: Drug[]) => drugs.reduce((totalSum, drug) => 
+            totalSum + drug.batches.reduce((drugSum, batch) => drugSum + (batch.quantity * batch.purchasePrice), 0)
+        , 0);
         
         const salesValue = calcValue(salesWarehouseDrugs);
         const mainValue = calcValue(mainWarehouseDrugs);
@@ -333,9 +359,16 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
         const sixMonthsFromNow = new Date();
         sixMonthsFromNow.setMonth(now.getMonth() + 6);
 
+        // FIX: Property 'expiryDate', 'quantity', 'purchasePrice' does not exist on type 'Drug'.
+        // Flatten all batches, filter them by expiry date, then sum their values.
         const expiringValue = [...salesWarehouseDrugs, ...mainWarehouseDrugs]
-            .filter(d => new Date(d.expiryDate) < sixMonthsFromNow && new Date(d.expiryDate) > now)
-            .reduce((sum, drug) => sum + (drug.quantity * drug.purchasePrice), 0);
+            .flatMap(drug => drug.batches)
+            .filter(batch => {
+                if (!batch.expiryDate) return false;
+                const expiry = new Date(batch.expiryDate);
+                return expiry < sixMonthsFromNow && expiry > now;
+            })
+            .reduce((sum, batch) => sum + (batch.quantity * batch.purchasePrice), 0);
             
         return { salesValue, mainValue, totalValue: salesValue + mainValue, expiringValue };
     }, [salesWarehouseDrugs, mainWarehouseDrugs]);
@@ -362,7 +395,14 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
                         <summary className="p-4 font-bold cursor-pointer bg-gray-50">انبار فروش</summary>
                          <DataTable
                             headers={['نام محصول', 'تعداد موجود', 'قیمت خرید', 'ارزش کل']}
-                            rows={filterDrugs(salesWarehouseDrugs).map(d => [d.name, formatQuantity(d.quantity, d.unitsPerCarton), d.purchasePrice, d.quantity * d.purchasePrice])}
+                            // FIX: Property 'quantity' and 'purchasePrice' does not exist on type 'Drug'.
+                            // Aggregate data from batches for each drug.
+                            rows={filterDrugs(salesWarehouseDrugs).map(d => {
+                                const totalQuantity = d.batches.reduce((sum, b) => sum + b.quantity, 0);
+                                const totalValue = d.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
+                                const avgPurchasePrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
+                                return [d.name, formatQuantity(totalQuantity, d.unitsPerCarton), avgPurchasePrice.toFixed(2), totalValue];
+                            })}
                             isNumeric={[false, false, true, true]}
                         />
                     </details>
@@ -370,7 +410,14 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
                         <summary className="p-4 font-bold cursor-pointer bg-gray-50">انبار اصلی</summary>
                          <DataTable
                             headers={['نام محصول', 'تعداد موجود', 'قیمت خرید', 'ارزش کل']}
-                            rows={filterDrugs(mainWarehouseDrugs).map(d => [d.name, formatQuantity(d.quantity, d.unitsPerCarton), d.purchasePrice, d.quantity * d.purchasePrice])}
+                            // FIX: Property 'quantity' and 'purchasePrice' does not exist on type 'Drug'.
+                            // Aggregate data from batches for each drug.
+                            rows={filterDrugs(mainWarehouseDrugs).map(d => {
+                                const totalQuantity = d.batches.reduce((sum, b) => sum + b.quantity, 0);
+                                const totalValue = d.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
+                                const avgPurchasePrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
+                                return [d.name, formatQuantity(totalQuantity, d.unitsPerCarton), avgPurchasePrice.toFixed(2), totalValue];
+                            })}
                             isNumeric={[false, false, true, true]}
                         />
                     </details>
@@ -523,7 +570,13 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 const drugsMap = new Map(drugs.map(d => [d.id, d]));
                 const profitItems = sales.filter(o => o.type === 'sale').flatMap(o => o.items).reduce((acc, item) => {
                     const drug = drugsMap.get(item.drugId);
-                    const purchasePrice = drug ? drug.purchasePrice : 0;
+                    // FIX: Property 'purchasePrice' does not exist on type 'Drug'. Calculate average.
+                    let purchasePrice = 0;
+                    if (drug && drug.batches.length > 0) {
+                        const totalQuantityInStock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
+                        const totalValueInStock = drug.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
+                        purchasePrice = totalQuantityInStock > 0 ? totalValueInStock / totalQuantityInStock : 0;
+                    }
                     const itemRevenue = item.finalPrice * item.quantity;
                     const itemCogs = purchasePrice * (item.quantity + item.bonusQuantity);
                     const itemProfit = itemRevenue - itemCogs;

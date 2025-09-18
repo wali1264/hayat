@@ -1,7 +1,5 @@
-
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Drug } from './Inventory';
+import { Drug, Batch } from './Inventory';
 import { Supplier } from './Suppliers';
 import { User } from './Settings';
 
@@ -26,7 +24,10 @@ export type PurchaseItem = {
     drugId: number;
     drugName: string;
     quantity: number;
-    purchasePrice: number; // Price in selected currency
+    purchasePrice: number;
+    lotNumber: string;
+    expiryDate: string;
+    productionDate?: string;
 };
 
 export type PurchaseBill = {
@@ -78,6 +79,8 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
     
     // States for adding items
     const [drugSearchTerm, setDrugSearchTerm] = useState('');
+    const [addLotNumber, setAddLotNumber] = useState('');
+    const [addExpiryDate, setAddExpiryDate] = useState('');
     const [addCarton, setAddCarton] = useState('');
     const [addUnit, setAddUnit] = useState('');
     const [addPrice, setAddPrice] = useState('');
@@ -108,7 +111,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                 setItems([]);
              }
              // Reset item form fields
-             setDrugSearchTerm(''); setAddCarton(''); setAddUnit(''); setAddPrice(''); setSelectedDrug(null);
+             setDrugSearchTerm(''); setAddCarton(''); setAddUnit(''); setAddPrice(''); setSelectedDrug(null); setAddLotNumber(''); setAddExpiryDate('');
         }
     }, [isOpen, initialData, mode]);
     
@@ -136,8 +139,8 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
     const handleAddItem = (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!selectedDrug) {
-            addToast("لطفاً یک دارو را از لیست انتخاب کنید.", "error");
+        if (!selectedDrug || !addLotNumber || !addExpiryDate) {
+            addToast("لطفاً یک دارو را انتخاب کرده و شماره لات و تاریخ انقضا را وارد کنید.", "error");
             return;
         }
 
@@ -150,33 +153,33 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
             return;
         }
 
-        if (items.some(item => item.drugId === selectedDrug.id)) {
-            addToast("این دارو قبلا به لیست اضافه شده است.", 'error');
+        if (items.some(item => item.drugId === selectedDrug.id && item.lotNumber === addLotNumber)) {
+            addToast("این لات برای این دارو قبلا به لیست اضافه شده است.", 'error');
             return;
         }
         
-        setItems(prev => [...prev, { drugId: selectedDrug.id, drugName: selectedDrug.name, quantity: totalQuantity, purchasePrice: price }]);
+        setItems(prev => [...prev, { drugId: selectedDrug.id, drugName: selectedDrug.name, quantity: totalQuantity, purchasePrice: price, lotNumber: addLotNumber, expiryDate: addExpiryDate }]);
         
         // Reset inputs
-        setDrugSearchTerm(''); setSelectedDrug(null); setAddCarton(''); setAddUnit(''); setAddPrice(''); setIsSearchFocused(false);
+        setDrugSearchTerm(''); setSelectedDrug(null); setAddCarton(''); setAddUnit(''); setAddPrice(''); setIsSearchFocused(false); setAddLotNumber(''); setAddExpiryDate('');
     };
     
-     const handleItemQuantityChange = (drugId: number, newQuantityStr: string) => {
+     const handleItemQuantityChange = (drugId: number, lotNumber: string, newQuantityStr: string) => {
         const newQuantity = parseInt(newQuantityStr, 10) || 0;
         if (mode === 'return' && initialData) {
-            const originalItem = initialData.items.find(i => i.drugId === drugId);
+            const originalItem = initialData.items.find(i => i.drugId === drugId && i.lotNumber === lotNumber);
             if (originalItem && newQuantity > originalItem.quantity) {
                  addToast(`تعداد برگشتی نمی‌تواند بیشتر از تعداد خریداری شده (${originalItem.quantity}) باشد.`, 'error');
                 return;
             }
         }
         setItems(currentItems =>
-            currentItems.map(it => it.drugId === drugId ? { ...it, quantity: newQuantity } : it)
+            currentItems.map(it => (it.drugId === drugId && it.lotNumber === lotNumber) ? { ...it, quantity: newQuantity } : it)
         );
     };
 
-    const handleRemoveItem = (drugId: number) => {
-        setItems(prev => prev.filter(item => item.drugId !== drugId));
+    const handleRemoveItem = (drugId: number, lotNumber: string) => {
+        setItems(prev => prev.filter(item => !(item.drugId === drugId && item.lotNumber === lotNumber)));
     };
 
     const handleSubmit = () => {
@@ -208,7 +211,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-5xl" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-6xl" onClick={e => e.stopPropagation()}>
                 <h3 className="text-2xl font-bold text-gray-800 mb-6">{modalTitle}</h3>
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -258,26 +261,28 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                     <div className="space-y-4 rounded-lg border p-4">
                         <h4 className="font-bold text-gray-700">{mode === 'purchase' || isEditMode ? 'افزودن اقلام به فاکتور' : 'اقلام برگشتی'}</h4>
                         {(mode === 'purchase' || isEditMode) && (
-                        <form onSubmit={handleAddItem} className="p-2 bg-gray-50 rounded-md grid grid-cols-1 md:grid-cols-6 gap-3 items-end" ref={addItemFormRef}>
-                            <div className="relative md:col-span-2">
-                                <label className="text-xs font-semibold">جستجوی دارو</label>
-                                <input type="text" value={drugSearchTerm} onChange={e => { setDrugSearchTerm(e.target.value); setSelectedDrug(null); }} onFocus={() => setIsSearchFocused(true)} className="w-full p-2 border rounded-lg mt-1" placeholder="نام دارو..." />
+                        <form onSubmit={handleAddItem} className="p-2 bg-gray-50 rounded-md grid grid-cols-1 lg:grid-cols-10 gap-3 items-end" ref={addItemFormRef}>
+                            <div className="relative lg:col-span-3">
+                                <label className="text-xs font-semibold">جستجوی محصول</label>
+                                <input type="text" value={drugSearchTerm} onChange={e => { setDrugSearchTerm(e.target.value); setSelectedDrug(null); }} onFocus={() => setIsSearchFocused(true)} className="w-full p-2 border rounded-lg mt-1" placeholder="نام محصول..." />
                                 {isSearchFocused && availableDrugs.length > 0 && (
                                     <div className="absolute top-full left-0 right-0 z-10 bg-white border shadow-lg mt-1 max-h-48 overflow-y-auto">
                                         {availableDrugs.map(drug => (
-                                            <div key={drug.id} onClick={() => { setSelectedDrug(drug); setDrugSearchTerm(drug.name); setAddPrice(String(drug.purchasePrice)); setIsSearchFocused(false); }} className="p-2 hover:bg-teal-50 cursor-pointer">
-                                                {drug.name} <span className="text-xs text-gray-500">(موجودی: {drug.quantity})</span>
+                                            <div key={drug.id} onClick={() => { setSelectedDrug(drug); setDrugSearchTerm(drug.name); setIsSearchFocused(false); }} className="p-2 hover:bg-teal-50 cursor-pointer">
+                                                {drug.name}
                                             </div>
                                         ))}
                                     </div>
                                 )}
                             </div>
+                            <div><label className="text-xs font-semibold">شماره لات</label><input type="text" value={addLotNumber} onChange={e => setAddLotNumber(e.target.value)} className="w-full p-2 border rounded-lg mt-1" required/></div>
+                            <div><label className="text-xs font-semibold">تاریخ انقضا</label><input type="date" value={addExpiryDate} onChange={e => setAddExpiryDate(e.target.value)} className="w-full p-2 border rounded-lg mt-1" required/></div>
                             <div className="grid grid-cols-2 gap-2">
                                 <div><label className="text-xs font-semibold">کارتن</label><input type="number" value={addCarton} onChange={e => setAddCarton(e.target.value)} min="0" className="w-full p-2 border rounded-lg mt-1" disabled={!selectedDrug || !selectedDrug.unitsPerCarton || selectedDrug.unitsPerCarton <= 1} /></div>
                                 <div><label className="text-xs font-semibold">عدد</label><input type="number" value={addUnit} onChange={e => setAddUnit(e.target.value)} min="0" className="w-full p-2 border rounded-lg mt-1" /></div>
                             </div>
                             <div><label className="text-xs font-semibold">قیمت خرید ({billInfo.currency})</label><input type="number" value={addPrice} onChange={e => setAddPrice(e.target.value)} min="0.01" step="0.01" className="w-full p-2 border rounded-lg mt-1" required /></div>
-                            <div className="md:col-span-2"><button type="submit" className="w-full bg-teal-500 text-white p-2 rounded-lg hover:bg-teal-600 h-10 flex items-center justify-center"><PlusIcon /> <span className="mr-2">افزودن قلم</span></button></div>
+                            <div className="lg:col-span-2"><button type="submit" className="w-full bg-teal-500 text-white p-2 rounded-lg hover:bg-teal-600 h-10 flex items-center justify-center"><PlusIcon /> <span className="mr-2">افزودن قلم</span></button></div>
                         </form>
                         )}
 
@@ -286,6 +291,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                                 <thead className="text-right">
                                     <tr className="border-b">
                                         <th className="p-2 font-semibold">نام دارو</th>
+                                        <th className="p-2 font-semibold">لات</th>
                                         <th className="p-2 font-semibold">تعداد</th>
                                         <th className="p-2 font-semibold">قیمت خرید ({billInfo.currency})</th>
                                         <th className="p-2 font-semibold">مبلغ جزء ({billInfo.currency})</th>
@@ -294,13 +300,14 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                                 </thead>
                                 <tbody>
                                     {items.map(item => (
-                                    <tr key={item.drugId} className="border-b last:border-0 hover:bg-gray-50">
+                                    <tr key={`${item.drugId}-${item.lotNumber}`} className="border-b last:border-0 hover:bg-gray-50">
                                         <td className="p-2">{item.drugName}</td>
-                                        <td className="p-2"><input type="number" value={item.quantity} onChange={(e) => handleItemQuantityChange(item.drugId, e.target.value)} className="w-24 text-center border rounded-md py-1" min="0" readOnly={mode==='return'} /></td>
+                                        <td className="p-2 font-mono text-xs">{item.lotNumber}</td>
+                                        <td className="p-2"><input type="number" value={item.quantity} onChange={(e) => handleItemQuantityChange(item.drugId, item.lotNumber, e.target.value)} className="w-24 text-center border rounded-md py-1" min="0" readOnly={mode==='return'} /></td>
                                         <td className="p-2">{item.purchasePrice.toLocaleString()}</td>
                                         <td className="p-2 font-semibold">{(item.quantity * item.purchasePrice).toLocaleString()}</td>
                                         <td className="p-2 text-center">
-                                            <button type="button" onClick={() => handleRemoveItem(item.drugId)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
+                                            <button type="button" onClick={() => handleRemoveItem(item.drugId, item.lotNumber)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
                                         </td>
                                     </tr>
                                     ))}

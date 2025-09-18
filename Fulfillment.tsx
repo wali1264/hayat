@@ -1,5 +1,3 @@
-
-
 import React, { useState } from 'react';
 import { Order, OrderStatus } from './Sales';
 import { Drug, formatQuantity } from './Inventory';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User } from './Settings';
-import { WriteOffReason, StockRequisition, StockRequisitionItem } from './App';
+import { StockRequisition, StockRequisitionItem } from './App';
 
 // Declare global libraries
 declare var Html5Qrcode: any;
@@ -40,21 +40,31 @@ const CloseIcon = ({ className = "w-6 h-6" }: { className?: string}) => (
 
 
 //=========== TYPES ===========//
+// NEW BATCH TYPE
+export type Batch = {
+    lotNumber: string;
+    quantity: number;
+    expiryDate: string;
+    productionDate?: string;
+    purchasePrice: number;
+};
+
+// UPDATED DRUG TYPE to represent a product with multiple batches
 export type Drug = {
     id: number;
     name: string;
     barcode?: string;
     code: string;
     manufacturer: string;
-    quantity: number; // Total number of individual units
-    unitsPerCarton?: number; // How many units are in a carton
-    expiryDate: string;
-    productionDate?: string;
-    price: number;
-    purchasePrice: number;
-    discountPercentage: number;
+    unitsPerCarton?: number;
+    price: number; // Selling price (per-product)
+    discountPercentage: number; // Per-product discount
     category?: string;
+    batches: Batch[];
 };
+
+export type WriteOffReason = 'تاریخ گذشته' | 'آسیب دیده' | 'مفقود شده' | 'سایر';
+
 
 //=========== CONSTANTS ===========//
 export const drugCategories = ['آنتی‌بیوتیک', 'مسکن', 'ویتامین و مکمل', 'ضد حساسیت', 'بیماری‌های قلبی', 'دیابت', 'تنفسی', 'گوارشی', 'سایر'];
@@ -81,18 +91,27 @@ export const formatQuantity = (totalUnits: number, unitsPerCarton?: number) => {
 };
 
 
-const getStatus = (expiryDate: string, quantity: number) => {
+const getStatus = (drug: Drug) => {
+    const totalQuantity = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
+    if (totalQuantity <= 0) return { text: 'تمام شده', color: 'text-gray-700', bg: 'bg-gray-200' };
+
     const now = new Date();
-    const expiry = new Date(expiryDate);
     const threeMonthsFromNow = new Date();
     threeMonthsFromNow.setMonth(now.getMonth() + 3);
     const sixMonthsFromNow = new Date();
     sixMonthsFromNow.setMonth(now.getMonth() + 6);
 
-    if (quantity <= 0) return { text: 'تمام شده', color: 'text-gray-700', bg: 'bg-gray-200' };
-    if (expiry < now) return { text: 'منقضی شده', color: 'text-red-800', bg: 'bg-red-200' };
-    if (expiry < threeMonthsFromNow) return { text: 'انقضا فوری', color: 'text-red-800', bg: 'bg-red-200' };
-    if (expiry < sixMonthsFromNow) return { text: 'نزدیک به انقضا', color: 'text-yellow-800', bg: 'bg-yellow-200' };
+    const earliestExpiry = drug.batches
+        .filter(b => b.quantity > 0)
+        .map(b => new Date(b.expiryDate))
+        .sort((a, b) => a.getTime() - b.getTime())[0];
+
+    if (!earliestExpiry) return { text: 'تمام شده', color: 'text-gray-700', bg: 'bg-gray-200' };
+
+    if (earliestExpiry < now) return { text: 'منقضی شده', color: 'text-red-800', bg: 'bg-red-200' };
+    if (earliestExpiry < threeMonthsFromNow) return { text: 'انقضا فوری', color: 'text-red-800', bg: 'bg-red-200' };
+    if (earliestExpiry < sixMonthsFromNow) return { text: 'نزدیک به انقضا', color: 'text-yellow-800', bg: 'bg-yellow-200' };
+    
     return { text: 'موجود', color: 'text-green-800', bg: 'bg-green-200' };
 };
 
@@ -230,13 +249,13 @@ const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({ isOpen, onClose, 
 type DrugModalProps = {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (drug: Drug) => void;
+    onSave: (drug: Omit<Drug, 'batches'>) => void;
     initialData: Drug | null;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
 const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
-    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', cartonQuantity: '', unitQuantity: '', unitsPerCarton: '', expiryDate: '', productionDate: '', price: '', purchasePrice: '', discountPercentage: '', category: 'سایر' };
+    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', unitsPerCarton: '', price: '', discountPercentage: '0', category: 'سایر' };
     const [drug, setDrug] = useState(defaultState);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const isEditMode = initialData !== null;
@@ -244,24 +263,14 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
     useEffect(() => {
         if (isOpen) {
              if (initialData) {
-                 const totalQuantity = initialData.quantity;
-                 const unitsPerCarton = initialData.unitsPerCarton && initialData.unitsPerCarton > 1 ? initialData.unitsPerCarton : 1;
-                 const cartons = unitsPerCarton > 1 ? Math.floor(totalQuantity / unitsPerCarton) : 0;
-                 const units = unitsPerCarton > 1 ? totalQuantity % unitsPerCarton : totalQuantity;
-                 
                  setDrug({
                      name: initialData.name,
                      barcode: initialData.barcode || '',
                      code: initialData.code,
                      manufacturer: initialData.manufacturer,
-                     cartonQuantity: String(cartons),
-                     unitQuantity: String(units),
                      unitsPerCarton: String(initialData.unitsPerCarton || ''),
-                     expiryDate: initialData.expiryDate,
-                     productionDate: initialData.productionDate || '',
                      price: String(initialData.price),
-                     purchasePrice: String(initialData.purchasePrice),
-                     discountPercentage: String(initialData.discountPercentage),
+                     discountPercentage: String(initialData.discountPercentage || '0'),
                      category: initialData.category || 'سایر'
                  });
              } else {
@@ -270,15 +279,6 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
         }
     }, [isOpen, initialData]);
 
-    const calculatedTotal = useMemo(() => {
-        const unitsPerCarton = Number(drug.unitsPerCarton);
-        const cartons = Number(drug.cartonQuantity) || 0;
-        const units = Number(drug.unitQuantity) || 0;
-        if (!unitsPerCarton || unitsPerCarton <= 1) {
-            return units;
-        }
-        return (cartons * unitsPerCarton) + units;
-    }, [drug.unitsPerCarton, drug.cartonQuantity, drug.unitQuantity]);
 
     if (!isOpen) return null;
 
@@ -290,25 +290,20 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const priceValue = Number(drug.price) || 0;
-        const purchasePriceValue = Number(drug.purchasePrice) || 0;
-        if (!drug.name || !drug.expiryDate || priceValue <= 0 || purchasePriceValue <= 0) {
-            addToast("لطفا تمام فیلدهای ضروری (نام، تاریخ انقضا، قیمت خرید و فروش) را با مقادیر معتبر پر کنید.", 'error');
+        if (!drug.name || priceValue <= 0) {
+            addToast("لطفا نام محصول و قیمت فروش معتبر را وارد کنید.", 'error');
             return;
         }
 
-        const drugToSave: Drug = {
-            id: isEditMode ? initialData.id : Date.now(),
+        const drugToSave: Omit<Drug, 'batches'> = {
+            id: isEditMode ? initialData!.id : Date.now(),
             name: drug.name,
             barcode: drug.barcode,
             code: drug.code,
             manufacturer: drug.manufacturer,
             category: drug.category,
-            expiryDate: drug.expiryDate,
-            productionDate: drug.productionDate,
-            quantity: calculatedTotal,
             unitsPerCarton: Number(drug.unitsPerCarton) || 1,
             price: priceValue,
-            purchasePrice: purchasePriceValue,
             discountPercentage: Number(drug.discountPercentage) || 0,
         };
         
@@ -332,13 +327,13 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 transition-opacity duration-300" onClick={onClose} role="dialog" aria-modal="true">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 <header className="p-8 pb-4 flex-shrink-0">
-                    <h3 className="text-2xl font-bold text-gray-800">{isEditMode ? 'ویرایش دارو' : 'افزودن داروی جدید'}</h3>
+                    <h3 className="text-2xl font-bold text-gray-800">{isEditMode ? 'ویرایش اطلاعات محصول' : 'افزودن محصول جدید'}</h3>
                 </header>
                 <main className="flex-1 overflow-y-auto px-8">
                     <form id="drug-modal-form" onSubmit={handleSubmit}>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                              <div>
-                                <label htmlFor="name" className={labelStyles}>نام دارو (ضروری)</label>
+                                <label htmlFor="name" className={labelStyles}>نام محصول (ضروری)</label>
                                 <input type="text" name="name" id="name" value={drug.name} onChange={handleChange} className={inputStyles} required autoFocus />
                             </div>
                             <div>
@@ -370,10 +365,6 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
                         
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                              <div>
-                                <label htmlFor="purchasePrice" className={labelStyles}>قیمت خرید (ضروری)</label>
-                                <input type="number" name="purchasePrice" id="purchasePrice" value={drug.purchasePrice} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 120" />
-                            </div>
-                             <div>
                                 <label htmlFor="price" className={labelStyles}>قیمت فروش (ضروری)</label>
                                 <input type="number" name="price" id="price" value={drug.price} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 150" />
                             </div>
@@ -381,46 +372,17 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
                                 <label htmlFor="discountPercentage" className={labelStyles}>تخفیف (٪)</label>
                                 <input type="number" name="discountPercentage" id="discountPercentage" value={drug.discountPercentage} onChange={handleChange} className={inputStyles} min="0" max="100" placeholder="مثلا: 5"/>
                             </div>
-                        </div>
-                        
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                              <div>
-                                <label htmlFor="productionDate" className={labelStyles}>تاریخ تولید</label>
-                                <input type="date" name="productionDate" id="productionDate" value={drug.productionDate} onChange={handleChange} className={inputStyles} />
-                            </div>
-                             <div>
-                                <label htmlFor="expiryDate" className={labelStyles}>تاریخ انقضا (ضروری)</label>
-                                <input type="date" name="expiryDate" id="expiryDate" value={drug.expiryDate} onChange={handleChange} className={inputStyles} required />
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                            <div>
                                 <label htmlFor="unitsPerCarton" className={labelStyles}>تعداد در کارتن</label>
                                 <input type="number" name="unitsPerCarton" id="unitsPerCarton" value={drug.unitsPerCarton} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 100" />
                             </div>
-                            <div className="md:col-span-2">
-                                <label className={labelStyles}>موجودی انبار</label>
-                                <div className="flex items-center gap-2">
-                                    <input type="number" name="cartonQuantity" value={drug.cartonQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد کارتن" disabled={!drug.unitsPerCarton || Number(drug.unitsPerCarton) <= 1} />
-                                    <span className="text-gray-500 flex-shrink-0">کارتن</span>
-                                    <input type="number" name="unitQuantity" value={drug.unitQuantity} onChange={handleChange} className={inputStyles} min="0" placeholder="تعداد واحد" />
-                                    <span className="text-gray-500 flex-shrink-0">عدد</span>
-                                </div>
-                            </div>
-                        </div>
-
-                         <div className="my-6 text-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-                            <span>مجموع کل: </span>
-                            <span className="font-bold font-mono text-base text-teal-700">{calculatedTotal.toLocaleString()}</span>
-                            <span> واحد</span>
                         </div>
                     </form>
                 </main>
                 <footer className="flex justify-end space-x-4 space-x-reverse p-8 pt-4 border-t border-gray-200 flex-shrink-0">
                     <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold transition-colors">انصراف</button>
                     <button type="submit" form="drug-modal-form" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors shadow-md hover:shadow-lg">
-                        {isEditMode ? 'ذخیره تغییرات' : 'ذخیره'}
+                        {isEditMode ? 'ذخیره تغییرات' : 'ذخیره محصول'}
                     </button>
                 </footer>
             </div>
@@ -432,50 +394,70 @@ const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialD
 type WriteOffModalProps = {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: (quantity: number, reason: WriteOffReason, notes: string) => void;
+    onConfirm: (lotNumber: string, quantity: number, reason: WriteOffReason, notes: string) => void;
     drug: Drug | null;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
 const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfirm, drug, addToast }) => {
+    const [selectedLot, setSelectedLot] = useState('');
     const [quantity, setQuantity] = useState('');
     const [reason, setReason] = useState<WriteOffReason>('تاریخ گذشته');
     const [notes, setNotes] = useState('');
 
     useEffect(() => {
         if(isOpen) {
+            setSelectedLot(drug?.batches[0]?.lotNumber || '');
             setQuantity('');
             setReason('تاریخ گذشته');
             setNotes('');
         }
-    }, [isOpen]);
+    }, [isOpen, drug]);
 
     if (!isOpen || !drug) return null;
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const numQuantity = Number(quantity);
+        const batch = drug.batches.find(b => b.lotNumber === selectedLot);
+
+        if (!batch) {
+            addToast("لطفا یک بچ معتبر انتخاب کنید.", 'error');
+            return;
+        }
         if (numQuantity <= 0) {
             addToast("لطفا تعداد معتبر وارد کنید.", 'error');
             return;
         }
-        if (numQuantity > drug.quantity) {
-            addToast(`تعداد ضایعات (${numQuantity}) نمی‌تواند بیشتر از موجودی انبار (${drug.quantity}) باشد.`, 'error');
+        if (numQuantity > batch.quantity) {
+            addToast(`تعداد ضایعات (${numQuantity}) نمی‌تواند بیشتر از موجودی بچ (${batch.quantity}) باشد.`, 'error');
             return;
         }
-        onConfirm(numQuantity, reason, notes);
+        onConfirm(selectedLot, numQuantity, reason, notes);
         onClose();
     };
+
+    const totalQuantity = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md" onClick={e => e.stopPropagation()}>
                 <h3 className="text-2xl font-bold text-gray-800 mb-2">ثبت ضایعات برای <span className="text-teal-600">{drug.name}</span></h3>
-                <p className="text-sm text-gray-500 mb-6">موجودی فعلی: {formatQuantity(drug.quantity, drug.unitsPerCarton)}</p>
+                <p className="text-sm text-gray-500 mb-6">موجودی کل: {formatQuantity(totalQuantity, drug.unitsPerCarton)}</p>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
+                        <label className="block text-sm font-bold mb-2">انتخاب بچ/لات</label>
+                        <select value={selectedLot} onChange={e => setSelectedLot(e.target.value)} className="w-full p-2 border rounded-lg bg-white">
+                            {drug.batches.filter(b => b.quantity > 0).map(b => (
+                                <option key={b.lotNumber} value={b.lotNumber}>
+                                    لات: {b.lotNumber} (موجودی: {b.quantity}, انقضا: {new Date(b.expiryDate).toLocaleDateString('fa-IR')})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
                         <label className="block text-sm font-bold mb-2">تعداد ضایع شده (واحد)</label>
-                        <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={drug.quantity} className="w-full p-2 border rounded-lg" required autoFocus />
+                        <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={drug.batches.find(b => b.lotNumber === selectedLot)?.quantity} className="w-full p-2 border rounded-lg" required autoFocus />
                     </div>
                     <div>
                         <label className="block text-sm font-bold mb-2">دلیل</label>
@@ -518,7 +500,8 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
 
      const availableDrugs = useMemo(() => {
         if (!searchTerm) return [];
-        return mainWarehouseDrugs
+        const mainWarehouseDrugsWithStock = mainWarehouseDrugs.filter(d => d.batches.some(b => b.quantity > 0));
+        return mainWarehouseDrugsWithStock
             .filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()) && !items.some(i => i.drugId === d.id))
             .slice(0, 5);
     }, [mainWarehouseDrugs, searchTerm, items]);
@@ -540,8 +523,9 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
             addToast("لطفا دارو و تعداد معتبر را انتخاب کنید.", "error");
             return;
         }
-        if (Number(quantity) > selectedDrug.quantity) {
-             addToast(`تعداد درخواستی (${quantity}) بیشتر از موجودی انبار اصلی (${selectedDrug.quantity}) است.`, "error");
+        const totalStock = selectedDrug.batches.reduce((sum, b) => sum + b.quantity, 0);
+        if (Number(quantity) > totalStock) {
+             addToast(`تعداد درخواستی (${quantity}) بیشتر از موجودی انبار اصلی (${totalStock}) است.`, "error");
             return;
         }
         setItems(prev => [...prev, { drugId: selectedDrug.id, drugName: selectedDrug.name, quantityRequested: Number(quantity) }]);
@@ -575,17 +559,19 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
                             <input type="text" placeholder="جستجو..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full p-2 border rounded-lg" />
                             {searchTerm && availableDrugs.length > 0 && (
                                 <div className="absolute top-full left-0 right-0 bg-white border shadow-lg mt-1 z-10 max-h-48 overflow-y-auto">
-                                    {availableDrugs.map(drug => (
+                                    {availableDrugs.map(drug => {
+                                        const totalStock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
+                                        return (
                                         <div key={drug.id} onClick={() => { setSelectedDrug(drug); setSearchTerm(drug.name); }} className="p-2 hover:bg-teal-50 cursor-pointer">
-                                            {drug.name} <span className="text-xs text-gray-500">(موجودی: {drug.quantity})</span>
+                                            {drug.name} <span className="text-xs text-gray-500">(موجودی: {totalStock})</span>
                                         </div>
-                                    ))}
+                                    )})}
                                 </div>
                             )}
                         </div>
                          <div>
                             <label className="block text-sm font-bold mb-1">تعداد</label>
-                            <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={selectedDrug?.quantity} className="w-full p-2 border rounded-lg" disabled={!selectedDrug} />
+                            <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={selectedDrug ? selectedDrug.batches.reduce((s, b) => s + b.quantity, 0) : undefined} className="w-full p-2 border rounded-lg" disabled={!selectedDrug} />
                         </div>
                         <button onClick={handleAddItem} className="w-full bg-teal-500 text-white p-2 rounded-lg hover:bg-teal-600 font-semibold h-10">افزودن</button>
                     </div>
@@ -630,9 +616,9 @@ type InventoryProps = {
     drugs: Drug[];
     mainWarehouseDrugs: Drug[];
     stockRequisitions: StockRequisition[];
-    onSaveDrug: (drug: Drug) => void;
+    onSaveDrug: (drug: Omit<Drug, 'batches'>) => void;
     onDelete: (id: number) => void;
-    onWriteOff: (drug: Drug, quantity: number, reason: WriteOffReason, notes: string) => void;
+    onWriteOff: (drugId: number, lotNumber: string, quantity: number, reason: WriteOffReason, notes: string) => void;
     onSaveRequisition: (requisition: Omit<StockRequisition, 'id' | 'status' | 'requestedBy' | 'date'>) => void;
     currentUser: User;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
@@ -651,7 +637,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [categoryFilter, setCategoryFilter] = useState('all');
-    const [sortConfig, setSortConfig] = useState<{ key: keyof Drug | null; direction: 'ascending' | 'descending' }>({
+    const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: 'ascending' | 'descending' }>({
         key: null,
         direction: 'ascending',
     });
@@ -680,20 +666,35 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
         onDelete(id);
     };
     
+    const processedDrugs = useMemo(() => {
+        return drugs.map(drug => {
+            const totalQuantity = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
+            const earliestExpiry = drug.batches
+                .filter(b => b.quantity > 0)
+                .map(b => b.expiryDate)
+                .sort()[0] || null;
+            return {
+                ...drug,
+                totalQuantity,
+                earliestExpiry,
+            };
+        });
+    }, [drugs]);
+
     const filteredDrugs = useMemo(() => {
-        return drugs.filter(drug => {
+        return processedDrugs.filter(drug => {
             const searchTermMatch = searchTerm === '' ||
                 drug.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (drug.code && drug.code.toLowerCase().includes(searchTerm.toLowerCase())) ||
                 (drug.barcode && drug.barcode.toLowerCase().includes(searchTerm.toLowerCase())) ||
                 (drug.manufacturer && drug.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()));
             
-            const statusMatch = statusFilter === 'all' || getStatus(drug.expiryDate, drug.quantity).text === statusFilter;
+            const statusMatch = statusFilter === 'all' || getStatus(drug).text === statusFilter;
             const categoryMatch = categoryFilter === 'all' || drug.category === categoryFilter;
 
             return searchTermMatch && statusMatch && categoryMatch;
         });
-    }, [drugs, searchTerm, statusFilter, categoryFilter]);
+    }, [processedDrugs, searchTerm, statusFilter, categoryFilter]);
 
     const sortedAndFilteredDrugs = useMemo(() => {
         let sortableItems = [...filteredDrugs];
@@ -727,7 +728,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
         setIsSheetModalOpen(true);
     };
     
-    const requestSort = (key: keyof Drug) => {
+    const requestSort = (key: string) => {
         let direction: 'ascending' | 'descending' = 'ascending';
         if (sortConfig.key === key && sortConfig.direction === 'ascending') {
             direction = 'descending';
@@ -738,7 +739,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
         setSortConfig({ key, direction });
     };
 
-    const SortableHeader = ({ label, columnKey }: { label: string; columnKey: keyof Drug }) => (
+    const SortableHeader = ({ label, columnKey }: { label: string; columnKey: string }) => (
         <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">
             <button
                 type="button"
@@ -773,7 +774,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                 isOpen={isWriteOffModalOpen}
                 onClose={() => setIsWriteOffModalOpen(false)}
                 drug={drugForWriteOff}
-                onConfirm={(quantity, reason, notes) => onWriteOff(drugForWriteOff!, quantity, reason, notes)}
+                onConfirm={(lotNumber, quantity, reason, notes) => onWriteOff(drugForWriteOff!.id, lotNumber, quantity, reason, notes)}
                 addToast={addToast}
             />}
             {canManageInventory && <RequisitionModal
@@ -798,7 +799,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                     <div className="relative">
                         <input
                             type="text"
-                            placeholder="جستجوی دارو..."
+                            placeholder="جستجوی محصول..."
                             className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
@@ -836,7 +837,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                     {canManageInventory && (
                         <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md">
                             <PlusIcon />
-                            <span className="mr-2">افزودن داروی جدید</span>
+                            <span className="mr-2">افزودن محصول جدید</span>
                         </button>
                     )}
                 </div>
@@ -856,14 +857,14 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                         <table className="w-full text-right">
                             <thead className="bg-gray-50 border-b-2 border-gray-200">
                                 <tr>
-                                    <SortableHeader label="نام دارو" columnKey="name" />
+                                    <SortableHeader label="نام محصول" columnKey="name" />
                                     <SortableHeader label="کمپانی" columnKey="manufacturer" />
                                     <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">کد محصول</th>
                                     <SortableHeader label="دسته‌بندی" columnKey="category" />
                                     <SortableHeader label="قیمت فروش" columnKey="price" />
                                     <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">تخفیف</th>
-                                    <SortableHeader label="تعداد موجود" columnKey="quantity" />
-                                    <SortableHeader label="تاریخ انقضا" columnKey="expiryDate" />
+                                    <SortableHeader label="موجودی کل" columnKey="totalQuantity" />
+                                    <SortableHeader label="نزدیک‌ترین انقضا" columnKey="earliestExpiry" />
                                     <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">وضعیت</th>
                                     <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">عملیات</th>
                                 </tr>
@@ -872,12 +873,12 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                                 {sortedAndFilteredDrugs.length === 0 ? (
                                     <tr>
                                         <td colSpan={10} className="text-center p-8 text-gray-500">
-                                            هیچ دارویی با این مشخصات یافت نشد.
+                                            هیچ محصولی با این مشخصات یافت نشد.
                                         </td>
                                     </tr>
                                 ) : (
                                     sortedAndFilteredDrugs.map(drug => {
-                                        const status = getStatus(drug.expiryDate, drug.quantity);
+                                        const status = getStatus(drug);
                                         let indicatorElement = null;
                                         if (status.text === 'منقضی شده' || status.text === 'انقضا فوری') {
                                             indicatorElement = <span className="w-2.5 h-2.5 bg-red-500 rounded-full ml-3 flex-shrink-0" title={status.text}></span>;
@@ -907,9 +908,9 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                                                     )}
                                                 </td>
                                                 <td className="p-4 whitespace-nowrap text-gray-800 font-semibold">
-                                                    {formatQuantity(drug.quantity, drug.unitsPerCarton)}
+                                                    {formatQuantity(drug.totalQuantity, drug.unitsPerCarton)}
                                                 </td>
-                                                <td className="p-4 whitespace-nowrap text-gray-500">{new Date(drug.expiryDate).toLocaleDateString('fa-IR')}</td>
+                                                <td className="p-4 whitespace-nowrap text-gray-500">{drug.earliestExpiry ? new Date(drug.earliestExpiry).toLocaleDateString('fa-IR') : '-'}</td>
                                                 <td className="p-4 whitespace-nowrap">
                                                     <span className={`px-3 py-1 text-xs font-bold rounded-full ${status.bg} ${status.color}`}>
                                                         {status.text}

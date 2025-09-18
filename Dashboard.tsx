@@ -1,5 +1,3 @@
-
-
 import React, { useMemo, useEffect, useRef } from 'react';
 import { Drug } from './Inventory';
 import { Order } from './Sales';
@@ -68,10 +66,13 @@ const Dashboard: React.FC<DashboardProps> = ({ drugs, orders, customers, onNavig
 
     // --- Panel Data ---
     const lowStockItems = useMemo(() => {
-        return drugs.filter(d => d.quantity > 0 && d.quantity < 50)
-            .sort((a, b) => a.quantity - b.quantity)
+        return drugs
+            .map(d => ({ ...d, totalQuantity: d.batches.reduce((sum, b) => sum + b.quantity, 0) }))
+            .filter(d => d.totalQuantity > 0 && d.totalQuantity < 50)
+            .sort((a, b) => a.totalQuantity - b.totalQuantity)
             .slice(0, 5); // show top 5
     }, [drugs]);
+
 
     // --- Chart Data ---
     const salesTrendData = useMemo(() => {

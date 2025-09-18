@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { User } from './Settings';
 
@@ -175,7 +173,7 @@ const FinanceAndExpenses: React.FC<AccountingProps> = ({ incomes, expenses, onSa
         expense.category.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const SummaryCard = ({ title, value, icon, colorClass }) => (
+    const SummaryCard = ({ title, value, icon, colorClass }: { title: string, value: number, icon: JSX.Element, colorClass: string }) => (
         <div className="bg-white p-6 rounded-xl shadow-lg flex items-center justify-between">
             <div>
                 <p className="text-sm font-medium text-gray-500">{title}</p>

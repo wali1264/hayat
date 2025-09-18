@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Drug, formatQuantity } from './Inventory';
+import { Drug, formatQuantity, Batch } from './Inventory';
 import { User } from './Settings';
 import { StockRequisition, StockRequisitionItem } from './App';
 
@@ -71,7 +71,7 @@ const FulfillmentModal: React.FC<FulfillmentModalProps> = ({ isOpen, onClose, re
                         <tbody className="divide-y">
                             {fulfilledItems.map(item => {
                                 const drugInStock = mainWarehouseDrugs.find(d => d.id === item.drugId);
-                                const maxQuantity = drugInStock ? drugInStock.quantity : 0;
+                                const maxQuantity = drugInStock ? drugInStock.batches.reduce((sum, b) => sum + b.quantity, 0) : 0;
                                 return (
                                     <tr key={item.drugId} className="hover:bg-gray-50">
                                         <td className="p-3 font-semibold">{item.drugName}</td>
@@ -225,20 +225,23 @@ const MainWarehouse: React.FC<MainWarehouseProps> = ({ mainWarehouseDrugs, stock
                                     <th className="p-4 text-sm font-semibold text-gray-600">نام دارو</th>
                                     <th className="p-4 text-sm font-semibold text-gray-600">کمپانی</th>
                                     <th className="p-4 text-sm font-semibold text-gray-600">تعداد موجود</th>
-                                    <th className="p-4 text-sm font-semibold text-gray-600">تاریخ انقضا</th>
+                                    <th className="p-4 text-sm font-semibold text-gray-600">نزدیک‌ترین انقضا</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
-                                {filteredDrugs.map(drug => (
+                                {filteredDrugs.map(drug => {
+                                    const totalQuantity = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
+                                    const earliestExpiry = drug.batches.filter(b => b.quantity > 0).map(b => b.expiryDate).sort()[0];
+                                    return (
                                     <tr key={drug.id} className="hover:bg-gray-50">
                                         <td className="p-4 text-gray-800 font-medium">{drug.name}</td>
                                         <td className="p-4 text-gray-500">{drug.manufacturer}</td>
                                         <td className="p-4 text-gray-800 font-semibold">
-                                            {formatQuantity(drug.quantity, drug.unitsPerCarton)}
+                                            {formatQuantity(totalQuantity, drug.unitsPerCarton)}
                                         </td>
-                                        <td className="p-4 text-gray-500">{new Date(drug.expiryDate).toLocaleDateString('fa-IR')}</td>
+                                        <td className="p-4 text-gray-500">{earliestExpiry ? new Date(earliestExpiry).toLocaleDateString('fa-IR') : '-'}</td>
                                     </tr>
-                                ))}
+                                )})}
                             </tbody>
                         </table>
                     </div>
