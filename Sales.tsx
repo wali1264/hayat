@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Drug, drugCategories } from './Inventory';
 import { Customer } from './Customers';
@@ -1298,8 +1299,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
         const currentInvoiceBalanceContribution = Number(orderToPrint.totalAmount) - Number(orderToPrint.amountPaid);
         const previousBalance = totalBalance - currentInvoiceBalanceContribution;
         
-        // Fix: Explicitly cast previousBalance to a number to resolve type error.
-        setPrintData({ order: orderToPrint, previousBalance: Number(previousBalance) });
+        setPrintData({ order: orderToPrint, previousBalance: previousBalance });
     };
 
     const handleCloseModal = () => {
@@ -1369,7 +1369,8 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                 customer={customers.find(c => c.name === printData?.order?.customerName) || null}
                 companyInfo={companyInfo}
                 documentSettings={documentSettings}
-                previousBalance={printData?.previousBalance || 0}
+                // FIX: Explicitly cast `previousBalance` to a number to prevent type errors.
+                previousBalance={Number(printData?.previousBalance || 0)}
             />
             <div className="flex justify-between items-center mb-6">
                 <div>

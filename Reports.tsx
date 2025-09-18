@@ -4,11 +4,14 @@ import { PurchaseBill, PurchaseItem } from './Purchasing';
 import { Customer } from './Customers';
 import { Supplier } from './Suppliers';
 import { CompanyInfo, DocumentSettings } from './Settings';
-import { Drug } from './Inventory';
+import { Drug, formatQuantity } from './Inventory';
 import { InventoryWriteOff } from './App';
+import { vazirFont } from './VazirFont';
 
-// Declare global Chart object
+// Declare global libraries
 declare var Chart: any;
+declare var jsPDF: any;
+declare var XLSX: any;
 
 //=========== ICONS ===========//
 const Icon = ({ path, className = "w-6 h-6" }: { path: string, className?: string }) => (
@@ -21,10 +24,15 @@ const PurchaseIcon = () => <Icon path="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9
 const ProfitIcon = () => <Icon path="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />;
 const GiftIcon = () => <Icon path="M12 4v16m8-8H4" />;
 const WasteIcon = () => <Icon path="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />;
+const InventoryIcon = () => <Icon path="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />;
+const ExportIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a4 4 0 01-4-4V9a4 4 0 014-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V16a4 4 0 01-4 4z" className="w-5 h-5"/>;
+const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0 00-2 2v4a2 2 0 002 2h2m8 0v4H9v-4m4 0h-2" className="w-5 h-5"/>;
+const PdfIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3M3 10a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2v-10z" className="w-5 h-5"/>;
+const ExcelIcon = () => <Icon path="M4 6h16v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 13h1m3 0h1" className="w-5 h-5"/>;
 
 
 //=========== TYPES ===========//
-type ReportTab = 'profitability' | 'sales' | 'purchases' | 'bonuses' | 'wasted_stock';
+type ReportTab = 'profitability' | 'sales' | 'purchases' | 'inventory' | 'bonuses' | 'wasted_stock';
 
 //=========== SUB-COMPONENTS ===========//
 
@@ -68,6 +76,7 @@ const KPICard = ({ title, value, icon, colorClass }) => (
 const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filteredSales: Order[], drugs: Drug[], filteredWastedStock: InventoryWriteOff[] }) => {
     const topProductsChartRef = useRef<HTMLCanvasElement>(null);
     const topCustomersChartRef = useRef<HTMLCanvasElement>(null);
+    const monthlyProfitChartRef = useRef<HTMLCanvasElement>(null);
 
     const drugsMap = useMemo(() => new Map(drugs.map(d => [d.id, d])), [drugs]);
 
@@ -119,6 +128,29 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
         };
     }, [filteredSales, drugsMap, filteredWastedStock]);
 
+     const monthlyProfitData = useMemo(() => {
+        const monthlyData: { [month: string]: { revenue: number, cogs: number } } = {};
+        
+        for (const order of filteredSales) {
+            if (order.type !== 'sale') continue;
+            const month = order.orderDate.substring(0, 7); // YYYY-MM
+            if (!monthlyData[month]) monthlyData[month] = { revenue: 0, cogs: 0 };
+            
+            monthlyData[month].revenue += order.totalAmount;
+
+            for (const item of order.items) {
+                 const drug = drugsMap.get(item.drugId);
+                 monthlyData[month].cogs += (drug?.purchasePrice || 0) * (item.quantity + item.bonusQuantity);
+            }
+        }
+        
+        const sortedMonths = Object.keys(monthlyData).sort();
+        return {
+            labels: sortedMonths.map(m => new Date(m + '-02').toLocaleDateString('fa-IR', { month: 'long', year: 'numeric' })),
+            data: sortedMonths.map(m => monthlyData[m].revenue - monthlyData[m].cogs),
+        };
+    }, [filteredSales, drugsMap]);
+
     useEffect(() => {
         const charts: any[] = [];
         if (topProductsChartRef.current && profitData.top5Products.length > 0) {
@@ -141,8 +173,18 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
                 options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false }
             }));
         }
+         if (monthlyProfitChartRef.current && monthlyProfitData.data.length > 0) {
+            charts.push(new Chart(monthlyProfitChartRef.current, {
+                type: 'line',
+                data: {
+                    labels: monthlyProfitData.labels,
+                    datasets: [{ label: 'سود ناخالص ماهانه', data: monthlyProfitData.data, borderColor: '#6366f1', tension: 0.1, fill: false }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            }));
+        }
         return () => charts.forEach(c => c.destroy());
-    }, [profitData.top5Products, profitData.top5Customers]);
+    }, [profitData.top5Products, profitData.top5Customers, monthlyProfitData]);
 
     return (
         <div className="space-y-6">
@@ -152,6 +194,7 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
                 <KPICard title="هزینه کالاهای ضایع شده" value={`${profitData.totalWastedCost.toLocaleString()} افغانی`} icon={<WasteIcon />} colorClass="bg-yellow-100 text-yellow-600" />
                 <KPICard title="سود ناخالص" value={`${profitData.grossProfit.toLocaleString()} افغانی`} icon={<ProfitIcon />} colorClass="bg-blue-100 text-blue-600" />
             </div>
+             <div className="bg-white p-4 rounded-xl shadow-md"><h3 className="font-bold mb-2">روند سودآوری ماهانه</h3><div className="relative h-72"><canvas ref={monthlyProfitChartRef}></canvas></div></div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white p-4 rounded-xl shadow-md"><h3 className="font-bold mb-2">۵ محصول سودآور برتر</h3><div className="relative h-64"><canvas ref={topProductsChartRef}></canvas></div></div>
                 <div className="bg-white p-4 rounded-xl shadow-md"><h3 className="font-bold mb-2">۵ مشتری سودآور برتر</h3><div className="relative h-64"><canvas ref={topCustomersChartRef}></canvas></div></div>
@@ -280,10 +323,72 @@ const WastedStockView = ({ filteredWastedStock }: { filteredWastedStock: Invento
     );
 };
 
+const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { salesWarehouseDrugs: Drug[], mainWarehouseDrugs: Drug[] }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    
+    const inventoryData = useMemo(() => {
+        const calcValue = (drugs: Drug[]) => drugs.reduce((sum, drug) => sum + (drug.quantity * drug.purchasePrice), 0);
+        
+        const salesValue = calcValue(salesWarehouseDrugs);
+        const mainValue = calcValue(mainWarehouseDrugs);
+        
+        const now = new Date();
+        const sixMonthsFromNow = new Date();
+        sixMonthsFromNow.setMonth(now.getMonth() + 6);
+
+        const expiringValue = [...salesWarehouseDrugs, ...mainWarehouseDrugs]
+            .filter(d => new Date(d.expiryDate) < sixMonthsFromNow && new Date(d.expiryDate) > now)
+            .reduce((sum, drug) => sum + (drug.quantity * drug.purchasePrice), 0);
+            
+        return { salesValue, mainValue, totalValue: salesValue + mainValue, expiringValue };
+    }, [salesWarehouseDrugs, mainWarehouseDrugs]);
+
+    const filterDrugs = (drugs: Drug[]) => {
+        if (!searchTerm) return drugs;
+        return drugs.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <KPICard title="ارزش موجودی انبار فروش" value={`${inventoryData.salesValue.toLocaleString()} افغانی`} icon={<SalesIcon />} colorClass="bg-cyan-100 text-cyan-600" />
+                <KPICard title="ارزش موجودی انبار اصلی" value={`${inventoryData.mainValue.toLocaleString()} افغانی`} icon={<InventoryIcon />} colorClass="bg-blue-100 text-blue-600" />
+                <KPICard title="ارزش کل موجودی" value={`${inventoryData.totalValue.toLocaleString()} افغانی`} icon={<ProfitIcon />} colorClass="bg-indigo-100 text-indigo-600" />
+                <KPICard title="ارزش موجودی نزدیک به انقضا" value={`${inventoryData.expiringValue.toLocaleString()} افغانی`} icon={<WasteIcon />} colorClass="bg-yellow-100 text-yellow-600" />
+            </div>
+            
+            <div className="bg-white p-4 rounded-xl shadow-md">
+                 <h3 className="font-bold mb-4">گزارش تفصیلی انبارها</h3>
+                 <input type="text" placeholder="جستجوی محصول..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full max-w-sm p-2 border rounded-lg mb-4"/>
+                 <div className="space-y-4">
+                    <details open className="border rounded-lg">
+                        <summary className="p-4 font-bold cursor-pointer bg-gray-50">انبار فروش</summary>
+                         <DataTable
+                            headers={['نام محصول', 'تعداد موجود', 'قیمت خرید', 'ارزش کل']}
+                            rows={filterDrugs(salesWarehouseDrugs).map(d => [d.name, formatQuantity(d.quantity, d.unitsPerCarton), d.purchasePrice, d.quantity * d.purchasePrice])}
+                            isNumeric={[false, false, true, true]}
+                        />
+                    </details>
+                     <details className="border rounded-lg">
+                        <summary className="p-4 font-bold cursor-pointer bg-gray-50">انبار اصلی</summary>
+                         <DataTable
+                            headers={['نام محصول', 'تعداد موجود', 'قیمت خرید', 'ارزش کل']}
+                            rows={filterDrugs(mainWarehouseDrugs).map(d => [d.name, formatQuantity(d.quantity, d.unitsPerCarton), d.purchasePrice, d.quantity * d.purchasePrice])}
+                            isNumeric={[false, false, true, true]}
+                        />
+                    </details>
+                 </div>
+            </div>
+        </div>
+    );
+};
+
+
 //=========== MAIN COMPONENT ===========//
 type ReportsProps = {
     orders: Order[];
     drugs: Drug[];
+    mainWarehouseDrugs: Drug[];
     customers: Customer[];
     suppliers: Supplier[];
     purchaseBills: PurchaseBill[];
@@ -292,7 +397,7 @@ type ReportsProps = {
     documentSettings: DocumentSettings;
 };
 
-const Reports: React.FC<ReportsProps> = ({ orders, drugs, customers, suppliers, purchaseBills, inventoryWriteOffs, companyInfo, documentSettings }) => {
+const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, customers, suppliers, purchaseBills, inventoryWriteOffs, companyInfo, documentSettings }) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -301,6 +406,9 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, customers, suppliers, 
         startDate: thirtyDaysAgo.toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0],
     });
+    const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+    const exportMenuRef = useRef<HTMLDivElement>(null);
+
 
     const filteredData = useMemo(() => {
         const start = new Date(filters.startDate);
@@ -325,8 +433,157 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, customers, suppliers, 
         return { sales, purchases, wastedStock };
     }, [filters, orders, purchaseBills, inventoryWriteOffs]);
     
-    const TabButton = ({ tabId, children }: { tabId: ReportTab, children: React.ReactNode }) => (
-        <button onClick={() => setActiveTab(tabId)} className={`px-4 py-2 font-semibold rounded-lg transition-colors text-sm ${activeTab === tabId ? 'bg-teal-600 text-white shadow' : 'text-gray-600 hover:bg-gray-100'}`}>
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+                setIsExportMenuOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [exportMenuRef]);
+
+    const getCurrentReportData = () => {
+        // This function will gather data from the active tab for export
+        const { sales, purchases, wastedStock } = filteredData;
+        switch (activeTab) {
+            case 'profitability': {
+                const drugsMap = new Map(drugs.map(d => [d.id, d]));
+                const profitItems = sales.filter(o => o.type === 'sale').flatMap(o => o.items).reduce((acc, item) => {
+                    const drug = drugsMap.get(item.drugId);
+                    const purchasePrice = drug ? drug.purchasePrice : 0;
+                    const itemRevenue = item.finalPrice * item.quantity;
+                    const itemCogs = purchasePrice * (item.quantity + item.bonusQuantity);
+                    const itemProfit = itemRevenue - itemCogs;
+                    
+                    const existing = acc.find(i => i.name === item.drugName);
+                    if (existing) {
+                        existing.qty += item.quantity;
+                        existing.revenue += itemRevenue;
+                        existing.cogs += itemCogs;
+                        existing.profit += itemProfit;
+                    } else {
+                        acc.push({ name: item.drugName, qty: item.quantity, revenue: itemRevenue, cogs: itemCogs, profit: itemProfit });
+                    }
+                    return acc;
+                }, [] as { name: string, qty: number, revenue: number, cogs: number, profit: number }[]);
+
+                return {
+                    title: 'گزارش سودآوری',
+                    headers: ['نام محصول', 'تعداد فروش', 'مجموع درآمد', 'مجموع هزینه', 'سود کل'],
+                    rows: profitItems.sort((a,b) => b.profit - a.profit).map(i => [i.name, i.qty, i.revenue, i.cogs, i.profit]),
+                };
+            }
+            case 'sales': {
+                const summary = Object.entries(sales.reduce((acc, order) => {
+                    if (!acc[order.customerName]) acc[order.customerName] = { totalAmount: 0, amountPaid: 0 };
+                    acc[order.customerName].totalAmount += Number(order.totalAmount);
+                    acc[order.customerName].amountPaid += Number(order.amountPaid);
+                    return acc;
+                }, {} as { [key: string]: { totalAmount: number; amountPaid: number } })).map(([name, values]) => ({ name, ...values, balance: values.totalAmount - values.amountPaid }));
+
+                return {
+                    title: 'خلاصه فروش',
+                    headers: ['نام مشتری', 'مجموع فروش', 'مجموع دریافتی', 'مانده حساب'],
+                    rows: summary.sort((a,b) => b.totalAmount - a.totalAmount).map(s => [s.name, s.totalAmount, s.amountPaid, s.balance]),
+                };
+            }
+            case 'purchases': {
+                 const summary = Object.entries(purchases.reduce((acc, bill) => {
+                    if (!acc[bill.supplierName]) acc[bill.supplierName] = { totalAmount: 0, amountPaid: 0 };
+                    acc[bill.supplierName].totalAmount += Number(bill.totalAmount);
+                    acc[bill.supplierName].amountPaid += Number(bill.amountPaid);
+                    return acc;
+                }, {} as { [key: string]: { totalAmount: number; amountPaid: number } })).map(([name, values]) => ({ name, ...values, balance: values.totalAmount - values.amountPaid }));
+                 return {
+                    title: 'خلاصه خرید',
+                    headers: ['نام شرکت', 'مجموع خرید', 'مجموع پرداختی', 'مانده حساب'],
+                    rows: summary.sort((a,b) => b.totalAmount - a.totalAmount).map(s => [s.name, s.totalAmount, s.amountPaid, s.balance]),
+                };
+            }
+            // Add other cases...
+            default:
+                return { title: 'گزارش', headers: [], rows: [] };
+        }
+    };
+
+    const handlePrint = () => {
+        const doc = new (window as any).jspdf.jsPDF();
+        
+        doc.addFileToVFS('Vazirmatn-Regular.ttf', vazirFont);
+        doc.addFont('Vazirmatn-Regular.ttf', 'Vazirmatn-Regular', 'normal');
+        doc.setFont('Vazirmatn-Regular');
+        
+        const { title, headers, rows } = getCurrentReportData();
+        const body = rows.map(row => row.map(cell => typeof cell === 'number' ? cell.toLocaleString() : cell));
+        
+        doc.text(title, 14, 22);
+        (doc as any).autoTable({
+            head: [headers],
+            body: body,
+            startY: 30,
+            styles: { font: 'Vazirmatn-Regular', halign: 'right' },
+            headStyles: { fillColor: [13, 148, 136] }, // teal-600
+        });
+        
+        doc.autoPrint();
+        window.open(doc.output('bloburl'), '_blank');
+        setIsExportMenuOpen(false);
+    };
+
+    const handlePdfExport = () => {
+        const doc = new (window as any).jspdf.jsPDF();
+        
+        doc.addFileToVFS('Vazirmatn-Regular.ttf', vazirFont);
+        doc.addFont('Vazirmatn-Regular.ttf', 'Vazirmatn-Regular', 'normal');
+        doc.setFont('Vazirmatn-Regular');
+        
+        const { title, headers, rows } = getCurrentReportData();
+        const body = rows.map(row => row.map(cell => typeof cell === 'number' ? cell.toLocaleString() : cell));
+        
+        // Add header
+        doc.setFontSize(18);
+        doc.text(companyInfo.name, 200, 20, { align: 'right' });
+        doc.setFontSize(12);
+        doc.text(title, 200, 30, { align: 'right' });
+        doc.setFontSize(10);
+        const dateRange = `از ${new Date(filters.startDate).toLocaleDateString('fa-IR')} تا ${new Date(filters.endDate).toLocaleDateString('fa-IR')}`;
+        doc.text(dateRange, 200, 38, { align: 'right' });
+        
+        (doc as any).autoTable({
+            head: [headers],
+            body: body,
+            startY: 45,
+            styles: { font: 'Vazirmatn-Regular', halign: 'right' },
+            headStyles: { fillColor: [13, 148, 136] }, // teal-600
+        });
+
+        doc.save(`${title.replace(/ /g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+        setIsExportMenuOpen(false);
+    };
+    
+    const handleExcelExport = () => {
+        const { title, headers, rows } = getCurrentReportData();
+        const dataToExport = rows.map(row => {
+            let obj = {};
+            headers.forEach((header, index) => {
+                obj[header] = row[index];
+            });
+            return obj;
+        });
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, title);
+        XLSX.writeFile(wb, `${title.replace(/ /g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
+        setIsExportMenuOpen(false);
+    };
+    
+    const ReportTabButton = ({ tabId, children, icon }: { tabId: ReportTab, children: React.ReactNode, icon: React.ReactNode }) => (
+        <button 
+            onClick={() => setActiveTab(tabId)} 
+            className={`flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors text-sm ${activeTab === tabId ? 'bg-teal-600 text-white shadow' : 'text-gray-600 hover:bg-teal-50'}`}
+        >
+            {icon}
             {children}
         </button>
     );
@@ -338,8 +595,8 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, customers, suppliers, 
                 <p className="text-gray-500 mt-1">تحلیل عملکرد کسب‌وکار با داشبوردهای هوشمند</p>
             </div>
 
-            <div className="bg-white rounded-xl shadow-md p-4 flex flex-col md:flex-row gap-4">
-                <div className="flex-grow grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+            <div className="bg-white rounded-xl shadow-md p-4 flex flex-col md:flex-row gap-4 justify-between items-center">
+                <div className="flex flex-col md:flex-row gap-4 items-end">
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">از تاریخ</label>
                         <input type="date" value={filters.startDate} onChange={e => setFilters(f => ({ ...f, startDate: e.target.value }))} className="w-full bg-gray-100 p-2 border rounded-lg" />
@@ -349,21 +606,35 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, customers, suppliers, 
                         <input type="date" value={filters.endDate} onChange={e => setFilters(f => ({ ...f, endDate: e.target.value }))} className="w-full bg-gray-100 p-2 border rounded-lg" />
                     </div>
                 </div>
-                <div className="flex-shrink-0 border-t md:border-t-0 md:border-r mt-4 md:mt-0 pt-4 md:pt-0 md:pr-4 flex items-end">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <TabButton tabId="profitability">سودآوری</TabButton>
-                        <TabButton tabId="sales">فروش</TabButton>
-                        <TabButton tabId="purchases">خرید</TabButton>
-                        <TabButton tabId="bonuses">بونس‌ها</TabButton>
-                        <TabButton tabId="wasted_stock">ضایعات</TabButton>
-                    </div>
+                 <div className="relative" ref={exportMenuRef}>
+                    <button onClick={() => setIsExportMenuOpen(prev => !prev)} className="flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors text-sm bg-gray-600 text-white hover:bg-gray-700 shadow">
+                        <ExportIcon />
+                        چاپ / خروجی
+                    </button>
+                    {isExportMenuOpen && (
+                        <div className="absolute left-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border">
+                            <button onClick={handlePrint} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PrintIcon /> چاپ</button>
+                            <button onClick={handlePdfExport} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PdfIcon /> دانلود PDF</button>
+                            <button onClick={handleExcelExport} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><ExcelIcon /> دانلود Excel</button>
+                        </div>
+                    )}
                 </div>
+            </div>
+            
+             <div className="flex items-center gap-2 flex-wrap justify-center bg-white rounded-xl shadow-md p-2">
+                <ReportTabButton tabId="profitability" icon={<ProfitIcon />}>سودآوری</ReportTabButton>
+                <ReportTabButton tabId="inventory" icon={<InventoryIcon />}>گزارش انبارها</ReportTabButton>
+                <ReportTabButton tabId="sales" icon={<SalesIcon />}>فروش</ReportTabButton>
+                <ReportTabButton tabId="purchases" icon={<PurchaseIcon />}>خرید</ReportTabButton>
+                <ReportTabButton tabId="bonuses" icon={<GiftIcon />}>بونس‌ها</ReportTabButton>
+                <ReportTabButton tabId="wasted_stock" icon={<WasteIcon />}>ضایعات</ReportTabButton>
             </div>
 
             <div className="transition-opacity duration-300">
                 {activeTab === 'profitability' && <ProfitabilityView filteredSales={filteredData.sales} drugs={drugs} filteredWastedStock={filteredData.wastedStock} />}
                 {activeTab === 'sales' && <SalesSummaryView filteredSales={filteredData.sales} />}
                 {activeTab === 'purchases' && <PurchaseSummaryView filteredPurchases={filteredData.purchases} />}
+                {activeTab === 'inventory' && <InventoryReportView salesWarehouseDrugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} />}
                 {activeTab === 'bonuses' && <BonusSummaryView filteredSales={filteredData.sales} drugs={drugs} />}
                 {activeTab === 'wasted_stock' && <WastedStockView filteredWastedStock={filteredData.wastedStock} />}
             </div>
