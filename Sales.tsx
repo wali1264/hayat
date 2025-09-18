@@ -3,6 +3,8 @@
 
 
 
+
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Drug, drugCategories } from './Inventory';
 import { Customer } from './Customers';
@@ -1041,12 +1043,13 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, order, cus
         }, 100);
     };
     
-    const itemsSubtotal = order.items.reduce((sum, item) => sum + (item.quantity * item.originalPrice), 0);
+    // FIX: Explicitly cast values to Number to avoid potential type errors from inconsistent data.
+    const itemsSubtotal = order.items.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.originalPrice)), 0);
     const itemsTotalAfterDiscount = order.items.reduce((sum, item) => {
         const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
             ? item.originalPrice
             : item.finalPrice;
-        return sum + (item.quantity * pricePerUnit);
+        return sum + (Number(item.quantity) * Number(pricePerUnit));
     }, 0);
     const totalItemsDiscount = itemsSubtotal - itemsTotalAfterDiscount;
     const extraCharges = order.extraCharges || [];
