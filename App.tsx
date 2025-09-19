@@ -1,7 +1,14 @@
+
+
+
+
+
+
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
-import Inventory, { Drug, Batch, WriteOffReason } from './Inventory';
+import Inventory, { Drug, Batch, WriteOffReason, DrugModal } from './Inventory';
 import Sales, { Order, OrderItem, ExtraCharge, BatchAllocation } from './Sales';
 import Customers, { Customer } from './Customers';
 import Accounting, { Expense, Income } from './Accounting';
@@ -42,7 +49,7 @@ const CustomersIcon = ({ className }: { className?: string }) => <Icon path="M17
 const CustomerAccountsIcon = ({ className }: { className?: string }) => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" className={className} />;
 const AccountingIcon = ({ className }: { className?: string }) => <Icon path="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M12 21a9 9 0 110-18 9 9 0 010 18z" className={className} />;
 const ReportsIcon = ({ className }: { className?: string }) => <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className={className} />;
-const SettingsIcon = ({ className }: { className?: string }) => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z" className={className} />;
+const SettingsIcon = ({ className }: { className?: string }) => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" className={className} />;
 const LogoutIcon = ({ className }: { className?: string }) => <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" className={className} />;
 const SuppliersIcon = ({ className }: { className?: string }) => <Icon path="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V6a1 1 0 011-1h2a1 1 0 011 1v10a1 1 0 01-1 1h-1m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" className={className} />;
 const PurchasingIcon = ({ className }: { className?: string }) => <Icon path="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" className={className} />;
@@ -262,14 +269,15 @@ type NavItemProps = {
     label: string;
     isActive: boolean;
     onClick: () => void;
+    badgeCount?: number;
 };
 
-const NavItem: React.FC<NavItemProps> = ({ icon, label, isActive, onClick }) => (
+const NavItem: React.FC<NavItemProps> = ({ icon, label, isActive, onClick, badgeCount }) => (
     <li className="mb-2">
         <a
             href="#"
             onClick={(e) => { e.preventDefault(); onClick(); }}
-            className={`flex items-center p-3 rounded-lg transition-colors duration-200 ${
+            className={`relative flex items-center p-3 rounded-lg transition-colors duration-200 ${
                 isActive
                     ? 'bg-cyan-500 text-white shadow-lg'
                     : 'text-gray-200 hover:bg-cyan-700 hover:text-white'
@@ -277,6 +285,11 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, isActive, onClick }) => 
         >
             {icon}
             <span className="mr-4 font-semibold">{label}</span>
+            {badgeCount && badgeCount > 0 && (
+                <span className="ml-auto bg-red-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full animate-pulse">
+                    {badgeCount}
+                </span>
+            )}
         </a>
     </li>
 );
@@ -298,7 +311,7 @@ const navItems = [
     { id: 'checkneh', label: 'بخش چکنه', icon: <ChecknehIcon /> },
 ];
 
-const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout }) => {
+const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout, pendingRequisitionCount }) => {
     const allowedNavItems = navItems.filter(item => permissions[userRole].includes(item.id));
     const canAccessSettings = permissions[userRole].includes('settings');
     const canAccessRecycleBin = permissions[userRole].includes('recycle_bin');
@@ -318,6 +331,7 @@ const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout }) => {
                             label={item.label}
                             isActive={activeItem === item.id}
                             onClick={() => setActiveItem(item.id)}
+                            badgeCount={item.id === 'main_warehouse' ? pendingRequisitionCount : 0}
                         />
                     ))}
                 </ul>
@@ -478,6 +492,9 @@ const App: React.FC = () => {
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [currentUser, setCurrentUser] = usePersistentState<User>('hayat_currentUser', initialMockUsers[0]);
     const [activeItem, setActiveItem] = usePersistentState<string>('hayat_activeItem', 'dashboard');
+    const [isQuickAddDrugModalOpen, setIsQuickAddDrugModalOpen] = useState(false);
+    const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
+    const [newWorker, setNewWorker] = useState<ServiceWorker | null>(null);
 
     // All data states
     const [drugs, setDrugs] = usePersistentState<Drug[]>('hayat_drugs', initialMockDrugs);
@@ -506,13 +523,232 @@ const App: React.FC = () => {
     const addToast = (message: string, type: ToastType = 'info') => {
         setToasts(prev => [...prev, { id: Date.now(), message, type }]);
     };
+    
+    // Service Worker Registration and Update Handling
+    useEffect(() => {
+        if ('serviceWorker' in navigator) {
+            const swUrl = `${window.location.origin}/sw.js`;
+            navigator.serviceWorker.register(swUrl).then(reg => {
+                reg.addEventListener('updatefound', () => {
+                    const newWorker = reg.installing;
+                    if (newWorker) {
+                        setNewWorker(newWorker);
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                setIsUpdateAvailable(true);
+                            }
+                        });
+                    }
+                });
+            }).catch(err => console.error('Service Worker registration failed:', err));
+        }
+    }, []);
+
+    const handleUpdate = () => {
+        if (newWorker) {
+            newWorker.postMessage({ type: 'SKIP_WAITING' });
+            // The browser will reload automatically after the new service worker takes control.
+            // Forcing a reload can sometimes cause issues. Let's add a small delay.
+            setTimeout(() => {
+                window.location.reload();
+            }, 100);
+        }
+    };
+
 
     const handleLogout = () => {
         // In a real app, this would clear session, etc.
-        // For this demo, we'll just show an alert.
         addToast("شما با موفقیت خارج شدید.", "success");
-        // Here you would typically redirect to a login page.
     };
+    
+    // CORE LOGIC HANDLERS
+    const handleSavePurchaseBill = (bill: PurchaseBill) => {
+        // 1. Add/update the bill in purchaseBills state
+        setPurchaseBills(prev => {
+            const exists = prev.some(b => b.id === bill.id);
+            if (exists) {
+                return prev.map(b => b.id === bill.id ? bill : b);
+            }
+            return [bill, ...prev];
+        });
+    
+        // 2. Update inventory in mainWarehouseDrugs
+        if (bill.status === 'دریافت شده' && bill.type === 'purchase') {
+            setMainWarehouseDrugs(currentWarehouse => {
+                const updatedWarehouse = JSON.parse(JSON.stringify(currentWarehouse)); // Deep copy
+    
+                for (const item of bill.items) {
+                    let drug = updatedWarehouse.find(d => d.id === item.drugId);
+                    
+                    if (drug) {
+                        let batch = drug.batches.find(b => b.lotNumber === item.lotNumber);
+                        if (batch) {
+                            addToast(`هشدار: لات ${item.lotNumber} برای محصول ${item.drugName} از قبل موجود بود. تعداد به آن اضافه شد.`, 'info');
+                            batch.quantity += item.quantity;
+                        } else {
+                            drug.batches.push({
+                                lotNumber: item.lotNumber,
+                                quantity: item.quantity,
+                                expiryDate: item.expiryDate,
+                                productionDate: item.productionDate,
+                                purchasePrice: item.purchasePrice,
+                            });
+                        }
+                    } else {
+                        // This case implies a drug that exists in the general drug list but not yet in the warehouse
+                        const drugInfo = [...drugs, ...mainWarehouseDrugs].find(d => d.id === item.drugId);
+                        if (drugInfo) {
+                             // Find if drug *definition* exists in sales warehouse, if so, use it.
+                            const baseDrugInfo = JSON.parse(JSON.stringify(drugInfo));
+                            delete baseDrugInfo.batches;
+
+                            updatedWarehouse.push({
+                                ...baseDrugInfo,
+                                batches: [{
+                                    lotNumber: item.lotNumber,
+                                    quantity: item.quantity,
+                                    expiryDate: item.expiryDate,
+                                    productionDate: item.productionDate,
+                                    purchasePrice: item.purchasePrice,
+                                }]
+                            });
+                        } else {
+                             addToast(`خطای سیستمی: محصول با کد ${item.drugId} یافت نشد.`, 'error');
+                        }
+                    }
+                }
+                return updatedWarehouse;
+            });
+            addToast('موجودی انبار اصلی با موفقیت به‌روزرسانی شد.', 'success');
+        }
+        // TODO: Handle purchase returns to deduct stock
+    };
+
+    const handleFulfillRequisition = (requisition: StockRequisition, fulfilledItems: StockRequisitionItem[], fulfilledBy: string) => {
+        let success = true;
+        
+        const updatedMainWarehouse = JSON.parse(JSON.stringify(mainWarehouseDrugs));
+        const updatedSalesWarehouse = JSON.parse(JSON.stringify(drugs));
+
+        for (const fulfilledItem of fulfilledItems) {
+            if (fulfilledItem.quantityFulfilled <= 0) continue;
+
+            let quantityToMove = fulfilledItem.quantityFulfilled;
+            const mainDrug = updatedMainWarehouse.find(d => d.id === fulfilledItem.drugId);
+            const salesDrug = updatedSalesWarehouse.find(d => d.id === fulfilledItem.drugId);
+
+            if (!mainDrug) {
+                addToast(`خطا: محصول ${fulfilledItem.drugName} در انبار اصلی یافت نشد.`, 'error');
+                success = false;
+                break;
+            }
+            if (!salesDrug) {
+                 addToast(`خطا: محصول ${fulfilledItem.drugName} در انبار فروش تعریف نشده است.`, 'error');
+                success = false;
+                break;
+            }
+
+            const totalStockInMain = mainDrug.batches.reduce((sum, b) => sum + b.quantity, 0);
+            if (quantityToMove > totalStockInMain) {
+                addToast(`موجودی محصول ${fulfilledItem.drugName} (${totalStockInMain}) در انبار اصلی برای انتقال (${quantityToMove}) کافی نیست.`, 'error');
+                success = false;
+                break;
+            }
+            
+            const sortedBatches = mainDrug.batches
+                .filter(b => b.quantity > 0)
+                .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+
+            for (const batch of sortedBatches) {
+                if (quantityToMove <= 0) break;
+                const amountFromThisBatch = Math.min(quantityToMove, batch.quantity);
+
+                batch.quantity -= amountFromThisBatch;
+                quantityToMove -= amountFromThisBatch;
+
+                const existingSalesBatch = salesDrug.batches.find(b => b.lotNumber === batch.lotNumber);
+                if (existingSalesBatch) {
+                    existingSalesBatch.quantity += amountFromThisBatch;
+                } else {
+                    salesDrug.batches.push({ ...batch, quantity: amountFromThisBatch });
+                }
+            }
+        }
+        
+        if (success) {
+            setMainWarehouseDrugs(updatedMainWarehouse);
+            setDrugs(updatedSalesWarehouse);
+            setStockRequisitions(prev =>
+                prev.map(r => r.id === requisition.id ? { ...r, status: 'تکمیل شده', fulfilledBy, items: fulfilledItems } : r)
+            );
+            addToast(`درخواست #${requisition.id} با موفقیت تکمیل شد.`, 'success');
+        }
+    };
+
+    const handleSaveOrder = (order: Order) => {
+        if (order.type === 'sale' && order.status !== 'لغو شده' && !order.items[0]?.batchAllocations) {
+            const updatedDrugs = JSON.parse(JSON.stringify(drugs));
+            let stockSufficient = true;
+    
+            for (const item of order.items) {
+                const drugIndex = updatedDrugs.findIndex(d => d.id === item.drugId);
+                if (drugIndex === -1) {
+                    stockSufficient = false;
+                    addToast(`محصول ${item.drugName} در انبار یافت نشد.`, 'error');
+                    break;
+                }
+    
+                const drug = updatedDrugs[drugIndex];
+                let quantityToDeduct = item.quantity + (item.bonusQuantity || 0);
+    
+                const sortedBatches = drug.batches
+                    .filter(b => b.quantity > 0)
+                    .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+    
+                const totalStock = sortedBatches.reduce((sum, b) => sum + b.quantity, 0);
+                if (totalStock < quantityToDeduct) {
+                    stockSufficient = false;
+                    addToast(`موجودی محصول ${item.drugName} (${totalStock}) برای فروش (${quantityToDeduct}) کافی نیست.`, 'error');
+                    break;
+                }
+    
+                item.batchAllocations = [];
+                for (const batch of sortedBatches) {
+                    if (quantityToDeduct <= 0) break;
+                    
+                    const quantityFromThisBatch = Math.min(quantityToDeduct, batch.quantity);
+                    
+                    item.batchAllocations.push({
+                        lotNumber: batch.lotNumber,
+                        quantity: quantityFromThisBatch,
+                        purchasePrice: batch.purchasePrice
+                    });
+    
+                    const originalBatchInDrug = drug.batches.find(b => b.lotNumber === batch.lotNumber);
+                    if (originalBatchInDrug) {
+                        originalBatchInDrug.quantity -= quantityFromThisBatch;
+                    }
+    
+                    quantityToDeduct -= quantityFromThisBatch;
+                }
+            }
+    
+            if (!stockSufficient) {
+                return; 
+            }
+            setDrugs(updatedDrugs);
+        }
+
+        setOrders(prev => {
+            const exists = prev.some(o => o.id === order.id);
+            if (exists) {
+                return prev.map(o => o.id === order.id ? order : o);
+            }
+            const newOrderNumber = `${order.type === 'sale_return' ? 'SR' : 'SO'}-${new Date().getFullYear()}-${(prev.length + 1).toString().padStart(4, '0')}`;
+            return [{...order, orderNumber: newOrderNumber}, ...prev];
+        });
+        addToast(`سفارش ${order.orderNumber || ''} با موفقیت ذخیره شد.`, 'success');
+    }
 
     const pageTitles: { [key: string]: string } = {
         dashboard: 'داشبورد', main_warehouse: 'انبار اصلی', inventory: 'انبار فروش', sales: 'فروش و سفارشات', fulfillment: 'آماده‌سازی سفارشات', customers: 'مشتریان',
@@ -520,45 +756,64 @@ const App: React.FC = () => {
         reports: 'گزارشات', alerts: 'مدیریت هشدارها', checkneh: 'بخش چکنه', settings: 'تنظیمات', recycle_bin: 'سطل زباله'
     };
 
-    // Placeholder handlers for data manipulation
     const handleSaveDrug = (drug: Omit<Drug, 'batches'>) => {
-        setDrugs(prev => {
-            const exists = prev.some(d => d.id === drug.id);
+        // This function is for editing from the inventory screen.
+        // It should update both warehouses to keep definitions consistent.
+        const updateLogic = (prev: Drug[]) => {
+             const exists = prev.some(d => d.id === drug.id);
             if (exists) {
                 return prev.map(d => d.id === drug.id ? { ...d, ...drug } : d);
             }
-            return [...prev, { ...drug, batches: [] }];
-        });
+             return [...prev, { ...drug, batches: [] }];
+        };
+        setDrugs(updateLogic);
+        setMainWarehouseDrugs(updateLogic);
         addToast(`محصول ${drug.name} با موفقیت ذخیره شد.`, 'success');
     };
-    
-    const handleSaveOrder = (order: Order) => {
-        setOrders(prev => {
-            const exists = prev.some(o => o.id === order.id);
-            if(exists) {
-                return prev.map(o => o.id === order.id ? order : o);
-            }
-            // Simple order number generation for new orders
-            const newOrderNumber = `SO-${new Date().getFullYear()}-${(prev.length + 1).toString().padStart(4, '0')}`;
-            return [{...order, orderNumber: newOrderNumber}, ...prev];
-        });
-         addToast(`سفارش ${order.orderNumber} با موفقیت ذخیره شد.`, 'success');
-    }
+
+    const handleQuickAddDrug = (drug: Omit<Drug, 'batches'>) => {
+        const allDrugs = [...drugs, ...mainWarehouseDrugs];
+        const drugExists = allDrugs.some(d => d.name.toLowerCase().trim() === drug.name.toLowerCase().trim());
+        if (drugExists) {
+            addToast(`محصولی با نام '${drug.name}' از قبل وجود دارد.`, 'error');
+            return;
+        }
+        
+        const newDrugEntry = { ...drug, batches: [] };
+        // Add definition to both warehouses so it's available everywhere.
+        setDrugs(prev => [...prev, newDrugEntry]);
+        setMainWarehouseDrugs(prev => [...prev, newDrugEntry]);
+        addToast(`محصول ${drug.name} با موفقیت تعریف شد.`, 'success');
+        setIsQuickAddDrugModalOpen(false);
+    };
+
+    const pendingRequisitionCount = useMemo(() => {
+        return stockRequisitions.filter(r => r.status === 'در انتظار').length;
+    }, [stockRequisitions]);
+
 
     const renderActiveComponent = () => {
         switch(activeItem) {
             case 'dashboard': return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={[]} />;
             case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={(id) => setDrugs(d => d.filter(i => i.id !== id))} onWriteOff={() => {}} onSaveRequisition={() => {}} currentUser={currentUser} addToast={addToast} />;
-            case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={(id) => setOrders(o => o.filter(i => i.id !== id))} currentUser={currentUser} documentSettings={documentSettings} addToast={addToast} onSaveDrug={handleSaveDrug} />;
+            case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={(id) => setOrders(o => o.filter(i => i.id !== id))} currentUser={currentUser} documentSettings={documentSettings} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
             case 'customers': return <Customers customers={customers} onSave={(c) => setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev])} onDelete={(id) => setCustomers(c => c.filter(i => i.id !== id))} currentUser={currentUser} addToast={addToast} />;
             case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev])} onDelete={(id) => setSuppliers(s => s.filter(i => i.id !== id))} currentUser={currentUser} />;
-            case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={drugs} onSave={(b) => setPurchaseBills(prev => prev.find(i => i.id === b.id) ? prev.map(i => i.id === b.id ? b : i) : [b, ...prev])} onDelete={(id) => setPurchaseBills(p => p.filter(i => i.id !== id))} currentUser={currentUser} addToast={addToast} />;
+            case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={(id) => setPurchaseBills(p => p.filter(i => i.id !== id))} currentUser={currentUser} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
             case 'finance': return <Accounting incomes={[]} expenses={expenses} onSave={(e) => setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev])} onDelete={(id) => setExpenses(e => e.filter(i => i.id !== id))} currentUser={currentUser} />;
             case 'reports': return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} companyInfo={companyInfo} documentSettings={documentSettings} />;
             case 'fulfillment': return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} />;
             case 'customer_accounts': return <CustomerAccounts customers={customers} orders={orders} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} />;
             case 'supplier_accounts': return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} />;
-            case 'main_warehouse': return <MainWarehouse mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onFulfillRequisition={()=>{}} currentUser={currentUser} addToast={addToast} />;
+            case 'main_warehouse': return <MainWarehouse 
+                mainWarehouseDrugs={mainWarehouseDrugs} 
+                stockRequisitions={stockRequisitions} 
+                onFulfillRequisition={(req, items, user) => handleFulfillRequisition(req, items, user)} 
+                currentUser={currentUser} 
+                addToast={addToast} 
+                companyInfo={companyInfo} 
+                documentSettings={documentSettings} 
+                />;
             case 'recycle_bin': return <RecycleBin trashItems={trash} onRestore={()=>{}} onDelete={(id) => setTrash(t => t.filter(i => i.id !== id))} onEmptyTrash={() => setTrash([])} />;
             case 'checkneh': return <Checkneh customers={customers} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} showConfirmation={()=>{}} />;
             case 'alerts': return <Alerts settings={alertSettings} setSettings={setAlertSettings} customers={customers} />;
@@ -578,7 +833,13 @@ const App: React.FC = () => {
 
     return (
         <div className="flex h-screen bg-gray-100" dir="rtl">
-            <Sidebar activeItem={activeItem} setActiveItem={setActiveItem} userRole={currentUser.role} onLogout={handleLogout} />
+            <Sidebar 
+                activeItem={activeItem} 
+                setActiveItem={setActiveItem} 
+                userRole={currentUser.role} 
+                onLogout={handleLogout} 
+                pendingRequisitionCount={pendingRequisitionCount}
+            />
             <main className="flex-1 flex flex-col overflow-hidden">
                 <Header title={pageTitles[activeItem] || 'داشبورد'} currentUser={currentUser} alerts={[]} onNavigate={setActiveItem}/>
                 <div className="flex-1 overflow-y-auto">
@@ -586,6 +847,14 @@ const App: React.FC = () => {
                 </div>
             </main>
             <ToastContainer toasts={toasts} setToasts={setToasts} />
+             {isUpdateAvailable && <UpdateNotification onUpdate={handleUpdate} />}
+            <DrugModal 
+                isOpen={isQuickAddDrugModalOpen}
+                onClose={() => setIsQuickAddDrugModalOpen(false)}
+                onSave={handleQuickAddDrug}
+                initialData={null}
+                addToast={addToast}
+            />
         </div>
     );
 };

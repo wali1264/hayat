@@ -69,9 +69,10 @@ type PurchaseModalProps = {
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     mode: 'purchase' | 'return' | 'edit';
     initialData: PurchaseBill | null;
+    onOpenQuickAddModal: () => void;
 };
 
-const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, suppliers, drugs, addToast, mode, initialData }) => {
+const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, suppliers, drugs, addToast, mode, initialData, onOpenQuickAddModal }) => {
     const [billInfo, setBillInfo] = useState({
         supplierName: '', billNumber: '', purchaseDate: new Date().toISOString().split('T')[0], amountPaid: '', status: 'دریافت شده' as PurchaseStatus, currency: 'AFN' as PurchaseBill['currency'], exchangeRate: 1
     });
@@ -264,16 +265,21 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                         <form onSubmit={handleAddItem} className="p-2 bg-gray-50 rounded-md grid grid-cols-1 lg:grid-cols-10 gap-3 items-end" ref={addItemFormRef}>
                             <div className="relative lg:col-span-3">
                                 <label className="text-xs font-semibold">جستجوی محصول</label>
-                                <input type="text" value={drugSearchTerm} onChange={e => { setDrugSearchTerm(e.target.value); setSelectedDrug(null); }} onFocus={() => setIsSearchFocused(true)} className="w-full p-2 border rounded-lg mt-1" placeholder="نام محصول..." />
-                                {isSearchFocused && availableDrugs.length > 0 && (
-                                    <div className="absolute top-full left-0 right-0 z-10 bg-white border shadow-lg mt-1 max-h-48 overflow-y-auto">
-                                        {availableDrugs.map(drug => (
-                                            <div key={drug.id} onClick={() => { setSelectedDrug(drug); setDrugSearchTerm(drug.name); setIsSearchFocused(false); }} className="p-2 hover:bg-teal-50 cursor-pointer">
-                                                {drug.name}
+                                <div className="flex mt-1">
+                                    <div className="relative flex-grow">
+                                        <input type="text" value={drugSearchTerm} onChange={e => { setDrugSearchTerm(e.target.value); setSelectedDrug(null); }} onFocus={() => setIsSearchFocused(true)} className="w-full p-2 border rounded-r-lg focus:outline-none focus:ring-2 focus:ring-teal-500 rounded-l-none" placeholder="نام محصول..." />
+                                        {isSearchFocused && availableDrugs.length > 0 && (
+                                            <div className="absolute top-full left-0 right-0 z-10 bg-white border shadow-lg mt-1 max-h-48 overflow-y-auto">
+                                                {availableDrugs.map(drug => (
+                                                    <div key={drug.id} onClick={() => { setSelectedDrug(drug); setDrugSearchTerm(drug.name); setIsSearchFocused(false); }} className="p-2 hover:bg-teal-50 cursor-pointer">
+                                                        {drug.name}
+                                                    </div>
+                                                ))}
                                             </div>
-                                        ))}
+                                        )}
                                     </div>
-                                )}
+                                    <button type="button" onClick={onOpenQuickAddModal} className="px-3 bg-gray-200 text-gray-700 rounded-l-lg border border-l-0 border-gray-300 hover:bg-gray-300 font-bold" title="افزودن محصول جدید به سیستم">+</button>
+                                </div>
                             </div>
                             <div><label className="text-xs font-semibold">شماره لات</label><input type="text" value={addLotNumber} onChange={e => setAddLotNumber(e.target.value)} className="w-full p-2 border rounded-lg mt-1" required/></div>
                             <div><label className="text-xs font-semibold">تاریخ انقضا</label><input type="date" value={addExpiryDate} onChange={e => setAddExpiryDate(e.target.value)} className="w-full p-2 border rounded-lg mt-1" required/></div>
@@ -349,10 +355,11 @@ type PurchasingProps = {
     onDelete: (id: number) => void;
     currentUser: User;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    onOpenQuickAddModal: () => void;
 };
 
 
-const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs, onSave, onDelete, currentUser, addToast }) => {
+const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs, onSave, onDelete, currentUser, addToast, onOpenQuickAddModal }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState<'purchase' | 'return' | 'edit'>('purchase');
     const [initialModalData, setInitialModalData] = useState<PurchaseBill | null>(null);
@@ -398,6 +405,7 @@ const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs
                 addToast={addToast}
                 mode={modalMode}
                 initialData={initialModalData}
+                onOpenQuickAddModal={onOpenQuickAddModal}
             />}
             <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
                  <div>

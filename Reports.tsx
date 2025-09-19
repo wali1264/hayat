@@ -26,10 +26,11 @@ const InventoryIcon = () => <Icon path="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5
 const ExportIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a4 4 0 01-4-4V9a4 4 0 014-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V16a4 4 0 01-4 4z" className="w-5 h-5"/>;
 const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0 00-2 2v4a2 2 0 002 2h2m8 0v4H9v-4m4 0h-2" className="w-5 h-5"/>;
 const ExcelIcon = () => <Icon path="M4 6h16v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 13h1m3 0h1" className="w-5 h-5"/>;
+const TraceIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 4H4v6M14 20h6v-6" />;
 
 
 //=========== TYPES ===========//
-type ReportTab = 'profitability' | 'sales' | 'purchases' | 'inventory' | 'bonuses' | 'wasted_stock';
+type ReportTab = 'profitability' | 'sales' | 'purchases' | 'inventory' | 'bonuses' | 'wasted_stock' | 'batch_traceability';
 
 //=========== SUB-COMPONENTS ===========//
 
@@ -86,22 +87,26 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
 
         for (const order of filteredSales) {
             if (order.type !== 'sale') continue;
-            totalRevenue += order.totalAmount;
+            
+            // Revenue is calculated from the order total, excluding extra charges for profit analysis.
+            const itemsRevenue = order.items.reduce((sum, item) => {
+                 const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
+                    ? item.originalPrice
+                    : item.finalPrice;
+                return sum + (item.quantity * pricePerUnit);
+            }, 0);
+            totalRevenue += itemsRevenue;
             
             for (const item of order.items) {
-                const drug = drugsMap.get(item.drugId);
-                // FIX: Property 'purchasePrice' does not exist on type 'Drug'.
-                // Calculate an average purchase price from the drug's batches as an approximation.
-                // A better solution would use batchAllocations from the OrderItem, but that data seems unavailable.
-                let purchasePrice = 0;
-                if (drug && drug.batches.length > 0) {
-                    const totalQuantityInStock = drug.batches.reduce((acc, b) => acc + b.quantity, 0);
-                    const totalValueInStock = drug.batches.reduce((acc, b) => acc + (b.quantity * b.purchasePrice), 0);
-                    purchasePrice = totalQuantityInStock > 0 ? totalValueInStock / totalQuantityInStock : 0;
-                }
+                // *** FIX: Calculate Cost of Goods Sold (COGS) from precise batch allocations ***
+                const itemCogs = item.batchAllocations
+                    ? item.batchAllocations.reduce((sum, alloc) => sum + (alloc.quantity * alloc.purchasePrice), 0)
+                    : 0; // Fallback for old data or if allocations are missing
+
+                const itemRevenue = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
+                    ? item.originalPrice * item.quantity
+                    : item.finalPrice * item.quantity;
                 
-                const itemRevenue = item.finalPrice * item.quantity;
-                const itemCogs = purchasePrice * (item.quantity + item.bonusQuantity);
                 const itemProfit = itemRevenue - itemCogs;
                 
                 totalCogs += itemCogs;
@@ -111,12 +116,12 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
                 
                 const existingItem = allItems.find(i => i.name === item.drugName);
                 if(existingItem) {
-                    existingItem.qty += item.quantity;
+                    existingItem.qty += item.quantity + (item.bonusQuantity || 0);
                     existingItem.revenue += itemRevenue;
                     existingItem.cogs += itemCogs;
                     existingItem.profit += itemProfit;
                 } else {
-                     allItems.push({ name: item.drugName, qty: item.quantity, revenue: itemRevenue, cogs: itemCogs, profit: itemProfit });
+                     allItems.push({ name: item.drugName, qty: item.quantity + (item.bonusQuantity || 0), revenue: itemRevenue, cogs: itemCogs, profit: itemProfit });
                 }
             }
         }
@@ -131,7 +136,7 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
         return {
             totalRevenue, totalCogs, totalWastedCost, grossProfit, profitMargin, top5Products, top5Customers, allItems: allItems.sort((a,b) => b.profit - a.profit)
         };
-    }, [filteredSales, drugsMap, filteredWastedStock]);
+    }, [filteredSales, filteredWastedStock]);
 
      const monthlyProfitData = useMemo(() => {
         const monthlyData: { [month: string]: { revenue: number, cogs: number } } = {};
@@ -141,18 +146,19 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
             const month = order.orderDate.substring(0, 7); // YYYY-MM
             if (!monthlyData[month]) monthlyData[month] = { revenue: 0, cogs: 0 };
             
-            monthlyData[month].revenue += order.totalAmount;
+            const itemsRevenue = order.items.reduce((sum, item) => {
+                 const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
+                    ? item.originalPrice
+                    : item.finalPrice;
+                return sum + (item.quantity * pricePerUnit);
+            }, 0);
+            monthlyData[month].revenue += itemsRevenue;
 
             for (const item of order.items) {
-                 const drug = drugsMap.get(item.drugId);
-                 // FIX: Property 'purchasePrice' does not exist on type 'Drug'. Calculate average price.
-                 let purchasePrice = 0;
-                 if (drug && drug.batches.length > 0) {
-                    const totalQuantityInStock = drug.batches.reduce((acc, b) => acc + b.quantity, 0);
-                    const totalValueInStock = drug.batches.reduce((acc, b) => acc + (b.quantity * b.purchasePrice), 0);
-                    purchasePrice = totalQuantityInStock > 0 ? totalValueInStock / totalQuantityInStock : 0;
-                 }
-                 monthlyData[month].cogs += purchasePrice * (item.quantity + item.bonusQuantity);
+                 const itemCogs = item.batchAllocations
+                    ? item.batchAllocations.reduce((sum, alloc) => sum + (alloc.quantity * alloc.purchasePrice), 0)
+                    : 0;
+                 monthlyData[month].cogs += itemCogs;
             }
         }
         
@@ -161,7 +167,7 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
             labels: sortedMonths.map(m => new Date(m + '-02').toLocaleDateString('fa-IR', { month: 'long', year: 'numeric' })),
             data: sortedMonths.map(m => monthlyData[m].revenue - monthlyData[m].cogs),
         };
-    }, [filteredSales, drugsMap]);
+    }, [filteredSales]);
 
     useEffect(() => {
         const charts: any[] = [];
@@ -214,7 +220,7 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
              <div className="bg-white p-4 rounded-xl shadow-md">
                 <h3 className="font-bold mb-2">گزارش سودآوری بر اساس محصول</h3>
                 <DataTable 
-                    headers={['نام محصول', 'تعداد فروش', 'مجموع درآمد', 'مجموع هزینه', 'سود کل']} 
+                    headers={['نام محصول', 'تعداد فروش (با بونس)', 'مجموع درآمد', 'مجموع هزینه', 'سود کل']} 
                     rows={profitData.allItems.map(i => [i.name, i.qty, i.revenue, i.cogs, i.profit])}
                     isNumeric={[false, true, true, true, true]}
                 />
@@ -287,15 +293,10 @@ const BonusSummaryView = ({ filteredSales, drugs }: { filteredSales: Order[], dr
         let totalBonusValue = 0;
 
         const tableRows = bonusItems.map(item => {
-            const drug = drugsMap.get(item.drugId);
-            // FIX: Property 'purchasePrice' does not exist on type 'Drug'. Calculate average price.
-            let purchasePrice = 0;
-            if (drug && drug.batches.length > 0) {
-                const totalQuantityInStock = drug.batches.reduce((acc, b) => acc + b.quantity, 0);
-                const totalValueInStock = drug.batches.reduce((acc, b) => acc + (b.quantity * b.purchasePrice), 0);
-                purchasePrice = totalQuantityInStock > 0 ? totalValueInStock / totalQuantityInStock : 0;
-            }
-            const cost = purchasePrice * item.bonusQuantity;
+            const cost = (item.batchAllocations || [])
+                .reduce((sum, alloc) => sum + (alloc.quantity * alloc.purchasePrice), 0)
+                * (item.bonusQuantity / (item.quantity + item.bonusQuantity)); // Approximate cost of bonus
+
             totalBonusUnits += item.bonusQuantity;
             totalBonusValue += cost;
             return [
@@ -346,8 +347,6 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
     const [searchTerm, setSearchTerm] = useState('');
     
     const inventoryData = useMemo(() => {
-        // FIX: Property 'quantity' and 'purchasePrice' does not exist on type 'Drug'.
-        // Calculate value by iterating through batches for each drug.
         const calcValue = (drugs: Drug[]) => drugs.reduce((totalSum, drug) => 
             totalSum + drug.batches.reduce((drugSum, batch) => drugSum + (batch.quantity * batch.purchasePrice), 0)
         , 0);
@@ -359,8 +358,6 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
         const sixMonthsFromNow = new Date();
         sixMonthsFromNow.setMonth(now.getMonth() + 6);
 
-        // FIX: Property 'expiryDate', 'quantity', 'purchasePrice' does not exist on type 'Drug'.
-        // Flatten all batches, filter them by expiry date, then sum their values.
         const expiringValue = [...salesWarehouseDrugs, ...mainWarehouseDrugs]
             .flatMap(drug => drug.batches)
             .filter(batch => {
@@ -394,9 +391,7 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
                     <details open className="border rounded-lg">
                         <summary className="p-4 font-bold cursor-pointer bg-gray-50">انبار فروش</summary>
                          <DataTable
-                            headers={['نام محصول', 'تعداد موجود', 'قیمت خرید', 'ارزش کل']}
-                            // FIX: Property 'quantity' and 'purchasePrice' does not exist on type 'Drug'.
-                            // Aggregate data from batches for each drug.
+                            headers={['نام محصول', 'تعداد موجود', 'قیمت خرید (میانگین)', 'ارزش کل']}
                             rows={filterDrugs(salesWarehouseDrugs).map(d => {
                                 const totalQuantity = d.batches.reduce((sum, b) => sum + b.quantity, 0);
                                 const totalValue = d.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
@@ -409,9 +404,7 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
                      <details className="border rounded-lg">
                         <summary className="p-4 font-bold cursor-pointer bg-gray-50">انبار اصلی</summary>
                          <DataTable
-                            headers={['نام محصول', 'تعداد موجود', 'قیمت خرید', 'ارزش کل']}
-                            // FIX: Property 'quantity' and 'purchasePrice' does not exist on type 'Drug'.
-                            // Aggregate data from batches for each drug.
+                            headers={['نام محصول', 'تعداد موجود', 'قیمت خرید (میانگین)', 'ارزش کل']}
                             rows={filterDrugs(mainWarehouseDrugs).map(d => {
                                 const totalQuantity = d.batches.reduce((sum, b) => sum + b.quantity, 0);
                                 const totalValue = d.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
@@ -427,8 +420,108 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
     );
 };
 
+type TraceabilityResult = {
+    purchaseInfo: (PurchaseItem & { bill: PurchaseBill }) | null;
+    salesInfo: { customer: string; orderNumber: string; date: string; quantitySold: number; }[];
+    currentStock: { drugName: string; quantity: number; expiryDate: string; }[];
+} | null;
+
+// --- New Batch Traceability View ---
+const BatchTraceabilityView = ({ orders, purchaseBills, drugs, mainWarehouseDrugs, onPrint }: { orders: Order[], purchaseBills: PurchaseBill[], drugs: Drug[], mainWarehouseDrugs: Drug[], onPrint: (data: any) => void }) => {
+    const [lotNumber, setLotNumber] = useState('');
+    const [result, setResult] = useState<TraceabilityResult>(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSearch = () => {
+        if (!lotNumber.trim()) return;
+        setIsLoading(true);
+
+        const purchaseInfo = purchaseBills
+            .flatMap(bill => bill.items.map(item => ({ ...item, bill })))
+            .find(item => item.lotNumber === lotNumber.trim()) || null;
+
+        const salesInfo = orders
+            .flatMap(order => order.items.map(item => ({ item, order })))
+            .filter(({ item }) => item.batchAllocations?.some(alloc => alloc.lotNumber === lotNumber.trim()))
+            .map(({ item, order }) => {
+                const allocation = item.batchAllocations!.find(alloc => alloc.lotNumber === lotNumber.trim())!;
+                return {
+                    customer: order.customerName,
+                    orderNumber: order.orderNumber,
+                    date: order.orderDate,
+                    quantitySold: allocation.quantity,
+                };
+            });
+            
+        const currentStock = [...drugs, ...mainWarehouseDrugs]
+            .flatMap(drug => drug.batches.map(batch => ({...batch, drugName: drug.name})))
+            .filter(batch => batch.lotNumber === lotNumber.trim());
+
+        const searchResult = { purchaseInfo, salesInfo, currentStock };
+        setResult(searchResult);
+        setIsLoading(false);
+    };
+
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
+            <h3 className="text-xl font-bold text-gray-800">ردیابی بچ/لات</h3>
+            <div className="flex gap-4 items-center p-4 bg-gray-50 rounded-lg">
+                <input 
+                    type="text" 
+                    value={lotNumber}
+                    onChange={e => setLotNumber(e.target.value)}
+                    placeholder="شماره لات را وارد کنید..."
+                    className="w-full p-2 border rounded-lg"
+                />
+                <button onClick={handleSearch} className="px-6 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700">جستجو</button>
+                {result && (
+                     <button onClick={() => onPrint({lotNumber, result})} className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700">
+                        <PrintIcon /> چاپ
+                    </button>
+                )}
+            </div>
+            {result && (
+                <div className="space-y-6">
+                    <div className="border rounded-lg p-4">
+                        <h4 className="font-bold mb-2">۱. اطلاعات خرید</h4>
+                        {result.purchaseInfo ? (
+                            <ul className="list-disc list-inside text-sm space-y-1">
+                                <li>نام محصول: <strong>{result.purchaseInfo.drugName}</strong></li>
+                                <li>تامین کننده: <strong>{result.purchaseInfo.bill.supplierName}</strong></li>
+                                <li>تاریخ خرید: <strong>{new Date(result.purchaseInfo.bill.purchaseDate).toLocaleDateString('fa-IR')}</strong></li>
+                                <li>شماره فاکتور: <strong>{result.purchaseInfo.bill.billNumber}</strong></li>
+                                <li>تعداد خریداری شده: <strong>{result.purchaseInfo.quantity}</strong></li>
+                                <li>قیمت خرید: <strong>{result.purchaseInfo.purchasePrice.toLocaleString()}</strong></li>
+                            </ul>
+                        ) : <p>اطلاعات خریدی برای این لات یافت نشد.</p>}
+                    </div>
+                     <div className="border rounded-lg p-4">
+                        <h4 className="font-bold mb-2">۲. اطلاعات فروش</h4>
+                        {result.salesInfo.length > 0 ? (
+                            <DataTable 
+                                headers={['تاریخ فروش', 'شماره فاکتور', 'مشتری', 'تعداد فروخته شده']}
+                                rows={result.salesInfo.map(s => [new Date(s.date).toLocaleDateString('fa-IR'), s.orderNumber, s.customer, s.quantitySold])}
+                            />
+                        ) : <p>این لات هنوز فروخته نشده است.</p>}
+                    </div>
+                     <div className="border rounded-lg p-4">
+                        <h4 className="font-bold mb-2">۳. موجودی فعلی</h4>
+                        {result.currentStock.length > 0 ? (
+                             <DataTable 
+                                headers={['نام محصول', 'موجودی فعلی', 'تاریخ انقضا']}
+                                rows={result.currentStock.map(s => [s.drugName, s.quantity, new Date(s.expiryDate).toLocaleDateString('fa-IR')])}
+                            />
+                        ) : <p>هیچ موجودی از این لات در انبارها یافت نشد.</p>}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 // --- New Printable Report Component ---
-const ReportPrintView = ({ title, dateRange, headers, rows, companyInfo, documentSettings, className, style }: { title: string, dateRange: string, headers: string[], rows: (string|number)[][], companyInfo: CompanyInfo, documentSettings: DocumentSettings, className?: string, style?: React.CSSProperties }) => {
+const ReportPrintView = ({ title, dateRange, headers, rows, companyInfo, documentSettings, className, style, children }: { title?: string, dateRange?: string, headers?: string[], rows?: (string|number)[][], companyInfo: CompanyInfo, documentSettings: DocumentSettings, className?: string, style?: React.CSSProperties, children?: React.ReactNode }) => {
     return (
         <div className={className} style={style}>
             <header className="print-header">
@@ -438,25 +531,28 @@ const ReportPrintView = ({ title, dateRange, headers, rows, companyInfo, documen
                 {companyInfo.logo && <img src={companyInfo.logo} alt="Company Logo" className="print-logo" />}
             </header>
             <div className="text-center my-8">
-                <h2 className="text-2xl font-bold">{title}</h2>
-                <p className="text-sm text-gray-500 mt-2">{dateRange}</p>
+                {title && <h2 className="text-2xl font-bold">{title}</h2>}
+                {dateRange && <p className="text-sm text-gray-500 mt-2">{dateRange}</p>}
             </div>
-            <table className="w-full text-right text-sm">
-                <thead>
-                    <tr>{headers.map(h => <th key={h} className="p-3">{h}</th>)}</tr>
-                </thead>
-                <tbody className="divide-y">
-                    {rows.map((row, rowIndex) => (
-                        <tr key={rowIndex}>
-                            {row.map((cell, cellIndex) => 
-                                <td key={cellIndex} className="p-2">
-                                    {typeof cell === 'number' ? cell.toLocaleString() : cell}
-                                </td>
-                            )}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+            {headers && rows && (
+                 <table className="w-full text-right text-sm">
+                    <thead>
+                        <tr>{headers.map(h => <th key={h} className="p-3">{h}</th>)}</tr>
+                    </thead>
+                    <tbody className="divide-y">
+                        {rows.map((row, rowIndex) => (
+                            <tr key={rowIndex}>
+                                {row.map((cell, cellIndex) => 
+                                    <td key={cellIndex} className="p-2">
+                                        {typeof cell === 'number' ? cell.toLocaleString() : cell}
+                                    </td>
+                                )}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+            {children}
         </div>
     );
 };
@@ -473,7 +569,7 @@ const PrintPreviewModal = ({ isOpen, onClose, children, documentSettings }: { is
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start p-4 overflow-y-auto" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl mt-8 mb-8 w-full max-w-4xl" onClick={e => e.stopPropagation()}>
-                <div className="p-4 bg-gray-50 rounded-b-xl border-t print:hidden flex justify-between items-center">
+                <div className="p-4 bg-gray-50 rounded-t-xl border-b print:hidden flex justify-between items-center">
                     <div>
                         <label className="text-sm font-semibold mr-2">قالب:</label>
                         <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="bg-white border border-gray-300 rounded-md px-2 py-1">
@@ -489,7 +585,6 @@ const PrintPreviewModal = ({ isOpen, onClose, children, documentSettings }: { is
                     </div>
                 </div>
                 <div id="print-section" className="max-h-[75vh] overflow-y-auto">
-                    {/* FIX: Cast the style object to React.CSSProperties to allow for CSS custom properties. */}
                     {React.cloneElement(children as React.ReactElement<{ className?: string, style?: React.CSSProperties }>, {
                         className: `p-10 template-${selectedTemplate} layout-logo-${documentSettings.logoPosition}`,
                         style: { '--accent-color': documentSettings.accentColor } as React.CSSProperties
@@ -525,6 +620,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
     });
     const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
     const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+    const [printData, setPrintData] = useState<any>(null); // For generic print data
     const exportMenuRef = useRef<HTMLDivElement>(null);
 
 
@@ -561,34 +657,27 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [exportMenuRef]);
 
-    const getCurrentReportData = () => {
-        const { sales, purchases, wastedStock } = filteredData;
+    const getReportDataForExport = (tab: ReportTab) => {
+        const { sales, purchases } = filteredData;
         const dateRange = `از ${new Date(filters.startDate).toLocaleDateString('fa-IR')} تا ${new Date(filters.endDate).toLocaleDateString('fa-IR')}`;
         
-        switch (activeTab) {
+        switch (tab) {
             case 'profitability': {
-                const drugsMap = new Map(drugs.map(d => [d.id, d]));
-                const profitItems = sales.filter(o => o.type === 'sale').flatMap(o => o.items).reduce((acc, item) => {
-                    const drug = drugsMap.get(item.drugId);
-                    // FIX: Property 'purchasePrice' does not exist on type 'Drug'. Calculate average.
-                    let purchasePrice = 0;
-                    if (drug && drug.batches.length > 0) {
-                        const totalQuantityInStock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
-                        const totalValueInStock = drug.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
-                        purchasePrice = totalQuantityInStock > 0 ? totalValueInStock / totalQuantityInStock : 0;
-                    }
-                    const itemRevenue = item.finalPrice * item.quantity;
-                    const itemCogs = purchasePrice * (item.quantity + item.bonusQuantity);
+                 const profitItems = sales.filter(o => o.type === 'sale').flatMap(o => o.items).reduce((acc, item) => {
+                    const itemRevenue = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
+                        ? item.originalPrice * item.quantity
+                        : item.finalPrice * item.quantity;
+                    const itemCogs = (item.batchAllocations || []).reduce((sum, alloc) => sum + (alloc.quantity * alloc.purchasePrice), 0);
                     const itemProfit = itemRevenue - itemCogs;
                     
                     const existing = acc.find(i => i.name === item.drugName);
                     if (existing) {
-                        existing.qty += item.quantity;
+                        existing.qty += item.quantity + (item.bonusQuantity || 0);
                         existing.revenue += itemRevenue;
                         existing.cogs += itemCogs;
                         existing.profit += itemProfit;
                     } else {
-                        acc.push({ name: item.drugName, qty: item.quantity, revenue: itemRevenue, cogs: itemCogs, profit: itemProfit });
+                        acc.push({ name: item.drugName, qty: item.quantity + (item.bonusQuantity || 0), revenue: itemRevenue, cogs: itemCogs, profit: itemProfit });
                     }
                     return acc;
                 }, [] as { name: string, qty: number, revenue: number, cogs: number, profit: number }[]);
@@ -596,7 +685,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 return {
                     title: 'گزارش سودآوری',
                     dateRange,
-                    headers: ['نام محصول', 'تعداد فروش', 'مجموع درآمد', 'مجموع هزینه', 'سود کل'],
+                    headers: ['نام محصول', 'تعداد فروش (با بونس)', 'مجموع درآمد', 'مجموع هزینه', 'سود کل'],
                     rows: profitItems.sort((a,b) => b.profit - a.profit).map(i => [i.name, i.qty, i.revenue, i.cogs, i.profit]),
                 };
             }
@@ -635,7 +724,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
     };
     
     const handleExcelExport = () => {
-        const { title, headers, rows } = getCurrentReportData();
+        const { title, headers, rows } = getReportDataForExport(activeTab);
         const dataToExport = rows.map(row => {
             let obj = {};
             headers.forEach((header, index) => {
@@ -649,6 +738,18 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
         XLSX.writeFile(wb, `${title.replace(/ /g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
         setIsExportMenuOpen(false);
     };
+
+    const handlePrintRequest = () => {
+        const data = getReportDataForExport(activeTab);
+        setPrintData(data);
+        setIsPrintPreviewOpen(true);
+        setIsExportMenuOpen(false);
+    };
+
+    const handleTraceabilityPrint = (data: any) => {
+        setPrintData(data);
+        setIsPrintPreviewOpen(true);
+    };
     
     const ReportTabButton = ({ tabId, children, icon }: { tabId: ReportTab, children: React.ReactNode, icon: React.ReactNode }) => (
         <button 
@@ -660,7 +761,42 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
         </button>
     );
     
-    const reportPrintData = getCurrentReportData();
+    const renderPrintContent = () => {
+        if (!printData) return null;
+        if (activeTab === 'batch_traceability') {
+            const {lotNumber, result} = printData;
+             return (
+                <ReportPrintView title={`گزارش ردیابی لات: ${lotNumber}`} companyInfo={companyInfo} documentSettings={documentSettings}>
+                     <div className="space-y-6 mt-4 text-sm">
+                        <div className="border rounded-lg p-4 page-break-inside-avoid">
+                            <h4 className="font-bold mb-2 text-md">۱. اطلاعات خرید</h4>
+                            {result.purchaseInfo ? (
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li>نام محصول: <strong>{result.purchaseInfo.drugName}</strong></li>
+                                    <li>تامین کننده: <strong>{result.purchaseInfo.bill.supplierName}</strong></li>
+                                    <li>تاریخ خرید: <strong>{new Date(result.purchaseInfo.bill.purchaseDate).toLocaleDateString('fa-IR')}</strong></li>
+                                    <li>شماره فاکتور: <strong>{result.purchaseInfo.bill.billNumber}</strong></li>
+                                </ul>
+                            ) : <p>اطلاعات خریدی برای این لات یافت نشد.</p>}
+                        </div>
+                        <div className="border rounded-lg p-4 page-break-inside-avoid">
+                            <h4 className="font-bold mb-2 text-md">۲. اطلاعات فروش</h4>
+                            {result.salesInfo.length > 0 ? (
+                                <DataTable headers={['تاریخ', 'فاکتور', 'مشتری', 'تعداد']} rows={result.salesInfo.map(s => [new Date(s.date).toLocaleDateString('fa-IR'), s.orderNumber, s.customer, s.quantitySold])} />
+                            ) : <p>این لات هنوز فروخته نشده است.</p>}
+                        </div>
+                         <div className="border rounded-lg p-4 page-break-inside-avoid">
+                            <h4 className="font-bold mb-2 text-md">۳. موجودی فعلی</h4>
+                            {result.currentStock.length > 0 ? (
+                                <DataTable headers={['نام محصول', 'موجودی', 'تاریخ انقضا']} rows={result.currentStock.map(s => [s.drugName, s.quantity, new Date(s.expiryDate).toLocaleDateString('fa-IR')])} />
+                            ) : <p>هیچ موجودی از این لات در انبارها یافت نشد.</p>}
+                        </div>
+                    </div>
+                </ReportPrintView>
+             )
+        }
+        return <ReportPrintView {...printData} companyInfo={companyInfo} documentSettings={documentSettings} />;
+    }
 
     return (
         <div className="p-8 bg-gray-50 min-h-full space-y-6">
@@ -669,7 +805,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 onClose={() => setIsPrintPreviewOpen(false)}
                 documentSettings={documentSettings}
             >
-                <ReportPrintView {...reportPrintData} companyInfo={companyInfo} documentSettings={documentSettings} />
+                {renderPrintContent()}
             </PrintPreviewModal>
 
             <div>
@@ -689,13 +825,13 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                     </div>
                 </div>
                  <div className="relative" ref={exportMenuRef}>
-                    <button onClick={() => setIsExportMenuOpen(prev => !prev)} className="flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors text-sm bg-gray-600 text-white hover:bg-gray-700 shadow">
+                    <button onClick={() => setIsExportMenuOpen(prev => !prev)} className="flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors text-sm bg-gray-600 text-white hover:bg-gray-700 shadow" disabled={activeTab === 'batch_traceability' || activeTab === 'inventory'}>
                         <ExportIcon />
                         چاپ / خروجی
                     </button>
                     {isExportMenuOpen && (
                         <div className="absolute left-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border">
-                            <button onClick={() => { setIsPrintPreviewOpen(true); setIsExportMenuOpen(false); }} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PrintIcon /> چاپ / پیش‌نمایش</button>
+                            <button onClick={handlePrintRequest} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PrintIcon /> چاپ / پیش‌نمایش</button>
                             <button onClick={handleExcelExport} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><ExcelIcon /> دانلود Excel</button>
                         </div>
                     )}
@@ -704,6 +840,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
             
              <div className="flex items-center gap-2 flex-wrap justify-center bg-white rounded-xl shadow-md p-2">
                 <ReportTabButton tabId="profitability" icon={<ProfitIcon />}>سودآوری</ReportTabButton>
+                <ReportTabButton tabId="batch_traceability" icon={<TraceIcon />}>ردیابی بچ</ReportTabButton>
                 <ReportTabButton tabId="inventory" icon={<InventoryIcon />}>گزارش انبارها</ReportTabButton>
                 <ReportTabButton tabId="sales" icon={<SalesIcon />}>فروش</ReportTabButton>
                 <ReportTabButton tabId="purchases" icon={<PurchaseIcon />}>خرید</ReportTabButton>
@@ -718,6 +855,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 {activeTab === 'inventory' && <InventoryReportView salesWarehouseDrugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} />}
                 {activeTab === 'bonuses' && <BonusSummaryView filteredSales={filteredData.sales} drugs={drugs} />}
                 {activeTab === 'wasted_stock' && <WastedStockView filteredWastedStock={filteredData.wastedStock} />}
+                {activeTab === 'batch_traceability' && <BatchTraceabilityView orders={orders} purchaseBills={purchaseBills} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} onPrint={handleTraceabilityPrint} />}
             </div>
         </div>
     );

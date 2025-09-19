@@ -112,189 +112,6 @@ const formatGregorianForDisplay = (dateStr: string): string => {
 
 //=========== MODAL COMPONENTS ===========//
 
-// --- Copied from Inventory.tsx for reuse ---
-type DrugModalBarcodeScannerProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onScanSuccess: (decodedText: string) => void;
-};
-
-const DrugModalBarcodeScanner: React.FC<DrugModalBarcodeScannerProps> = ({ isOpen, onClose, onScanSuccess }) => {
-    useEffect(() => {
-        if (!isOpen) return;
-        const html5QrCode = new Html5Qrcode("drug-modal-reader");
-        const qrCodeSuccessCallback = (decodedText, decodedResult) => {
-            onScanSuccess(decodedText);
-            html5QrCode.stop().catch(err => console.error("Failed to stop scanner", err));
-        };
-        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-
-        html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback, (errorMessage) => {})
-            .catch((err) => { console.error("Unable to start scanning.", err); });
-
-        return () => {
-            if (html5QrCode && html5QrCode.isScanning) {
-                html5QrCode.stop().catch(err => console.log("Scanner already stopped or failed to stop.", err));
-            }
-        };
-    }, [isOpen, onScanSuccess]);
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-[99] flex justify-center items-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-                <h3 className="text-lg font-bold text-center mb-4">اسکن بارکد / QR کد</h3>
-                <div id="drug-modal-reader" className="w-full"></div>
-                <button onClick={onClose} className="mt-4 w-full py-2 bg-gray-200 rounded-lg">انصراف</button>
-            </div>
-        </div>
-    );
-};
-
-type DrugModalProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onSave: (drug: Omit<Drug, 'batches'>) => void;
-    initialData: Drug | null;
-    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
-};
-
-const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
-    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', unitsPerCarton: '', price: '', discountPercentage: '0', category: 'سایر' };
-    const [drug, setDrug] = useState(defaultState);
-    const [isScannerOpen, setIsScannerOpen] = useState(false);
-    const isEditMode = initialData !== null;
-
-    useEffect(() => {
-        if (isOpen) {
-             if (initialData) {
-                 setDrug({
-                     name: initialData.name,
-                     barcode: initialData.barcode || '',
-                     code: initialData.code,
-                     manufacturer: initialData.manufacturer,
-                     unitsPerCarton: String(initialData.unitsPerCarton || ''),
-                     price: String(initialData.price),
-                     discountPercentage: String(initialData.discountPercentage || '0'),
-                     category: initialData.category || 'سایر'
-                 });
-             } else {
-                setDrug(defaultState);
-             }
-        }
-    }, [isOpen, initialData]);
-
-    if (!isOpen) return null;
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setDrug(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const priceValue = Number(drug.price) || 0;
-        if (!drug.name || priceValue <= 0) {
-            addToast("لطفا نام محصول و قیمت فروش معتبر را وارد کنید.", 'error');
-            return;
-        }
-
-        const drugToSave: Omit<Drug, 'batches'> = {
-            id: isEditMode ? initialData!.id : Date.now(),
-            name: drug.name,
-            barcode: drug.barcode,
-            code: drug.code,
-            manufacturer: drug.manufacturer,
-            category: drug.category,
-            unitsPerCarton: Number(drug.unitsPerCarton) || 1,
-            price: priceValue,
-            discountPercentage: Number(drug.discountPercentage) || 0,
-        };
-        
-        onSave(drugToSave);
-        onClose();
-    };
-    
-    const inputStyles = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition-shadow disabled:bg-gray-100 disabled:cursor-not-allowed";
-    const labelStyles = "block text-gray-700 text-sm font-bold mb-2";
-
-    return (
-        <>
-        <DrugModalBarcodeScanner
-            isOpen={isScannerOpen}
-            onClose={() => setIsScannerOpen(false)}
-            onScanSuccess={(text) => {
-                setDrug(prev => ({...prev, barcode: text}));
-                setIsScannerOpen(false);
-            }}
-        />
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[90] flex justify-center items-center p-4 transition-opacity duration-300" onClick={onClose} role="dialog" aria-modal="true">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                <header className="p-8 pb-4 flex-shrink-0">
-                    <h3 className="text-2xl font-bold text-gray-800">{isEditMode ? 'ویرایش اطلاعات محصول' : 'افزودن محصول جدید'}</h3>
-                </header>
-                <main className="flex-1 overflow-y-auto px-8">
-                    <form id="drug-modal-form" onSubmit={handleSubmit}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                             <div>
-                                <label htmlFor="name" className={labelStyles}>نام محصول (ضروری)</label>
-                                <input type="text" name="name" id="name" value={drug.name} onChange={handleChange} className={inputStyles} required autoFocus />
-                            </div>
-                            <div>
-                               <label htmlFor="manufacturer" className={labelStyles}>کمپانی</label>
-                               <input type="text" name="manufacturer" id="manufacturer" value={drug.manufacturer} onChange={handleChange} className={inputStyles} />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label htmlFor="category" className={labelStyles}>دسته‌بندی</label>
-                                <select name="category" id="category" value={drug.category} onChange={handleChange} className={inputStyles}>
-                                    {drugCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                </select>
-                            </div>
-                             <div>
-                                <label htmlFor="code" className={labelStyles}>کد محصول</label>
-                                <input type="text" name="code" id="code" value={drug.code} onChange={handleChange} className={inputStyles} />
-                            </div>
-                        </div>
-                        <div className="mb-4">
-                            <label htmlFor="barcode" className={labelStyles}>بارکد / QR Code</label>
-                            <div className="flex gap-2">
-                                 <input type="text" name="barcode" id="barcode" value={drug.barcode} onChange={handleChange} className={inputStyles} />
-                                 <button type="button" title="اسکن با دوربین" onClick={() => setIsScannerOpen(true)} className="p-2 border rounded-lg hover:bg-gray-100"><CameraIcon className="w-4 h-4" /></button>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                             <div>
-                                <label htmlFor="price" className={labelStyles}>قیمت فروش (ضروری)</label>
-                                <input type="number" name="price" id="price" value={drug.price} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 150" />
-                            </div>
-                            <div>
-                                <label htmlFor="discountPercentage" className={labelStyles}>تخفیف (٪)</label>
-                                <input type="number" name="discountPercentage" id="discountPercentage" value={drug.discountPercentage} onChange={handleChange} className={inputStyles} min="0" max="100" placeholder="مثلا: 5"/>
-                            </div>
-                             <div>
-                                <label htmlFor="unitsPerCarton" className={labelStyles}>تعداد در کارتن</label>
-                                <input type="number" name="unitsPerCarton" id="unitsPerCarton" value={drug.unitsPerCarton} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 100" />
-                            </div>
-                        </div>
-                    </form>
-                </main>
-                <footer className="flex justify-end space-x-4 space-x-reverse p-8 pt-4 border-t border-gray-200 flex-shrink-0">
-                    <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold transition-colors">انصراف</button>
-                    <button type="submit" form="drug-modal-form" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors shadow-md hover:shadow-lg">
-                        {isEditMode ? 'ذخیره تغییرات' : 'ذخیره محصول'}
-                    </button>
-                </footer>
-            </div>
-        </div>
-        </>
-    );
-};
-// --- End of copied components ---
-
-
 type BarcodeScannerModalProps = {
     isOpen: boolean;
     onClose: () => void;
@@ -351,9 +168,10 @@ type OrderModalProps = {
     orders: Order[];
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     mode: 'sale' | 'return';
+    onOpenQuickAddModal: () => void;
 };
 
-const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initialData, drugs, customers, orders, addToast, mode }) => {
+const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initialData, drugs, customers, orders, addToast, mode, onOpenQuickAddModal }) => {
     
     const [orderInfo, setOrderInfo] = useState({
         customerName: '', amountPaid: '' as number | '', status: 'ارسال شده' as OrderStatus,
@@ -389,10 +207,14 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
 
     const availableDrugs = useMemo(() => {
         if (!drugSearchTerm) return [];
-        const drugsWithStock = drugs.filter(d => d.batches.some(b => b.quantity > 0));
-        return drugsWithStock
+        return drugs
             .filter(d => (mode === 'sale' ? true : true)) // For returns, show all drugs
             .filter(d => d.name.toLowerCase().includes(drugSearchTerm.toLowerCase()))
+            .map(d => ({
+                ...d,
+                totalStock: d.batches.reduce((sum, b) => sum + b.quantity, 0)
+            }))
+            .filter(d => mode === 'sale' ? d.totalStock > 0 : true)
             .slice(0, 10);
     }, [drugs, drugSearchTerm, mode]);
 
@@ -744,15 +566,29 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                              {mode === 'sale' && <div className="p-2 bg-gray-50 rounded-md grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div ref={searchWrapperRef}>
                                     <label className="text-xs text-gray-600">۱. جستجوی دستی دارو</label>
-                                    <div className="relative flex items-center">
-                                        <input 
-                                            type="text" 
-                                            value={drugSearchTerm}
-                                            onChange={e => setDrugSearchTerm(e.target.value)}
-                                            onFocus={() => setIsSearchFocused(true)}
-                                            placeholder='بخشی از نام دارو را تایپ کنید...'
-                                            className={`${inputStyles} rounded-l-none`}
-                                        />
+                                    <div className="relative flex">
+                                        <div className="relative flex-grow">
+                                            <input 
+                                                type="text" 
+                                                value={drugSearchTerm}
+                                                onChange={e => setDrugSearchTerm(e.target.value)}
+                                                onFocus={() => setIsSearchFocused(true)}
+                                                placeholder='بخشی از نام دارو را تایپ کنید...'
+                                                className={`${inputStyles} rounded-l-none`}
+                                            />
+                                            {isSearchFocused && availableDrugs.length > 0 && (
+                                                <div className="absolute top-full left-0 right-0 z-10 bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">
+                                                    {availableDrugs.map(drug => (
+                                                        <div key={drug.id} onClick={() => handleSelectDrug(drug)} className="p-3 hover:bg-teal-50 cursor-pointer border-b">
+                                                            <div className="flex justify-between items-center">
+                                                                <p className="font-semibold text-gray-800">{drug.name}</p>
+                                                                <p className="text-xs text-gray-500">موجودی: <span className="font-mono">{drug.totalStock}</span></p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                          <input 
                                             type="number" 
                                             value={addQuantity} 
@@ -761,18 +597,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                             min="1"
                                             title="تعداد"
                                         />
-                                        {isSearchFocused && availableDrugs.length > 0 && (
-                                            <div className="absolute top-full left-0 right-0 z-10 bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">
-                                                {availableDrugs.map(drug => {
-                                                    const totalStock = drug.batches.reduce((s, b) => s + b.quantity, 0);
-                                                    return (
-                                                    <div key={drug.id} onClick={() => handleSelectDrug(drug)} className="p-3 hover:bg-teal-50 cursor-pointer border-b">
-                                                        <p className="font-semibold text-gray-800">{drug.name}</p>
-                                                        <p className="text-xs text-gray-500">موجودی: <span className="font-mono">{totalStock}</span></p>
-                                                    </div>
-                                                )})}
-                                            </div>
-                                        )}
+                                         <button type="button" onClick={onOpenQuickAddModal} className="px-3 bg-gray-200 text-gray-700 rounded-l-lg hover:bg-gray-300 font-bold" title="افزودن محصول جدید به سیستم">+</button>
                                     </div>
                                 </div>
                                 <div className="flex items-end gap-2">
@@ -1060,7 +885,14 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                                 return (
                                 <tr key={item.drugId}>
                                     <td className="p-3">{index + 1}</td>
-                                    <td className="p-3 font-medium">{item.drugName}</td>
+                                    <td className="p-3 font-medium">
+                                        {item.drugName}
+                                        {item.batchAllocations && item.batchAllocations.length > 0 && (
+                                            <div className="text-xs text-gray-500 font-mono mt-1">
+                                            لات: {item.batchAllocations.map(a => a.lotNumber).join(', ')}
+                                            </div>
+                                        )}
+                                    </td>
                                     <td className="p-3">{item.quantity.toLocaleString()}</td>
                                     {showBonusInPrint && <td className="p-3">{item.bonusQuantity > 0 ? item.bonusQuantity.toLocaleString() : '-'}</td>}
                                     <td className="p-3">{item.originalPrice.toLocaleString()}</td>
@@ -1136,10 +968,10 @@ type SalesProps = {
     currentUser: User;
     documentSettings: DocumentSettings;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
-    onSaveDrug: (drug: Omit<Drug, 'batches'>) => void; // For quick-add
+    onOpenQuickAddModal: () => void;
 };
 
-const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser, documentSettings, addToast, onSaveDrug }) => {
+const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser, documentSettings, addToast, onOpenQuickAddModal }) => {
     const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
@@ -1201,6 +1033,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                 orders={orders}
                 addToast={addToast}
                 mode={modalMode}
+                onOpenQuickAddModal={onOpenQuickAddModal}
             />
             <PrintPreviewModal 
                 isOpen={isPrintModalOpen}

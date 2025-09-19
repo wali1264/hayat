@@ -250,11 +250,11 @@ type DrugModalProps = {
     isOpen: boolean;
     onClose: () => void;
     onSave: (drug: Omit<Drug, 'batches'>) => void;
-    initialData: Drug | null;
+    initialData: Omit<Drug, 'batches'> | null;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
+export const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
     const defaultState = { name: '', barcode: '', code: '', manufacturer: '', unitsPerCarton: '', price: '', discountPercentage: '0', category: 'سایر' };
     const [drug, setDrug] = useState(defaultState);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -630,7 +630,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isWriteOffModalOpen, setIsWriteOffModalOpen] = useState(false);
     const [isRequisitionModalOpen, setIsRequisitionModalOpen] = useState(false);
-    const [editingDrug, setEditingDrug] = useState<Drug | null>(null);
+    const [editingDrug, setEditingDrug] = useState<Omit<Drug, 'batches'> | null>(null);
     const [drugForWriteOff, setDrugForWriteOff] = useState<Drug | null>(null);
     const [isSheetModalOpen, setIsSheetModalOpen] = useState(false);
     const [drugsToPrint, setDrugsToPrint] = useState<Drug[]>([]);
@@ -653,7 +653,8 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
     };
     
     const handleOpenEditModal = (drug: Drug) => {
-        setEditingDrug(drug);
+        const { batches, ...drugInfo } = drug;
+        setEditingDrug(drugInfo);
         setIsModalOpen(true);
     };
 
