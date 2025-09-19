@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Drug, drugCategories, Batch } from './Inventory';
 import { Customer } from './Customers';
-import { CompanyInfo, User, DocumentSettings } from './Settings';
+import { CompanyInfo, User, DocumentSettings, RolePermissions } from './Settings';
+import { NoPermissionMessage } from './App';
 
 // Declare global libraries
 declare var Html5Qrcode: any;
@@ -37,6 +38,7 @@ export type BatchAllocation = {
     lotNumber: string;
     quantity: number;
     purchasePrice: number;
+    expiryDate: string;
 };
 
 export type OrderItem = {
@@ -169,9 +171,13 @@ type OrderModalProps = {
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     mode: 'sale' | 'return';
     onOpenQuickAddModal: () => void;
+    permissions: {
+        canGiveManualDiscount: boolean;
+        maxDiscountPercentage: number;
+    };
 };
 
-const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initialData, drugs, customers, orders, addToast, mode, onOpenQuickAddModal }) => {
+const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initialData, drugs, customers, orders, addToast, mode, onOpenQuickAddModal, permissions }) => {
     
     const [orderInfo, setOrderInfo] = useState({
         customerName: '', amountPaid: '' as number | '', status: 'ارسال شده' as OrderStatus,
@@ -417,7 +423,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     };
     
     const handleManualPriceChange = (drugId: number, newPriceStr: string) => {
-        const newFinalPrice = Number(newPriceStr);
+        let newFinalPrice = Number(newPriceStr);
         const itemToUpdate = items.find(it => it.drugId === drugId);
     
         if (!itemToUpdate || isNaN(newFinalPrice)) {
@@ -434,19 +440,20 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         // Calculate discount only if the new price is less than original
         if (originalPrice > 0 && finalPrice < originalPrice) {
             discountPercentage = ((originalPrice - finalPrice) / originalPrice) * 100;
-        } else {
-            // If price is higher than or equal to original, there's no discount
-            finalPrice = newFinalPrice;
-            discountPercentage = 0;
         }
-    
+        
+        if (discountPercentage > permissions.maxDiscountPercentage) {
+            addToast(`سقف تخفیف مجاز شما ${permissions.maxDiscountPercentage}% است.`, 'error');
+            discountPercentage = permissions.maxDiscountPercentage;
+            finalPrice = originalPrice * (1 - (permissions.maxDiscountPercentage / 100));
+        }
+
         setItems(currentItems =>
             currentItems.map(it => {
                 if (it.drugId === drugId) {
                     return {
                         ...it,
                         finalPrice: finalPrice,
-                        // Round to 2 decimal places
                         discountPercentage: Math.round(discountPercentage * 100) / 100,
                         isPriceOverridden: true, 
                     };
@@ -681,7 +688,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                                                 className="w-24 text-center border rounded-md py-1"
                                                             />
                                                         ) : (
-                                                            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setEditingPriceForDrugId(item.drugId)}>
+                                                            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => permissions.canGiveManualDiscount && setEditingPriceForDrugId(item.drugId)}>
                                                                 {(item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (
                                                                      <div className="flex items-center gap-2">
                                                                         <span className="font-bold text-gray-800">{item.originalPrice.toLocaleString()}</span>
@@ -696,9 +703,9 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                                                 ) : (
                                                                     <span className="font-bold">{item.originalPrice.toLocaleString()}</span>
                                                                 )}
-                                                                 <button type="button" className="text-gray-400 hover:text-blue-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="ویرایش دستی قیمت">
+                                                                 {permissions.canGiveManualDiscount && <button type="button" className="text-gray-400 hover:text-blue-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="ویرایش دستی قیمت">
                                                                     <EditIcon />
-                                                                </button>
+                                                                </button>}
                                                             </div>
                                                         )}
                                                     </td>
@@ -966,21 +973,40 @@ type SalesProps = {
     onSave: (order: Order) => void;
     onDelete: (id: number) => void;
     currentUser: User;
+    rolePermissions: RolePermissions;
     documentSettings: DocumentSettings;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     onOpenQuickAddModal: () => void;
 };
 
-const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser, documentSettings, addToast, onOpenQuickAddModal }) => {
+const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser, rolePermissions, documentSettings, addToast, onOpenQuickAddModal }) => {
     const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [modalMode, setModalMode] = useState<'sale' | 'return'>('sale');
-
     const [searchTerm, setSearchTerm] = useState('');
 
-    const canManageSales = useMemo(() => currentUser.role === 'مدیر کل' || currentUser.role === 'فروشنده', [currentUser.role]);
+    const permissions = useMemo(() => {
+        if (currentUser.role === 'مدیر کل') {
+            return {
+                canCreateSale: true,
+                canEditSale: true,
+                canDeleteSale: true,
+                canGiveManualDiscount: true,
+                maxDiscountPercentage: 100,
+            };
+        }
+        return rolePermissions[currentUser.role];
+    }, [currentUser.role, rolePermissions]);
+
+    const hasAnyPermission = useMemo(() => {
+        return permissions.canCreateSale || permissions.canEditSale || permissions.canDeleteSale;
+    }, [permissions]);
+
+    if (!hasAnyPermission && currentUser.role !== 'مدیر کل') {
+        return <NoPermissionMessage />;
+    }
 
     const handleOpenAddModal = () => {
         setEditingOrder(null);
@@ -1034,6 +1060,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                 addToast={addToast}
                 mode={modalMode}
                 onOpenQuickAddModal={onOpenQuickAddModal}
+                permissions={permissions}
             />
             <PrintPreviewModal 
                 isOpen={isPrintModalOpen}
@@ -1063,7 +1090,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                            <SearchIcon />
                         </div>
                     </div>
-                     {canManageSales && (
+                     {permissions.canCreateSale && (
                         <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 shadow-md">
                             <PlusIcon />
                             <span className="mr-2">ثبت سفارش جدید</span>
@@ -1100,9 +1127,9 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                                     <td className="p-4"><span className={`px-2 py-1 text-xs font-bold rounded-full ${orderStatusStyle.bg} ${orderStatusStyle.text}`}>{order.status}</span></td>
                                     <td className="p-4"><div className="flex gap-2">
                                         <button onClick={() => handleOpenPrintModal(order)} title="چاپ"><PrintIcon /></button>
-                                        {canManageSales && <button onClick={() => handleOpenEditModal(order)} title="ویرایش"><EditIcon /></button>}
-                                        {canManageSales && <button onClick={() => onDelete(order.id)} title="حذف"><TrashIcon className="w-5 h-5 text-red-500" /></button>}
-                                        {canManageSales && order.type === 'sale' && <button onClick={() => handleOpenReturnModal(order)} title="ثبت مستردی"><ReturnIcon /></button>}
+                                        {permissions.canEditSale && <button onClick={() => handleOpenEditModal(order)} title="ویرایش"><EditIcon /></button>}
+                                        {permissions.canDeleteSale && <button onClick={() => onDelete(order.id)} title="حذف"><TrashIcon className="w-5 h-5 text-red-500" /></button>}
+                                        {permissions.canCreateSale && order.type === 'sale' && <button onClick={() => handleOpenReturnModal(order)} title="ثبت مستردی"><ReturnIcon /></button>}
                                     </div></td>
                                 </tr>
                             )})}

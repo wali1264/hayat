@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User } from './Settings';
 import { StockRequisition, StockRequisitionItem } from './App';
+import { RolePermissions } from './Settings';
+import { NoPermissionMessage } from './App';
 
 // Declare global libraries
 declare var Html5Qrcode: any;
@@ -621,12 +623,13 @@ type InventoryProps = {
     onWriteOff: (drugId: number, lotNumber: string, quantity: number, reason: WriteOffReason, notes: string) => void;
     onSaveRequisition: (requisition: Omit<StockRequisition, 'id' | 'status' | 'requestedBy' | 'date'>) => void;
     currentUser: User;
+    rolePermissions: RolePermissions;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
 type Tab = 'stock' | 'requisitions';
 
-const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockRequisitions, onSaveDrug, onDelete, onWriteOff, onSaveRequisition, currentUser, addToast }) => {
+const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockRequisitions, onSaveDrug, onDelete, onWriteOff, onSaveRequisition, currentUser, rolePermissions, addToast }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isWriteOffModalOpen, setIsWriteOffModalOpen] = useState(false);
     const [isRequisitionModalOpen, setIsRequisitionModalOpen] = useState(false);
@@ -642,10 +645,27 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
         direction: 'ascending',
     });
     const [activeTab, setActiveTab] = useState<Tab>('stock');
+    
+    const permissions = useMemo(() => {
+        if (currentUser.role === 'مدیر کل') {
+            return {
+                canCreateDrug: true,
+                canEditDrug: true,
+                canDeleteDrug: true,
+                canWriteOffStock: true,
+            };
+        }
+        return rolePermissions[currentUser.role];
+    }, [currentUser.role, rolePermissions]);
 
-    const canManageInventory = useMemo(() => 
-        currentUser.role === 'مدیر کل' || currentUser.role === 'انباردار', 
-    [currentUser.role]);
+    const hasAnyPermission = useMemo(() => {
+        return permissions.canCreateDrug || permissions.canEditDrug || permissions.canDeleteDrug || permissions.canWriteOffStock;
+    }, [permissions]);
+
+
+    if (!hasAnyPermission && currentUser.role !== 'مدیر کل') {
+        return <NoPermissionMessage />;
+    }
 
     const handleOpenAddModal = () => {
         setEditingDrug(null);
@@ -764,27 +784,27 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
 
     return (
         <div className="p-8">
-             {canManageInventory && <DrugModal 
+             {(permissions.canCreateDrug || permissions.canEditDrug) && <DrugModal 
                 isOpen={isModalOpen} 
                 onClose={() => setIsModalOpen(false)}
                 onSave={onSaveDrug}
                 initialData={editingDrug}
                 addToast={addToast}
             />}
-            {canManageInventory && <WriteOffModal
+            {permissions.canWriteOffStock && <WriteOffModal
                 isOpen={isWriteOffModalOpen}
                 onClose={() => setIsWriteOffModalOpen(false)}
                 drug={drugForWriteOff}
                 onConfirm={(lotNumber, quantity, reason, notes) => onWriteOff(drugForWriteOff!.id, lotNumber, quantity, reason, notes)}
                 addToast={addToast}
             />}
-            {canManageInventory && <RequisitionModal
+            <RequisitionModal
                 isOpen={isRequisitionModalOpen}
                 onClose={() => setIsRequisitionModalOpen(false)}
                 onSave={onSaveRequisition}
                 mainWarehouseDrugs={mainWarehouseDrugs}
                 addToast={addToast}
-            />}
+            />
             <BarcodeSheetModal
                 isOpen={isSheetModalOpen}
                 onClose={() => setIsSheetModalOpen(false)}
@@ -835,7 +855,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                             <option value="تمام شده">تمام شده</option>
                         </select>
                     </div>
-                    {canManageInventory && (
+                    {permissions.canCreateDrug && (
                         <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md">
                             <PlusIcon />
                             <span className="mr-2">افزودن محصول جدید</span>
@@ -919,13 +939,9 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                                                 </td>
                                                 <td className="p-4 whitespace-nowrap">
                                                     <div className="flex items-center space-x-2 space-x-reverse">
-                                                        {canManageInventory && (
-                                                            <>
-                                                                <button onClick={() => handleOpenEditModal(drug)} title="ویرایش" className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>
-                                                                <button onClick={() => handleDeleteDrug(drug.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
-                                                                <button onClick={() => handleOpenWriteOffModal(drug)} title="ثبت ضایعات" className="text-yellow-600 hover:text-yellow-800 p-1"><WasteIcon /></button>
-                                                            </>
-                                                        )}
+                                                        {permissions.canEditDrug && <button onClick={() => handleOpenEditModal(drug)} title="ویرایش" className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>}
+                                                        {permissions.canDeleteDrug && <button onClick={() => handleDeleteDrug(drug.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>}
+                                                        {permissions.canWriteOffStock && <button onClick={() => handleOpenWriteOffModal(drug)} title="ثبت ضایعات" className="text-yellow-600 hover:text-yellow-800 p-1"><WasteIcon /></button>}
                                                     </div>
                                                 </td>
                                             </tr>

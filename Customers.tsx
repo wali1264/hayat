@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User } from './Settings';
+import { RolePermissions } from './Settings';
+import { NoPermissionMessage } from './App';
 
 //=========== ICONS ===========//
 const Icon = ({ path, className = "w-5 h-5" }) => (
@@ -150,18 +152,34 @@ type CustomersProps = {
     onSave: (customer: Customer) => void;
     onDelete: (id: number) => void;
     currentUser: User;
+    rolePermissions: RolePermissions;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, currentUser, addToast }) => {
+const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, currentUser, rolePermissions, addToast }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    
+    const permissions = useMemo(() => {
+        if (currentUser.role === 'مدیر کل') {
+            return {
+                canCreateCustomer: true,
+                canEditCustomer: true,
+                canDeleteCustomer: true,
+            };
+        }
+        return rolePermissions[currentUser.role];
+    }, [currentUser.role, rolePermissions]);
 
-    const canManageCustomers = useMemo(() => 
-        currentUser.role === 'مدیر کل' || currentUser.role === 'فروشنده', 
-    [currentUser.role]);
+    const hasAnyPermission = useMemo(() => {
+        return permissions.canCreateCustomer || permissions.canEditCustomer || permissions.canDeleteCustomer;
+    }, [permissions]);
+
+    if (!hasAnyPermission && currentUser.role !== 'مدیر کل') {
+        return <NoPermissionMessage />;
+    }
 
     const handleOpenAddModal = () => {
         setEditingCustomer(null);
@@ -192,7 +210,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
 
     return (
         <div className="p-8">
-             {canManageCustomers && <CustomerModal 
+             {(permissions.canCreateCustomer || permissions.canEditCustomer) && <CustomerModal 
                 isOpen={isModalOpen} 
                 onClose={handleCloseModal} 
                 onSave={onSave}
@@ -229,7 +247,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
                             <option value="غیرفعال">غیرفعال</option>
                         </select>
                     </div>
-                    {canManageCustomers && (
+                    {permissions.canCreateCustomer && (
                         <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md">
                             <PlusIcon />
                             <span className="mr-2">افزودن مشتری جدید</span>
@@ -279,11 +297,11 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
                                             </td>
                                             <td className="p-4">
                                                 <div className="flex items-center space-x-2 space-x-reverse">
-                                                    {canManageCustomers && (
-                                                        <>
-                                                            <button onClick={() => handleOpenEditModal(customer)} className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>
-                                                            <button onClick={() => handleDeleteCustomer(customer.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
-                                                        </>
+                                                    {permissions.canEditCustomer && (
+                                                        <button onClick={() => handleOpenEditModal(customer)} className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>
+                                                    )}
+                                                    {permissions.canDeleteCustomer && (
+                                                        <button onClick={() => handleDeleteCustomer(customer.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
                                                     )}
                                                 </div>
                                             </td>

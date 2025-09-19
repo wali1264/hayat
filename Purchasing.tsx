@@ -309,7 +309,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                                     <tr key={`${item.drugId}-${item.lotNumber}`} className="border-b last:border-0 hover:bg-gray-50">
                                         <td className="p-2">{item.drugName}</td>
                                         <td className="p-2 font-mono text-xs">{item.lotNumber}</td>
-                                        <td className="p-2"><input type="number" value={item.quantity} onChange={(e) => handleItemQuantityChange(item.drugId, item.lotNumber, e.target.value)} className="w-24 text-center border rounded-md py-1" min="0" readOnly={mode==='return'} /></td>
+                                        <td className="p-2"><input type="number" value={item.quantity} onChange={(e) => handleItemQuantityChange(item.drugId, item.lotNumber, e.target.value)} className="w-24 text-center border rounded-md py-1" min="0" readOnly={mode !== 'return'} /></td>
                                         <td className="p-2">{item.purchasePrice.toLocaleString()}</td>
                                         <td className="p-2 font-semibold">{(item.quantity * item.purchasePrice).toLocaleString()}</td>
                                         <td className="p-2 text-center">

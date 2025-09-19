@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { User } from './Settings';
+import { Order } from './Sales';
 
 //=========== ICONS ===========//
 const Icon = ({ path, className = "w-5 h-5" }) => (
@@ -135,7 +136,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ isOpen, onClose, onSave, in
 
 //=========== MAIN COMPONENT ===========//
 type AccountingProps = {
-    incomes: Income[];
+    orders: Order[];
     expenses: Expense[];
     onSave: (expense: Expense) => void;
     onDelete: (id: number) => void;
@@ -143,7 +144,7 @@ type AccountingProps = {
 };
 
 
-const FinanceAndExpenses: React.FC<AccountingProps> = ({ incomes, expenses, onSave, onDelete, currentUser }) => {
+const FinanceAndExpenses: React.FC<AccountingProps> = ({ orders, expenses, onSave, onDelete, currentUser }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -153,11 +154,13 @@ const FinanceAndExpenses: React.FC<AccountingProps> = ({ incomes, expenses, onSa
     [currentUser.role]);
 
     const { totalIncome, totalExpenses, netProfit } = useMemo(() => {
-        const totalIncome = incomes.reduce((sum, item) => sum + item.amount, 0);
+        const totalIncome = orders
+            .filter(o => o.type === 'sale')
+            .reduce((sum, item) => sum + item.totalAmount, 0);
         const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
         const netProfit = totalIncome - totalExpenses;
         return { totalIncome, totalExpenses, netProfit };
-    }, [incomes, expenses]);
+    }, [orders, expenses]);
 
     const handleSaveExpense = (expenseData: Expense) => {
         onSave(expenseData);

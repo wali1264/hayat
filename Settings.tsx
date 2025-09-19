@@ -41,6 +41,32 @@ export type DocumentSettings = {
     backgroundImage: string | null;
 };
 
+// --- NEW PERMISSION TYPES ---
+export type PermissionSet = {
+    // Sales
+    canCreateSale: boolean;
+    canEditSale: boolean;
+    canDeleteSale: boolean;
+    canGiveManualDiscount: boolean;
+    maxDiscountPercentage: number;
+    // Customers
+    canCreateCustomer: boolean;
+    canEditCustomer: boolean;
+    canDeleteCustomer: boolean;
+    // Inventory
+    canCreateDrug: boolean;
+    canEditDrug: boolean;
+    canDeleteDrug: boolean;
+    canWriteOffStock: boolean;
+};
+
+export type RolePermissions = {
+    'فروشنده': PermissionSet;
+    'انباردار': PermissionSet;
+    'حسابدار': PermissionSet;
+};
+
+
 //=========== MOCK DATA ===========//
 export const mockUsers: User[] = [
     { id: 1, username: 'admin', password: 'admin', role: 'مدیر کل', lastLogin: 'هرگز وارد نشده' },
@@ -148,6 +174,7 @@ const ResetPasswordModal = ({isOpen, onClose, onConfirm, user}) => {
 
     const handleSubmit = () => {
         if (newPassword.length < 4) {
+            // A more robust app would use a toast here
             alert('رمز عبور باید حداقل ۴ کاراکتر باشد.');
             return;
         }
@@ -156,8 +183,8 @@ const ResetPasswordModal = ({isOpen, onClose, onConfirm, user}) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
-            <div className="bg-white rounded-xl p-8 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-xl p-8 w-full max-w-md" onClick={e => e.stopPropagation()}>
                 <h3 className="text-xl font-bold mb-4">بازنشانی رمز عبور برای {user.username}</h3>
                 <div>
                     <label className="block text-sm font-bold mb-2">رمز عبور جدید</label>
@@ -317,7 +344,7 @@ const DocumentCustomizerSection = ({ settings, onSetSettings, companyInfo }) => 
     );
 };
 
-const UserManagementSection = ({ users, onSaveUser, onDeleteUser, onPasswordReset }) => {
+const UserManagementSection = ({ users, onSaveUser, onDeleteUser, onPasswordReset, showConfirmation }) => {
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [userToReset, setUserToReset] = useState<User | null>(null);
@@ -330,6 +357,14 @@ const UserManagementSection = ({ users, onSaveUser, onDeleteUser, onPasswordRese
     const handleEdit = (user: User) => {
         setEditingUser(user);
         setIsUserModalOpen(true);
+    };
+
+    const handleDelete = (user: User) => {
+        showConfirmation(
+            `حذف کاربر`,
+            <p>آیا از حذف کاربر <span className="font-bold">{user.username}</span> اطمینان دارید؟ این عمل دائمی است.</p>,
+            () => onDeleteUser(user.id)
+        );
     };
 
     const handleResetPassword = (user: User) => {
@@ -357,7 +392,7 @@ const UserManagementSection = ({ users, onSaveUser, onDeleteUser, onPasswordRese
                                 <td className="p-3 font-medium">{user.username}</td>
                                 <td className="p-3"><span className={`px-2 py-1 text-xs font-bold rounded-full ${getRoleStyle(user.role)}`}>{user.role}</span></td>
                                 <td className="p-3 text-sm text-gray-500">{user.lastLogin}</td>
-                                <td className="p-3"><div className="flex gap-2"><button onClick={() => handleEdit(user)} className="text-blue-500 p-1" title="ویرایش"><EditIcon /></button><button onClick={() => onDeleteUser(user.id)} className="text-red-500 p-1" title="حذف"><TrashIcon /></button><button onClick={() => handleResetPassword(user)} className="text-yellow-600 p-1" title="بازنشانی رمز عبور"><KeyIcon /></button></div></td>
+                                <td className="p-3"><div className="flex gap-2"><button onClick={() => handleEdit(user)} className="text-blue-500 p-1" title="ویرایش"><EditIcon /></button><button onClick={() => handleDelete(user)} className="text-red-500 p-1" title="حذف"><TrashIcon /></button><button onClick={() => handleResetPassword(user)} className="text-yellow-600 p-1" title="بازنشانی رمز عبور"><KeyIcon /></button></div></td>
                             </tr>
                         ))}
                     </tbody>
@@ -365,6 +400,101 @@ const UserManagementSection = ({ users, onSaveUser, onDeleteUser, onPasswordRese
             </div>
         </div>
         </>
+    );
+};
+
+// --- NEW ROLE MANAGEMENT SECTION ---
+const RoleManagementSection = ({ permissions, setPermissions, addToast }) => {
+    const [activeRole, setActiveRole] = useState<keyof RolePermissions>('فروشنده');
+    const [localPermissions, setLocalPermissions] = useState(permissions);
+
+    useEffect(() => {
+        setLocalPermissions(permissions);
+    }, [permissions]);
+
+    const handleToggleChange = (role: keyof RolePermissions, key: keyof PermissionSet) => {
+        setLocalPermissions(prev => ({
+            ...prev,
+            [role]: { ...prev[role], [key]: !prev[role][key] }
+        }));
+    };
+
+    const handleValueChange = (role: keyof RolePermissions, key: keyof PermissionSet, value: string) => {
+        setLocalPermissions(prev => ({
+            ...prev,
+            [role]: { ...prev[role], [key]: Number(value) }
+        }));
+    };
+    
+    const handleSave = () => {
+        setPermissions(localPermissions);
+        addToast("دسترسی‌ها با موفقیت ذخیره شد.", 'success');
+    };
+
+    const PermissionToggle = ({ label, isChecked, onChange }) => (
+        <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+            <span className="font-semibold text-gray-700 text-sm">{label}</span>
+            <button type="button" className={`${isChecked ? 'bg-teal-600' : 'bg-gray-300'} relative inline-flex items-center h-6 rounded-full w-11 transition-colors`} onClick={onChange}>
+                <span className={`${isChecked ? 'translate-x-6' : 'translate-x-1'} inline-block w-4 h-4 transform bg-white rounded-full transition-transform`} />
+            </button>
+        </div>
+    );
+    
+    const currentRolePermissions = localPermissions[activeRole];
+
+    return (
+         <div className="space-y-4">
+            <div className="flex border-b">
+                {Object.keys(permissions).map((role) => (
+                    <button key={role} onClick={() => setActiveRole(role as keyof RolePermissions)} className={`px-4 py-2 font-semibold ${activeRole === role ? 'border-b-2 border-teal-600 text-teal-700' : 'text-gray-500'}`}>
+                        {role}
+                    </button>
+                ))}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                 {/* Sales Permissions */}
+                <div>
+                    <h4 className="font-bold mb-2">بخش فروش</h4>
+                    <div className="space-y-2">
+                        <PermissionToggle label="ایجاد فاکتور جدید" isChecked={currentRolePermissions.canCreateSale} onChange={() => handleToggleChange(activeRole, 'canCreateSale')} />
+                        <PermissionToggle label="ویرایش فاکتور" isChecked={currentRolePermissions.canEditSale} onChange={() => handleToggleChange(activeRole, 'canEditSale')} />
+                        <PermissionToggle label="حذف فاکتور" isChecked={currentRolePermissions.canDeleteSale} onChange={() => handleToggleChange(activeRole, 'canDeleteSale')} />
+                        <PermissionToggle label="اعمال تخفیف دستی" isChecked={currentRolePermissions.canGiveManualDiscount} onChange={() => handleToggleChange(activeRole, 'canGiveManualDiscount')} />
+                        <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+                            <span className="font-semibold text-gray-700 text-sm">حداکثر تخفیف مجاز</span>
+                            <div className="flex items-center gap-2">
+                                <input type="number" value={currentRolePermissions.maxDiscountPercentage} onChange={(e) => handleValueChange(activeRole, 'maxDiscountPercentage', e.target.value)} className="w-20 p-1 text-center border rounded-md" disabled={!currentRolePermissions.canGiveManualDiscount} />
+                                <span>٪</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Customer Permissions */}
+                <div>
+                    <h4 className="font-bold mb-2">بخش مشتریان</h4>
+                    <div className="space-y-2">
+                         <PermissionToggle label="افزودن مشتری جدید" isChecked={currentRolePermissions.canCreateCustomer} onChange={() => handleToggleChange(activeRole, 'canCreateCustomer')} />
+                         <PermissionToggle label="ویرایش اطلاعات مشتری" isChecked={currentRolePermissions.canEditCustomer} onChange={() => handleToggleChange(activeRole, 'canEditCustomer')} />
+                         <PermissionToggle label="حذف مشتری" isChecked={currentRolePermissions.canDeleteCustomer} onChange={() => handleToggleChange(activeRole, 'canDeleteCustomer')} />
+                    </div>
+                </div>
+                
+                 {/* Inventory Permissions */}
+                <div>
+                    <h4 className="font-bold mb-2">بخش انبار</h4>
+                    <div className="space-y-2">
+                         <PermissionToggle label="تعریف محصول جدید" isChecked={currentRolePermissions.canCreateDrug} onChange={() => handleToggleChange(activeRole, 'canCreateDrug')} />
+                         <PermissionToggle label="ویرایش اطلاعات محصول" isChecked={currentRolePermissions.canEditDrug} onChange={() => handleToggleChange(activeRole, 'canEditDrug')} />
+                         <PermissionToggle label="حذف محصول" isChecked={currentRolePermissions.canDeleteDrug} onChange={() => handleToggleChange(activeRole, 'canDeleteDrug')} />
+                         <PermissionToggle label="ثبت ضایعات" isChecked={currentRolePermissions.canWriteOffStock} onChange={() => handleToggleChange(activeRole, 'canWriteOffStock')} />
+                    </div>
+                </div>
+            </div>
+            <div className="flex justify-end pt-4 border-t mt-4">
+                <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold">ذخیره دسترسی‌ها</button>
+            </div>
+        </div>
     );
 };
 
@@ -603,6 +733,8 @@ type SettingsProps = {
     onPurgeData: (startDate: string, endDate: string) => void;
     documentSettings: DocumentSettings;
     onSetDocumentSettings: (settings: DocumentSettings) => void;
+    rolePermissions: RolePermissions;
+    onSetRolePermissions: (permissions: RolePermissions) => void;
     hasUnsavedChanges: boolean;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     showConfirmation: (title: string, message: React.ReactNode, onConfirm: () => void) => void;
@@ -621,8 +753,14 @@ const Settings: React.FC<SettingsProps> = (props) => {
             </SettingsCard>
 
             <SettingsCard title="مدیریت کاربران" description="کاربران جدید تعریف کرده و سطح دسترسی و رمز عبور آن‌ها را مشخص کنید.">
-                <UserManagementSection users={props.users} onSaveUser={props.onSaveUser} onDeleteUser={props.onDeleteUser} onPasswordReset={props.onPasswordReset} />
+                <UserManagementSection users={props.users} onSaveUser={props.onSaveUser} onDeleteUser={props.onDeleteUser} onPasswordReset={props.onPasswordReset} showConfirmation={props.showConfirmation}/>
             </SettingsCard>
+
+            {props.currentUser.role === 'مدیر کل' && (
+                <SettingsCard title="مدیریت نقش‌ها و دسترسی‌ها" description="سطح دسترسی هر نقش کاربری به بخش‌های مختلف برنامه را به صورت دقیق تنظیم کنید.">
+                    <RoleManagementSection permissions={props.rolePermissions} setPermissions={props.onSetRolePermissions} addToast={props.addToast} />
+                </SettingsCard>
+            )}
             
             {props.currentUser.role === 'مدیر کل' && (
                 <SettingsCard title="تنظیمات امنیتی" description="شاه کلید پشتیبان برای بازیابی اضطراری رمزهای عبور استفاده می‌شود. آن را در جای امنی نگهداری کنید.">

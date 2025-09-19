@@ -130,7 +130,7 @@ const Fulfillment: React.FC<FulfillmentProps> = ({ orders, drugs, onUpdateOrder 
             />
             <div className="mb-8">
                 <h2 className="text-3xl font-bold text-gray-800">آماده‌سازی سفارشات</h2>
-                <p className="text-gray-500 mt-2">سفارشات جدید را برای ارسال آماده کنید. با ارسال سفارش، موجودی انبار به طور خودکار به‌روز می‌شود.</p>
+                <p className="text-gray-500 mt-2">سفارشات جدید را برای ارسال آماده کنید. موجودی انبار برای این سفارشات قبلا کسر شده است.</p>
             </div>
 
             {pendingOrders.length === 0 ? (

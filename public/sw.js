@@ -27,7 +27,6 @@ const urlsToCache = [
   '/Checkneh.tsx',
   '/Alerts.tsx',
   '/MainWarehouse.tsx',
-  '/VazirFont.ts',
 
   // Third-party scripts and styles from index.html
   'https://cdn.tailwindcss.com',

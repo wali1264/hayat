@@ -1,30 +1,26 @@
 
 
-
-
-
-
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { createClient, SupabaseClient, Session, User as SupabaseUser } from '@supabase/supabase-js';
+// FIX: Removed import of non-existent SupabaseUser type from '@supabase/supabase-js'.
+import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import Inventory, { Drug, Batch, WriteOffReason, DrugModal } from './Inventory';
 import Sales, { Order, OrderItem, ExtraCharge, BatchAllocation } from './Sales';
 import Customers, { Customer } from './Customers';
 import Accounting, { Expense, Income } from './Accounting';
 import Reports from './Reports';
-import Settings, { CompanyInfo as CompanyInfoType, User, UserRole, mockUsers as initialMockUsers, DocumentSettings } from './Settings';
+import Settings, { CompanyInfo as CompanyInfoType, User, UserRole, mockUsers as initialMockUsers, DocumentSettings, RolePermissions } from './Settings';
 import Fulfillment from './Fulfillment';
 import Dashboard from './Dashboard';
 import CustomerAccounts from './CustomerAccounts';
 import Suppliers, { Supplier } from './Suppliers';
 import Purchasing, { PurchaseBill, PurchaseItem } from './Purchasing';
-// FIX: Corrected import. The module now exports correctly after fixing syntax errors in it.
 import SupplierAccounts from './SupplierAccounts';
 import RecycleBin, { TrashItem, TrashableItem } from './RecycleBin';
 import Checkneh, { ChecknehInvoice } from './Checkneh';
 import Alerts, { AlertSettings } from './Alerts';
 import MainWarehouse from './MainWarehouse';
+import Login from './Login';
 
 
 //=========== SUPABASE CLIENT ===========//
@@ -58,6 +54,7 @@ const RecycleBinIcon = ({ className }: { className?: string }) => <Icon path="M1
 const ChecknehIcon = ({ className }: { className?: string }) => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m2 14h-2m2-4h-4m-2-4h6" className={className} />;
 const CloudSyncIcon = ({ className }: { className?: string }) => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a4 4 0 01-4-4V9a4 4 0 014-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V16a4 4 0 01-4 4z" className={className} />;
 const AlertIcon = ({ className }: { className?: string }) => <Icon path="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" className={className} />;
+const LockIcon = ({ className }: { className?: string }) => <Icon path="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" className={className} />;
 
 
 const LogoIcon = () => (
@@ -160,6 +157,18 @@ const UpdateNotification = ({ onUpdate }: { onUpdate: () => void; }) => (
     </div>
 );
 
+export const NoPermissionMessage = () => (
+    <div className="flex flex-col items-center justify-center h-full text-center p-8">
+        <div className="bg-white p-10 rounded-2xl shadow-lg border">
+            <LockIcon className="w-16 h-16 text-yellow-500 mx-auto" />
+            <h2 className="mt-4 text-2xl font-bold text-gray-800">عدم دسترسی</h2>
+            <p className="mt-2 text-gray-600 max-w-sm">
+                شما دسترسی لازم برای انجام عملیات در این بخش را ندارید. لطفاً با مدیر سیستم تماس بگیرید.
+            </p>
+        </div>
+    </div>
+);
+
 
 //=========== PERSISTENCE HOOK ===========//
 function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
@@ -175,7 +184,11 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
 
     useEffect(() => {
         try {
-            window.localStorage.setItem(key, JSON.stringify(state));
+            if (state === null) {
+                window.localStorage.removeItem(key);
+            } else {
+                window.localStorage.setItem(key, JSON.stringify(state));
+            }
         } catch (error) {
             console.error(error);
         }
@@ -185,16 +198,61 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
 }
 
 //=========== PERMISSIONS & ROLES ===========//
-type PermissionsMap = {
-    [key in UserRole]: string[];
-};
-
-const permissions: PermissionsMap = {
+// The basePermissions map is now deprecated and will be replaced by the dynamic rolePermissions state.
+// It remains here as a reference for the navigation items but is not used for action-level security.
+const basePermissions = {
     'مدیر کل': ['dashboard', 'main_warehouse', 'inventory', 'sales', 'fulfillment', 'customers', 'customer_accounts', 'suppliers', 'purchasing', 'supplier_accounts', 'finance', 'reports', 'checkneh', 'alerts', 'settings', 'recycle_bin'],
     'فروشنده': ['dashboard', 'sales', 'customers', 'customer_accounts'],
     'انباردار': ['dashboard', 'main_warehouse', 'inventory', 'fulfillment', 'suppliers', 'purchasing'],
     'حسابدار': ['dashboard', 'customer_accounts', 'supplier_accounts', 'finance', 'reports'],
 };
+
+// --- Default Granular Permissions ---
+const initialRolePermissions: RolePermissions = {
+    'فروشنده': {
+        canCreateSale: true,
+        canEditSale: true,
+        canDeleteSale: false,
+        canGiveManualDiscount: true,
+        maxDiscountPercentage: 10,
+        canCreateCustomer: true,
+        canEditCustomer: true,
+        canDeleteCustomer: false,
+        canCreateDrug: false,
+        canEditDrug: false,
+        canDeleteDrug: false,
+        canWriteOffStock: false,
+    },
+    'انباردار': {
+        canCreateSale: false,
+        canEditSale: false,
+        canDeleteSale: false,
+        canGiveManualDiscount: false,
+        maxDiscountPercentage: 0,
+        canCreateCustomer: false,
+        canEditCustomer: false,
+        canDeleteCustomer: false,
+        canCreateDrug: true,
+        canEditDrug: true,
+        canDeleteDrug: false,
+        canWriteOffStock: true,
+    },
+    'حسابدار': {
+        canCreateSale: false,
+        canEditSale: false,
+        canDeleteSale: false,
+        canGiveManualDiscount: false,
+        maxDiscountPercentage: 0,
+        canCreateCustomer: false,
+        canEditCustomer: false,
+        canDeleteCustomer: false,
+        canCreateDrug: false,
+        canEditDrug: false,
+        canDeleteDrug: false,
+        canWriteOffStock: false,
+    },
+};
+
 
 //=========== NEW DATA TYPES ===========//
 export type InventoryWriteOff = {
@@ -312,9 +370,9 @@ const navItems = [
 ];
 
 const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout, pendingRequisitionCount }) => {
-    const allowedNavItems = navItems.filter(item => permissions[userRole].includes(item.id));
-    const canAccessSettings = permissions[userRole].includes('settings');
-    const canAccessRecycleBin = permissions[userRole].includes('recycle_bin');
+    const allowedNavItems = navItems.filter(item => basePermissions[userRole].includes(item.id));
+    const canAccessSettings = basePermissions[userRole].includes('settings');
+    const canAccessRecycleBin = basePermissions[userRole].includes('recycle_bin');
 
     return (
         <aside className="w-64 bg-teal-800 text-white flex flex-col shadow-2xl flex-shrink-0">
@@ -454,8 +512,6 @@ type HayatAssistantProps = {
     onClose: () => void;
     messages: Message[];
 };
-// FIX: The HayatAssistantProps type was incomplete. I have closed the type definition.
-// I've also added a placeholder HayatAssistant component to ensure the file is valid.
 
 const HayatAssistant: React.FC<HayatAssistantProps> = ({ isOpen, onClose, messages }) => {
     if (!isOpen) return null;
@@ -486,15 +542,10 @@ const HayatAssistant: React.FC<HayatAssistantProps> = ({ isOpen, onClose, messag
 
 
 //=========== MAIN APP COMPONENT ===========//
-// FIX: The App component was missing entirely, causing a fatal error.
-// I have implemented the main App component to manage state and render the application layout.
 const App: React.FC = () => {
     const [toasts, setToasts] = useState<Toast[]>([]);
-    const [currentUser, setCurrentUser] = usePersistentState<User>('hayat_currentUser', initialMockUsers[0]);
     const [activeItem, setActiveItem] = usePersistentState<string>('hayat_activeItem', 'dashboard');
     const [isQuickAddDrugModalOpen, setIsQuickAddDrugModalOpen] = useState(false);
-    const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
-    const [newWorker, setNewWorker] = useState<ServiceWorker | null>(null);
 
     // All data states
     const [drugs, setDrugs] = usePersistentState<Drug[]>('hayat_drugs', initialMockDrugs);
@@ -518,52 +569,243 @@ const App: React.FC = () => {
         customerDebt: { enabled: true, limits: {} },
         totalDebt: { enabled: false, threshold: 1000000 }
     });
+    const [rolePermissions, setRolePermissions] = usePersistentState<RolePermissions>('hayat_rolePermissions', initialRolePermissions);
+
+    // --- NEW AUTHENTICATION STATE ---
+    const [currentUser, setCurrentUser] = usePersistentState<User | null>('hayat_currentUser', null);
     
+    // --- NEW CONFIRMATION MODAL STATE ---
+    const [confirmationModal, setConfirmationModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: React.ReactNode;
+        onConfirm: () => void;
+    } | null>(null);
+
+    const showConfirmation = (title: string, message: React.ReactNode, onConfirm: () => void) => {
+        setConfirmationModal({ isOpen: true, title, message, onConfirm });
+    };
+
+    const handleConfirm = () => {
+        if (confirmationModal) {
+            confirmationModal.onConfirm();
+            setConfirmationModal(null);
+        }
+    };
+
+    const handleCloseConfirmation = () => {
+        setConfirmationModal(null);
+    };
+
     // Simple toast helper
     const addToast = (message: string, type: ToastType = 'info') => {
         setToasts(prev => [...prev, { id: Date.now(), message, type }]);
     };
     
-    // Service Worker Registration and Update Handling
-    useEffect(() => {
-        if ('serviceWorker' in navigator) {
-            const swUrl = `${window.location.origin}/sw.js`;
-            navigator.serviceWorker.register(swUrl).then(reg => {
-                reg.addEventListener('updatefound', () => {
-                    const newWorker = reg.installing;
-                    if (newWorker) {
-                        setNewWorker(newWorker);
-                        newWorker.addEventListener('statechange', () => {
-                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                setIsUpdateAvailable(true);
-                            }
-                        });
-                    }
-                });
-            }).catch(err => console.error('Service Worker registration failed:', err));
-        }
-    }, []);
+    // --- NEW AUTH & USER MANAGEMENT LOGIC ---
+    const handleLogin = (username: string, password_raw: string) => {
+        // In a real app, passwords would be hashed.
+        const userToLogin = users.find(u => u.username === username && u.password === password_raw);
 
-    const handleUpdate = () => {
-        if (newWorker) {
-            newWorker.postMessage({ type: 'SKIP_WAITING' });
-            // The browser will reload automatically after the new service worker takes control.
-            // Forcing a reload can sometimes cause issues. Let's add a small delay.
-            setTimeout(() => {
-                window.location.reload();
-            }, 100);
+        if (userToLogin) {
+            const now = new Date().toLocaleString('fa-IR');
+            const updatedUser = { ...userToLogin, lastLogin: now };
+
+            // Update the user's last login time in the main users list
+            setUsers(prevUsers => prevUsers.map(u => u.id === updatedUser.id ? updatedUser : u));
+            
+            // Set the current user for the session
+            setCurrentUser(updatedUser);
+            addToast(`خوش آمدید، ${username}!`, 'success');
+        } else {
+            addToast('نام کاربری یا رمز عبور اشتباه است.', 'error');
         }
     };
-
 
     const handleLogout = () => {
-        // In a real app, this would clear session, etc.
         addToast("شما با موفقیت خارج شدید.", "success");
+        setCurrentUser(null);
     };
+
+    const handleSaveUser = (userToSave: Omit<User, 'lastLogin'>) => {
+        setUsers(prev => {
+            const exists = prev.some(u => u.id === userToSave.id);
+            if (exists) {
+                return prev.map(u => {
+                    if (u.id === userToSave.id) {
+                        const updatedUser = { ...u, username: userToSave.username, role: userToSave.role };
+                        if (userToSave.password) {
+                            updatedUser.password = userToSave.password;
+                        }
+                        return updatedUser;
+                    }
+                    return u;
+                });
+            } else {
+                return [{ ...userToSave, lastLogin: 'هرگز وارد نشده' }, ...prev];
+            }
+        });
+        addToast(`کاربر ${userToSave.username} با موفقیت ذخیره شد.`, 'success');
+    };
+
+    const handlePasswordReset = (username: string, newPass: string) => {
+         setUsers(prev => prev.map(u => {
+            if (u.username === username) {
+                return { ...u, password: newPass };
+            }
+            return u;
+        }));
+        addToast(`رمز عبور کاربر ${username} با موفقیت تغییر کرد.`, 'success');
+    };
+
+    // --- RECYCLE BIN LOGIC ---
+    const handleSoftDelete = (itemType: TrashItem['itemType'], itemData: TrashableItem, dependencyCheck?: () => boolean, dependencyMessage?: string) => {
+        if (dependencyCheck && dependencyCheck()) {
+            addToast(dependencyMessage || "امکان حذف به دلیل وجود وابستگی وجود ندارد.", 'error');
+            return;
+        }
+
+        const trashItem: TrashItem = {
+            id: `${itemType}-${(itemData as any).id}`,
+            deletedAt: new Date().toISOString(),
+            deletedBy: currentUser!.username,
+            itemType,
+            data: itemData,
+        };
+
+        setTrash(prev => [trashItem, ...prev]);
+
+        switch (itemType) {
+            case 'customer':
+                setCustomers(prev => prev.filter(c => c.id !== (itemData as Customer).id));
+                break;
+            case 'supplier':
+                setSuppliers(prev => prev.filter(s => s.id !== (itemData as Supplier).id));
+                break;
+            case 'order':
+                 setOrders(prev => prev.filter(o => o.id !== (itemData as Order).id));
+                break;
+            case 'purchaseBill':
+                 setPurchaseBills(prev => prev.filter(p => p.id !== (itemData as PurchaseBill).id));
+                break;
+            case 'drug':
+                const drugId = (itemData as Drug).id;
+                setDrugs(prev => prev.filter(d => d.id !== drugId));
+                setMainWarehouseDrugs(prev => prev.filter(d => d.id !== drugId));
+                break;
+            case 'expense':
+                setExpenses(prev => prev.filter(e => e.id !== (itemData as Expense).id));
+                break;
+            case 'user':
+                 setUsers(prev => prev.filter(u => u.id !== (itemData as User).id));
+                 break;
+        }
+        addToast("آیتم به سطل زباله منتقل شد.", "info");
+    };
+    
+    const handleDeleteCustomer = (id: number) => {
+        const customer = customers.find(c => c.id === id);
+        if (!customer) return;
+        const hasOrders = orders.some(o => o.customerName === customer.name);
+        handleSoftDelete('customer', customer, () => hasOrders, 'امکان حذف مشتری با فاکتورهای ثبت شده وجود ندارد.');
+    };
+    
+    const handleDeleteOrder = (id: number) => {
+        const order = orders.find(o => o.id === id);
+        if (!order) return;
+        
+        let tempDrugs = JSON.parse(JSON.stringify(drugs));
+        if (order.items) {
+            for (const item of order.items) {
+                if (!item.batchAllocations) continue;
+                const drugToUpdate = tempDrugs.find(d => d.id === item.drugId);
+                if (drugToUpdate) {
+                    for (const allocation of item.batchAllocations) {
+                        const batchToUpdate = drugToUpdate.batches.find(b => b.lotNumber === allocation.lotNumber);
+                        if (batchToUpdate) {
+                            batchToUpdate.quantity += allocation.quantity;
+                        } else {
+                            drugToUpdate.batches.push({
+                                lotNumber: allocation.lotNumber,
+                                quantity: allocation.quantity,
+                                expiryDate: allocation.expiryDate,
+                                purchasePrice: allocation.purchasePrice,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        setDrugs(tempDrugs);
+        handleSoftDelete('order', order);
+    };
+
+    const handleDeleteUser = (id: number) => {
+        if (currentUser?.id === id) {
+            addToast('شما نمی‌توانید حساب کاربری خود را حذف کنید.', 'error');
+            return;
+        }
+        const user = users.find(u => u.id === id);
+        if (user) {
+            handleSoftDelete('user', user);
+        }
+    };
+    
+    const handleDeleteSupplier = (id: number) => {
+        const supplier = suppliers.find(s => s.id === id);
+        if (!supplier) return;
+        const hasBills = purchaseBills.some(b => b.supplierName === supplier.name);
+        handleSoftDelete('supplier', supplier, () => hasBills, 'امکان حذف تامین کننده با فاکتورهای ثبت شده وجود ندارد.');
+    };
+    
+    const handleDeletePurchaseBill = (id: number) => {
+        const bill = purchaseBills.find(b => b.id === id);
+        if (!bill) return;
+        // Logic to revert stock from main warehouse can be added here if needed
+        handleSoftDelete('purchaseBill', bill);
+    };
+
+    const handleDeleteExpense = (id: number) => {
+        const expense = expenses.find(e => e.id === id);
+        if (expense) {
+            handleSoftDelete('expense', expense);
+        }
+    };
+    
+    const handleRestoreItem = (item: TrashItem) => {
+        switch (item.itemType) {
+            case 'customer': setCustomers(prev => [...prev, item.data as Customer].sort((a,b) => b.id - a.id)); break;
+            case 'supplier': setSuppliers(prev => [...prev, item.data as Supplier].sort((a,b) => b.id - a.id)); break;
+            case 'order': setOrders(prev => [...prev, item.data as Order].sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())); break;
+            case 'purchaseBill': setPurchaseBills(prev => [...prev, item.data as PurchaseBill].sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())); break;
+            case 'drug': 
+                setDrugs(prev => [...prev, item.data as Drug]);
+                setMainWarehouseDrugs(prev => [...prev, item.data as Drug]);
+                break;
+            case 'expense': setExpenses(prev => [...prev, item.data as Expense]); break;
+            case 'user': setUsers(prev => [...prev, item.data as User]); break;
+        }
+        setTrash(prev => prev.filter(t => t.id !== item.id));
+        addToast('آیتم با موفقیت بازیابی شد.', 'success');
+    };
+
+    const handleDeletePermanently = (id: string) => {
+        showConfirmation('حذف دائمی', 'آیا مطمئنید؟ این عمل غیرقابل بازگشت است.', () => {
+            setTrash(prev => prev.filter(t => t.id !== id));
+            addToast('آیتم برای همیشه حذف شد.', 'info');
+        });
+    };
+
+    const handleEmptyTrash = () => {
+        showConfirmation('خالی کردن سطل زباله', 'آیا مطمئنید؟ تمام آیتم‌های موجود در سطل زباله برای همیشه حذف خواهند شد.', () => {
+            setTrash([]);
+            addToast('سطل زباله با موفقیت خالی شد.', 'success');
+        });
+    };
+
     
     // CORE LOGIC HANDLERS
     const handleSavePurchaseBill = (bill: PurchaseBill) => {
-        // 1. Add/update the bill in purchaseBills state
         setPurchaseBills(prev => {
             const exists = prev.some(b => b.id === bill.id);
             if (exists) {
@@ -572,10 +814,9 @@ const App: React.FC = () => {
             return [bill, ...prev];
         });
     
-        // 2. Update inventory in mainWarehouseDrugs
         if (bill.status === 'دریافت شده' && bill.type === 'purchase') {
             setMainWarehouseDrugs(currentWarehouse => {
-                const updatedWarehouse = JSON.parse(JSON.stringify(currentWarehouse)); // Deep copy
+                const updatedWarehouse = JSON.parse(JSON.stringify(currentWarehouse)); 
     
                 for (const item of bill.items) {
                     let drug = updatedWarehouse.find(d => d.id === item.drugId);
@@ -583,8 +824,15 @@ const App: React.FC = () => {
                     if (drug) {
                         let batch = drug.batches.find(b => b.lotNumber === item.lotNumber);
                         if (batch) {
-                            addToast(`هشدار: لات ${item.lotNumber} برای محصول ${item.drugName} از قبل موجود بود. تعداد به آن اضافه شد.`, 'info');
-                            batch.quantity += item.quantity;
+                            addToast(`هشدار: لات ${item.lotNumber} برای محصول ${item.drugName} از قبل موجود بود. قیمت خرید میانگین‌گیری و تعداد اضافه شد.`, 'info');
+                            const oldQty = batch.quantity;
+                            const oldPrice = batch.purchasePrice;
+                            const newQty = item.quantity;
+                            const newPrice = item.purchasePrice;
+                            
+                            const totalQty = oldQty + newQty;
+                            batch.purchasePrice = ((oldQty * oldPrice) + (newQty * newPrice)) / totalQty;
+                            batch.quantity = totalQty;
                         } else {
                             drug.batches.push({
                                 lotNumber: item.lotNumber,
@@ -595,13 +843,10 @@ const App: React.FC = () => {
                             });
                         }
                     } else {
-                        // This case implies a drug that exists in the general drug list but not yet in the warehouse
                         const drugInfo = [...drugs, ...mainWarehouseDrugs].find(d => d.id === item.drugId);
                         if (drugInfo) {
-                             // Find if drug *definition* exists in sales warehouse, if so, use it.
                             const baseDrugInfo = JSON.parse(JSON.stringify(drugInfo));
                             delete baseDrugInfo.batches;
-
                             updatedWarehouse.push({
                                 ...baseDrugInfo,
                                 batches: [{
@@ -620,8 +865,46 @@ const App: React.FC = () => {
                 return updatedWarehouse;
             });
             addToast('موجودی انبار اصلی با موفقیت به‌روزرسانی شد.', 'success');
+        } else if (bill.type === 'purchase_return' && bill.status === 'دریافت شده') {
+            // **FIX**: Deduct stock for purchase returns
+            let stockSufficient = true;
+            const tempMainWarehouse = JSON.parse(JSON.stringify(mainWarehouseDrugs));
+
+            for (const item of bill.items) {
+                const drug = tempMainWarehouse.find(d => d.id === item.drugId);
+                if (!drug) {
+                    addToast(`محصول ${item.drugName} در انبار اصلی یافت نشد.`, 'error');
+                    stockSufficient = false;
+                    break;
+                }
+                const batch = drug.batches.find(b => b.lotNumber === item.lotNumber);
+                if (!batch || batch.quantity < item.quantity) {
+                    addToast(`موجودی لات ${item.lotNumber} برای محصول ${item.drugName} در انبار اصلی (${batch?.quantity || 0}) برای مرجوعی (${item.quantity}) کافی نیست.`, 'error');
+                    stockSufficient = false;
+                    break;
+                }
+                batch.quantity -= item.quantity;
+            }
+
+            if (stockSufficient) {
+                setMainWarehouseDrugs(tempMainWarehouse);
+                addToast('موجودی انبار اصلی برای مستردی خرید با موفقیت به‌روزرسانی شد.', 'success');
+            } else {
+                addToast('به دلیل خطای موجودی، فاکتور ذخیره شد اما موجودی انبار تغییر نکرد.', 'error');
+            }
         }
-        // TODO: Handle purchase returns to deduct stock
+    };
+
+    const handleSaveRequisition = (requisition: Omit<StockRequisition, 'id' | 'status' | 'requestedBy' | 'date'>) => {
+        const newRequisition: StockRequisition = {
+            ...requisition,
+            id: Date.now(),
+            status: 'در انتظار',
+            requestedBy: currentUser!.username,
+            date: new Date().toISOString(),
+        };
+        setStockRequisitions(prev => [newRequisition, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        addToast('درخواست جدید با موفقیت ثبت و به انبار اصلی ارسال شد.', 'success');
     };
 
     const handleFulfillRequisition = (requisition: StockRequisition, fulfilledItems: StockRequisitionItem[], fulfilledBy: string) => {
@@ -686,19 +969,48 @@ const App: React.FC = () => {
     };
 
     const handleSaveOrder = (order: Order) => {
-        if (order.type === 'sale' && order.status !== 'لغو شده' && !order.items[0]?.batchAllocations) {
-            const updatedDrugs = JSON.parse(JSON.stringify(drugs));
+        let tempDrugs = JSON.parse(JSON.stringify(drugs));
+        const isEditMode = orders.some(o => o.id === order.id);
+
+        if (isEditMode) {
+            const originalOrder = orders.find(o => o.id === order.id);
+            if (originalOrder && originalOrder.items) {
+                for (const item of originalOrder.items) {
+                    if (!item.batchAllocations) continue;
+                    const drugToUpdate = tempDrugs.find(d => d.id === item.drugId);
+                    if (drugToUpdate) {
+                        for (const allocation of item.batchAllocations) {
+                            const batchToUpdate = drugToUpdate.batches.find(b => b.lotNumber === allocation.lotNumber);
+                            if (batchToUpdate) {
+                                batchToUpdate.quantity += allocation.quantity;
+                            } else {
+                                // **FIX**: Re-create the batch if it was fully depleted.
+                                drugToUpdate.batches.push({
+                                    lotNumber: allocation.lotNumber,
+                                    quantity: allocation.quantity,
+                                    expiryDate: allocation.expiryDate,
+                                    purchasePrice: allocation.purchasePrice,
+                                    // productionDate might be missing if not stored, which is acceptable
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (order.type === 'sale' && order.status !== 'لغو شده') {
             let stockSufficient = true;
     
             for (const item of order.items) {
-                const drugIndex = updatedDrugs.findIndex(d => d.id === item.drugId);
+                const drugIndex = tempDrugs.findIndex(d => d.id === item.drugId);
                 if (drugIndex === -1) {
                     stockSufficient = false;
                     addToast(`محصول ${item.drugName} در انبار یافت نشد.`, 'error');
                     break;
                 }
     
-                const drug = updatedDrugs[drugIndex];
+                const drug = tempDrugs[drugIndex];
                 let quantityToDeduct = item.quantity + (item.bonusQuantity || 0);
     
                 const sortedBatches = drug.batches
@@ -721,7 +1033,8 @@ const App: React.FC = () => {
                     item.batchAllocations.push({
                         lotNumber: batch.lotNumber,
                         quantity: quantityFromThisBatch,
-                        purchasePrice: batch.purchasePrice
+                        purchasePrice: batch.purchasePrice,
+                        expiryDate: batch.expiryDate
                     });
     
                     const originalBatchInDrug = drug.batches.find(b => b.lotNumber === batch.lotNumber);
@@ -736,12 +1049,11 @@ const App: React.FC = () => {
             if (!stockSufficient) {
                 return; 
             }
-            setDrugs(updatedDrugs);
+            setDrugs(tempDrugs);
         }
 
         setOrders(prev => {
-            const exists = prev.some(o => o.id === order.id);
-            if (exists) {
+            if (isEditMode) {
                 return prev.map(o => o.id === order.id ? order : o);
             }
             const newOrderNumber = `${order.type === 'sale_return' ? 'SR' : 'SO'}-${new Date().getFullYear()}-${(prev.length + 1).toString().padStart(4, '0')}`;
@@ -757,8 +1069,6 @@ const App: React.FC = () => {
     };
 
     const handleSaveDrug = (drug: Omit<Drug, 'batches'>) => {
-        // This function is for editing from the inventory screen.
-        // It should update both warehouses to keep definitions consistent.
         const updateLogic = (prev: Drug[]) => {
              const exists = prev.some(d => d.id === drug.id);
             if (exists) {
@@ -780,7 +1090,6 @@ const App: React.FC = () => {
         }
         
         const newDrugEntry = { ...drug, batches: [] };
-        // Add definition to both warehouses so it's available everywhere.
         setDrugs(prev => [...prev, newDrugEntry]);
         setMainWarehouseDrugs(prev => [...prev, newDrugEntry]);
         addToast(`محصول ${drug.name} با موفقیت تعریف شد.`, 'success');
@@ -790,17 +1099,67 @@ const App: React.FC = () => {
     const pendingRequisitionCount = useMemo(() => {
         return stockRequisitions.filter(r => r.status === 'در انتظار').length;
     }, [stockRequisitions]);
+    
+    const customerBalances = useMemo(() => {
+        const balances = new Map<string, number>();
+        orders.slice().sort((a, b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime()).forEach(o => {
+            const currentBalance = balances.get(o.customerName) || 0;
+            balances.set(o.customerName, currentBalance + o.totalAmount - o.amountPaid);
+        });
+        return balances;
+    }, [orders]);
+    
+    const activeAlerts = useMemo<ActiveAlert[]>(() => {
+        const alerts: ActiveAlert[] = [];
+        const now = new Date();
+
+        if (alertSettings.expiry.enabled) {
+            const expiryLimitDate = new Date();
+            expiryLimitDate.setMonth(now.getMonth() + alertSettings.expiry.months);
+            const expiringDrugs = drugs.filter(d => d.batches.some(b => b.quantity > 0 && new Date(b.expiryDate) < expiryLimitDate));
+            if(expiringDrugs.length > 0) {
+                 alerts.push({ id: 'expiry-1', type: 'expiry', severity: 'warning', message: `${expiringDrugs.length} محصول در حال انقضا است.`, navigateTo: 'inventory' });
+            }
+        }
+        
+        if (alertSettings.lowStock.enabled) {
+            const lowStockDrugs = drugs.filter(d => d.batches.reduce((sum,b) => sum + b.quantity, 0) < alertSettings.lowStock.quantity);
+             if(lowStockDrugs.length > 0) {
+                 alerts.push({ id: 'low-stock-1', type: 'low-stock', severity: 'warning', message: `${lowStockDrugs.length} محصول با کمبود موجودی مواجه است.`, navigateTo: 'inventory' });
+            }
+        }
+
+        if (alertSettings.customerDebt.enabled) {
+            for(const [name, balance] of customerBalances.entries()) {
+                const customer = customers.find(c => c.name === name);
+                const limit = alertSettings.customerDebt.limits[customer?.id];
+                if(customer && limit && balance > limit) {
+                    alerts.push({ id: `debt-${customer.id}`, type: 'customer-debt', severity: 'error', message: `بدهی ${customer.name} از سقف مجاز عبور کرده.`, navigateTo: 'customer_accounts' });
+                }
+            }
+        }
+        
+        if (alertSettings.totalDebt.enabled) {
+            const totalDebt = Array.from(customerBalances.values()).reduce((sum, bal) => sum + (bal > 0 ? bal : 0), 0);
+            if (totalDebt > alertSettings.totalDebt.threshold) {
+                alerts.push({ id: 'total-debt-1', type: 'total-debt', severity: 'error', message: `مجموع بدهی مشتریان از ${alertSettings.totalDebt.threshold.toLocaleString()} عبور کرد.`, navigateTo: 'customer_accounts' });
+            }
+        }
+
+        return alerts;
+    }, [drugs, alertSettings, orders, customers, customerBalances]);
 
 
     const renderActiveComponent = () => {
+        if (!currentUser) return null;
         switch(activeItem) {
-            case 'dashboard': return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={[]} />;
-            case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={(id) => setDrugs(d => d.filter(i => i.id !== id))} onWriteOff={() => {}} onSaveRequisition={() => {}} currentUser={currentUser} addToast={addToast} />;
-            case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={(id) => setOrders(o => o.filter(i => i.id !== id))} currentUser={currentUser} documentSettings={documentSettings} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
-            case 'customers': return <Customers customers={customers} onSave={(c) => setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev])} onDelete={(id) => setCustomers(c => c.filter(i => i.id !== id))} currentUser={currentUser} addToast={addToast} />;
-            case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev])} onDelete={(id) => setSuppliers(s => s.filter(i => i.id !== id))} currentUser={currentUser} />;
-            case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={(id) => setPurchaseBills(p => p.filter(i => i.id !== id))} currentUser={currentUser} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
-            case 'finance': return <Accounting incomes={[]} expenses={expenses} onSave={(e) => setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev])} onDelete={(id) => setExpenses(e => e.filter(i => i.id !== id))} currentUser={currentUser} />;
+            case 'dashboard': return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
+            case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={(id) => {}} onWriteOff={() => {}} onSaveRequisition={handleSaveRequisition} currentUser={currentUser} rolePermissions={rolePermissions} addToast={addToast} />;
+            case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} rolePermissions={rolePermissions} documentSettings={documentSettings} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
+            case 'customers': return <Customers customers={customers} onSave={(c) => setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev])} onDelete={handleDeleteCustomer} currentUser={currentUser} rolePermissions={rolePermissions} addToast={addToast} />;
+            case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev])} onDelete={handleDeleteSupplier} currentUser={currentUser} />;
+            case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={currentUser} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
+            case 'finance': return <Accounting orders={orders} expenses={expenses} onSave={(e) => setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev])} onDelete={handleDeleteExpense} currentUser={currentUser} />;
             case 'reports': return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} companyInfo={companyInfo} documentSettings={documentSettings} />;
             case 'fulfillment': return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} />;
             case 'customer_accounts': return <CustomerAccounts customers={customers} orders={orders} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} />;
@@ -814,22 +1173,32 @@ const App: React.FC = () => {
                 companyInfo={companyInfo} 
                 documentSettings={documentSettings} 
                 />;
-            case 'recycle_bin': return <RecycleBin trashItems={trash} onRestore={()=>{}} onDelete={(id) => setTrash(t => t.filter(i => i.id !== id))} onEmptyTrash={() => setTrash([])} />;
-            case 'checkneh': return <Checkneh customers={customers} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} showConfirmation={()=>{}} />;
+            case 'recycle_bin': return <RecycleBin trashItems={trash} onRestore={handleRestoreItem} onDelete={handleDeletePermanently} onEmptyTrash={handleEmptyTrash} />;
+            case 'checkneh': return <Checkneh customers={customers} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} showConfirmation={showConfirmation} />;
             case 'alerts': return <Alerts settings={alertSettings} setSettings={setAlertSettings} customers={customers} />;
             case 'settings': return <Settings 
                 companyInfo={companyInfo} onSetCompanyInfo={setCompanyInfo} 
-                users={users} onSaveUser={()=>{}} onDeleteUser={()=>{}} onPasswordReset={()=>{}}
+                users={users} onSaveUser={handleSaveUser} onDeleteUser={handleDeleteUser} onPasswordReset={handlePasswordReset}
                 backupKey={null} onBackupKeyChange={()=>{}} 
                 supabase={supabase} licenseId={null}
                 onBackupLocal={()=>{}} onRestoreLocal={()=>{}} onBackupOnline={async () => false} onRestoreOnline={()=>{}}
                 onPurgeData={()=>{}}
                 documentSettings={documentSettings} onSetDocumentSettings={setDocumentSettings}
-                hasUnsavedChanges={false} addToast={addToast} showConfirmation={()=>{}} currentUser={currentUser}
+                rolePermissions={rolePermissions} onSetRolePermissions={setRolePermissions}
+                hasUnsavedChanges={false} addToast={addToast} showConfirmation={showConfirmation} currentUser={currentUser}
                 />;
             default: return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={[]} />;
         }
     };
+
+    if (!currentUser) {
+        return (
+            <>
+                <Login onLogin={handleLogin} />
+                <ToastContainer toasts={toasts} setToasts={setToasts} />
+            </>
+        );
+    }
 
     return (
         <div className="flex h-screen bg-gray-100" dir="rtl">
@@ -841,13 +1210,12 @@ const App: React.FC = () => {
                 pendingRequisitionCount={pendingRequisitionCount}
             />
             <main className="flex-1 flex flex-col overflow-hidden">
-                <Header title={pageTitles[activeItem] || 'داشبورد'} currentUser={currentUser} alerts={[]} onNavigate={setActiveItem}/>
+                <Header title={pageTitles[activeItem] || 'داشبورد'} currentUser={currentUser} alerts={activeAlerts} onNavigate={setActiveItem}/>
                 <div className="flex-1 overflow-y-auto">
                     {renderActiveComponent()}
                 </div>
             </main>
             <ToastContainer toasts={toasts} setToasts={setToasts} />
-             {isUpdateAvailable && <UpdateNotification onUpdate={handleUpdate} />}
             <DrugModal 
                 isOpen={isQuickAddDrugModalOpen}
                 onClose={() => setIsQuickAddDrugModalOpen(false)}
@@ -855,6 +1223,14 @@ const App: React.FC = () => {
                 initialData={null}
                 addToast={addToast}
             />
+             <ConfirmationModal
+                isOpen={!!confirmationModal?.isOpen}
+                onClose={handleCloseConfirmation}
+                onConfirm={handleConfirm}
+                title={confirmationModal?.title || ''}
+            >
+                {confirmationModal?.message}
+            </ConfirmationModal>
         </div>
     );
 };
