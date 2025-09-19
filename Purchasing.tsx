@@ -15,6 +15,9 @@ const TrashIcon = ({ className }: { className?: string }) => <Icon path="M19 7l-
 const SearchIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" className="w-5 h-5 text-gray-400" />;
 const ReturnIcon = () => <Icon path="M9 15l-6-6 6-6" />;
 const EditIcon = () => <Icon path="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />;
+const ChevronIcon = ({ isExpanded }: { isExpanded: boolean }) => (
+    <Icon path={isExpanded ? "M19 9l-7 7-7-7" : "M5 15l7-7 7 7"} className="w-4 h-4 text-gray-500" />
+);
 
 
 //=========== TYPES ===========//
@@ -58,6 +61,39 @@ const formatGregorianForDisplay = (dateStr: string): string => {
         return '';
     }
 };
+
+// --- NEW SUB-COMPONENT ---
+const PurchaseBillDetailsRow = ({ bill, colSpan }: { bill: PurchaseBill; colSpan: number }) => (
+    <tr className="bg-gray-100">
+        <td colSpan={colSpan} className="p-4">
+            <h4 className="font-bold text-sm text-gray-800 mb-2">اقلام فاکتور #{bill.billNumber}</h4>
+            <div className="bg-white rounded-md border max-h-48 overflow-y-auto">
+                <table className="w-full text-xs text-right">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="p-2 font-semibold">نام محصول</th>
+                            <th className="p-2 font-semibold">شماره لات</th>
+                            <th className="p-2 font-semibold">تعداد</th>
+                            <th className="p-2 font-semibold">قیمت خرید</th>
+                            <th className="p-2 font-semibold">مبلغ کل</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                         {bill.items.map(item => (
+                            <tr key={`${item.drugId}-${item.lotNumber}`}>
+                                <td className="p-2">{item.drugName}</td>
+                                <td className="p-2 font-mono">{item.lotNumber}</td>
+                                <td className="p-2">{item.quantity.toLocaleString()}</td>
+                                <td className="p-2 font-mono">{item.purchasePrice.toLocaleString()}</td>
+                                <td className="p-2 font-mono">{(item.quantity * item.purchasePrice).toLocaleString()}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </td>
+    </tr>
+);
 
 //=========== MODAL COMPONENT ===========//
 type PurchaseModalProps = {
@@ -364,6 +400,7 @@ const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs
     const [modalMode, setModalMode] = useState<'purchase' | 'return' | 'edit'>('purchase');
     const [initialModalData, setInitialModalData] = useState<PurchaseBill | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [expandedBillId, setExpandedBillId] = useState<number | null>(null);
 
     const canManage = useMemo(() => currentUser.role === 'مدیر کل' || currentUser.role === 'انباردار', [currentUser.role]);
 
@@ -437,6 +474,7 @@ const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs
                     <table className="w-full text-right">
                         <thead className="bg-gray-50 border-b-2">
                             <tr>
+                                <th className="p-4 text-sm font-semibold text-gray-600"></th>
                                 <th className="p-4 text-sm font-semibold text-gray-600">شماره فاکتور</th>
                                 <th className="p-4 text-sm font-semibold text-gray-600">تامین کننده</th>
                                 <th className="p-4 text-sm font-semibold text-gray-600">تاریخ</th>
@@ -446,12 +484,19 @@ const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs
                                 <th className="p-4 text-sm font-semibold text-gray-600">عملیات</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y">
+                        <tbody>
                             {sortedBills.map(bill => {
                                 const remaining = bill.totalAmount - bill.amountPaid;
                                 const isReturn = bill.type === 'purchase_return';
+                                const isExpanded = expandedBillId === bill.id;
                                 return (
-                                <tr key={bill.id} className={`${isReturn ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'} transition-colors`}>
+                                <React.Fragment key={bill.id}>
+                                <tr className={`${isReturn ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'} transition-colors`}>
+                                     <td className="p-2 text-center">
+                                        <button onClick={() => setExpandedBillId(isExpanded ? null : bill.id)} className="p-2 rounded-full hover:bg-gray-200">
+                                            <ChevronIcon isExpanded={isExpanded} />
+                                        </button>
+                                    </td>
                                     <td className="p-4 font-medium text-gray-800">
                                          <div className='flex items-center gap-2'>
                                             {isReturn && <span className="text-red-600" title="مستردی خرید"><ReturnIcon /></span>}
@@ -478,6 +523,8 @@ const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs
                                         </div>
                                     </td>
                                 </tr>
+                                {isExpanded && <PurchaseBillDetailsRow bill={bill} colSpan={8} />}
+                                </React.Fragment>
                             )})}
                         </tbody>
                     </table>

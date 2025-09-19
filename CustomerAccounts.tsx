@@ -34,10 +34,11 @@ type ReportData = {
     customer: Customer;
     startDate: string;
     endDate: string;
-    transactions: {date: string, desc: string, debit: number, credit: number, id: number, refCode?: string}[];
+    transactions: {date: string, desc: string, debit: number, credit: number, balance: number, id: number, refCode?: string}[];
     summary: {
-        totalBilled: number;
-        totalPaid: number;
+        openingBalance: number;
+        totalBilledInRange: number;
+        totalPaidInRange: number;
         finalBalance: number;
     }
 }
@@ -215,20 +216,24 @@ const CustomerAccountStatement = ({ reportData, companyInfo, documentSettings, c
                             <td className="p-2">{entry.desc}</td>
                             <td className="p-2 text-red-600">{entry.debit > 0 ? entry.debit.toLocaleString() : '-'}</td>
                             <td className="p-2 text-green-600">{entry.credit > 0 ? entry.credit.toLocaleString() : '-'}</td>
-                            <td className="p-2 font-bold">{(entry.debit - entry.credit).toLocaleString()}</td>
+                            <td className="p-2 font-bold">{entry.balance.toLocaleString()}</td>
                         </tr>
                     ))}
                 </tbody>
             </table>
              <div className="flex justify-end mt-8">
                 <div className="w-full max-w-sm space-y-3 print-summary pt-4">
+                     <div className="flex justify-between text-md">
+                        <span className="text-gray-600">مانده اولیه:</span>
+                        <span className="font-semibold">{reportData.summary.openingBalance.toLocaleString()}</span>
+                    </div>
                     <div className="flex justify-between text-md">
                         <span className="text-gray-600">مجموع بدهکار (فاکتورها):</span>
-                        <span className="font-semibold">{reportData.summary.totalBilled.toLocaleString()}</span>
+                        <span className="font-semibold">{reportData.summary.totalBilledInRange.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-md">
                         <span className="text-gray-600">مجموع بستانکار (پرداختی‌ها):</span>
-                        <span className="font-semibold">{reportData.summary.totalPaid.toLocaleString()}</span>
+                        <span className="font-semibold">{reportData.summary.totalPaidInRange.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-xl font-bold text-gray-800 pt-2 border-t">
                         <span>مانده نهایی حساب:</span>
@@ -290,15 +295,22 @@ type CustomerAccountsProps = {
     companyInfo: CompanyInfo;
     documentSettings: DocumentSettings;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    preselectedCustomerId?: number | null;
 };
 
-const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, companyInfo, documentSettings, addToast }) => {
+const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, companyInfo, documentSettings, addToast, preselectedCustomerId }) => {
     const [isLedgerOpen, setIsLedgerOpen] = useState(false);
     const [selectedCustomer, setSelectedCustomer] = useState<CustomerFinancialSummary | null>(null);
 
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [reportFilters, setReportFilters] = useState({ customerId: '', startDate: '', endDate: '' });
     const [generatedReportData, setGeneratedReportData] = useState<ReportData | null>(null);
+
+    useEffect(() => {
+        if (preselectedCustomerId) {
+            setReportFilters(prev => ({ ...prev, customerId: String(preselectedCustomerId) }));
+        }
+    }, [preselectedCustomerId]);
 
 
     const customerSummaries = useMemo<CustomerFinancialSummary[]>(() => {
@@ -340,31 +352,45 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
         const customer = customers.find(c => c.id === Number(customerId));
         if (!customer) return;
 
-        const customerOrders = orders.filter(o => {
+        // **FIX START: Calculate opening balance correctly.**
+        const openingBalanceOrders = orders.filter(o => {
+            const orderDate = new Date(o.orderDate);
+            return o.customerName === customer.name && orderDate < new Date(startDate);
+        });
+        const openingBalance = openingBalanceOrders.reduce((balance, order) => balance + (order.totalAmount - order.amountPaid), 0);
+        // **FIX END**
+
+        const customerOrdersInRange = orders.filter(o => {
             const orderDate = new Date(o.orderDate);
             return o.customerName === customer.name &&
                    orderDate >= new Date(startDate) &&
                    orderDate <= new Date(endDate);
-        });
+// FIX: The 'date' property does not exist on type 'Order'. It should be 'orderDate'.
+        }).sort((a,b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
 
-        const transactions: {date: string, desc: string, debit: number, credit: number, id: number, refCode?: string}[] = [];
-        let totalBilled = 0;
-        let totalPaid = 0;
+        const transactions: ReportData['transactions'] = [];
+        let runningBalance = openingBalance;
+        let totalBilledInRange = 0;
+        let totalPaidInRange = 0;
 
-        customerOrders.forEach(order => {
+        transactions.push({ date: startDate, desc: 'مانده اولیه', debit: 0, credit: 0, balance: runningBalance, id: 0 });
+
+        customerOrdersInRange.forEach(order => {
             if (order.type === 'sale') {
-                transactions.push({ date: order.orderDate, desc: `فاکتور فروش - ${order.orderNumber}`, debit: order.totalAmount, credit: 0, id: order.id, refCode: order.ledgerRefCode });
-                totalBilled += order.totalAmount;
-            } else {
-                transactions.push({ date: order.orderDate, desc: `مستردی فروش - ${order.orderNumber}`, debit: 0, credit: Math.abs(order.totalAmount), id: order.id, refCode: order.ledgerRefCode });
-                totalBilled -= Math.abs(order.totalAmount);
+                runningBalance += order.totalAmount;
+                totalBilledInRange += order.totalAmount;
+                transactions.push({ date: order.orderDate, desc: `فاکتور فروش - ${order.orderNumber}`, debit: order.totalAmount, credit: 0, balance: runningBalance, id: order.id, refCode: order.ledgerRefCode });
+            } else { // sale_return
+                runningBalance -= Math.abs(order.totalAmount);
+                totalBilledInRange -= Math.abs(order.totalAmount);
+                transactions.push({ date: order.orderDate, desc: `مستردی فروش - ${order.orderNumber}`, debit: 0, credit: Math.abs(order.totalAmount), balance: runningBalance, id: order.id, refCode: order.ledgerRefCode });
             }
             if (order.amountPaid !== 0) {
-                 transactions.push({ date: order.orderDate, desc: `پرداخت برای سفارش - ${order.orderNumber}`, debit: 0, credit: order.amountPaid, id: order.id + 0.1, refCode: '' });
-                 totalPaid += order.amountPaid;
+                 runningBalance -= order.amountPaid;
+                 totalPaidInRange += order.amountPaid;
+                 transactions.push({ date: order.orderDate, desc: `پرداخت برای سفارش - ${order.orderNumber}`, debit: 0, credit: order.amountPaid, balance: runningBalance, id: order.id + 0.1, refCode: '' });
             }
         });
-        transactions.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         
         const summary = customerSummaries.find(s => s.customerId === Number(customerId));
 
@@ -374,9 +400,10 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
             endDate,
             transactions,
             summary: {
-                totalBilled,
-                totalPaid,
-                finalBalance: summary ? Number(summary.balance) : 0
+                openingBalance,
+                totalBilledInRange,
+                totalPaidInRange,
+                finalBalance: summary ? Number(summary.balance) : 0 // The final balance should match the current total balance
             }
         };
         
@@ -459,7 +486,7 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
                                         <td className="p-4 text-gray-800 font-medium">{summary.customerName}</td>
                                         <td className="p-4 text-gray-600">{summary.totalBilled.toLocaleString()}</td>
                                         <td className="p-4 text-green-600">{summary.totalPaid.toLocaleString()}</td>
-                                        <td className={`p-4 font-bold ${summary.balance > 0 ? 'text-red-600' : (summary.balance < 0 ? 'text-green-700' : 'text-gray-800')}`}>
+                                        <td className={`p-4 font-bold ${summary.balance > 0 ? 'text-red-600' : 'text-gray-800'}`}>
                                             {summary.balance.toLocaleString()}
                                         </td>
                                         <td className="p-4">

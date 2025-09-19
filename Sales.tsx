@@ -187,11 +187,10 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     const [newCharge, setNewCharge] = useState({ description: '', amount: '' });
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     
-    const [drugSearchTerm, setDrugSearchTerm] = useState('');
-    const [deviceScanInput, setDeviceScanInput] = useState('');
-    const [addQuantity, setAddQuantity] = useState('1');
-    const [isSearchFocused, setIsSearchFocused] = useState(false);
-    const searchWrapperRef = useRef<HTMLDivElement>(null);
+    // --- NEW: States for the product catalog ---
+    const [catalogSearchTerm, setCatalogSearchTerm] = useState('');
+    const [catalogCategory, setCatalogCategory] = useState('all');
+
     const [historyVisibleForDrugId, setHistoryVisibleForDrugId] = useState<number | null>(null);
     const [editingPriceForDrugId, setEditingPriceForDrugId] = useState<number | null>(null);
 
@@ -208,21 +207,21 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
             return sum + (item.quantity * pricePerUnit);
         }, 0);
         const chargesTotal = extraCharges.reduce((sum, charge) => sum + charge.amount, 0);
-        return itemsTotal + chargesTotal;
+        const rawTotal = itemsTotal + chargesTotal;
+        return Math.round(rawTotal * 100) / 100;
     }, [items, extraCharges]);
 
-    const availableDrugs = useMemo(() => {
-        if (!drugSearchTerm) return [];
+    const availableDrugsForCatalog = useMemo(() => {
         return drugs
-            .filter(d => (mode === 'sale' ? true : true)) // For returns, show all drugs
-            .filter(d => d.name.toLowerCase().includes(drugSearchTerm.toLowerCase()))
             .map(d => ({
                 ...d,
                 totalStock: d.batches.reduce((sum, b) => sum + b.quantity, 0)
             }))
-            .filter(d => mode === 'sale' ? d.totalStock > 0 : true)
-            .slice(0, 10);
-    }, [drugs, drugSearchTerm, mode]);
+            .filter(d => (mode === 'sale' ? d.totalStock > 0 : true))
+            .filter(d => catalogSearchTerm === '' || d.name.toLowerCase().includes(catalogSearchTerm.toLowerCase()) || d.manufacturer.toLowerCase().includes(catalogSearchTerm.toLowerCase()))
+            .filter(d => catalogCategory === 'all' || d.category === catalogCategory);
+    }, [drugs, catalogSearchTerm, catalogCategory, mode]);
+    
 
     const lastPurchaseHistory = useMemo(() => {
         const historyMap = new Map<number, OrderItem & { orderDate: string }>();
@@ -258,26 +257,15 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                 setOrderInfo({ customerName: '', amountPaid: '', status: 'ارسال شده' });
                 setItems([]);
                 setExtraCharges([]);
-                setNewCharge({ description: '', amount: '' });
-                setDrugSearchTerm('');
-                setDeviceScanInput('');
-                setAddQuantity('1');
-                setIsSearchFocused(false);
-                setHistoryVisibleForDrugId(null);
-                setEditingPriceForDrugId(null);
             }
+            // Reset common fields
+            setNewCharge({ description: '', amount: '' });
+            setCatalogSearchTerm('');
+            setCatalogCategory('all');
+            setHistoryVisibleForDrugId(null);
+            setEditingPriceForDrugId(null);
         }
     }, [isOpen, initialData, mode]);
-    
-     useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target as Node)) {
-                setIsSearchFocused(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [searchWrapperRef]);
 
 
     if (!isOpen) return null;
@@ -332,43 +320,19 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         return true;
     }
     
-    const handleSelectDrug = (drug: Drug) => {
-        const quantity = Number(addQuantity);
-        if (!quantity || quantity <= 0) {
-            addToast("لطفا تعداد معتبر وارد کنید.", 'error');
-            return;
-        }
-        if (addItemToOrder(drug, quantity)) {
-            setDrugSearchTerm('');
-            setIsSearchFocused(false);
-            setAddQuantity('1');
+    const handleAddFromCatalog = (drug: Drug) => {
+        if (addItemToOrder(drug, 1)) {
+           // Success feedback can be added here if needed
         }
     };
     
     const handleScanSuccess = (barcode: string) => {
+        setIsScannerOpen(false);
         const drug = drugs.find(d => d.barcode === barcode);
         if (drug) {
-            if (addItemToOrder(drug, 1)) {
-                setIsScannerOpen(false);
-            }
+            addItemToOrder(drug, 1);
         } else {
             addToast("محصولی با این بارکد یافت نشد.", 'error');
-            setIsScannerOpen(false);
-        }
-    };
-
-    const handleDeviceScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            if (deviceScanInput.trim() === '') return;
-
-            const drug = drugs.find(d => d.barcode === deviceScanInput.trim());
-            if (drug) {
-                 addItemToOrder(drug, 1);
-            } else {
-                addToast("محصولی با این بارکد یافت نشد.", 'error');
-            }
-            setDeviceScanInput(''); 
         }
     };
     
@@ -541,254 +505,232 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         <>
         <BarcodeScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleScanSuccess} />
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose} role="dialog" aria-modal="true">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                <header className="p-8 pb-4 flex-shrink-0">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                <header className="p-6 border-b flex justify-between items-center">
                     <h3 className="text-2xl font-bold text-gray-800">{modalTitle}</h3>
+                     <button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
+                        <CloseIcon />
+                    </button>
                 </header>
-                <main className="flex-1 overflow-y-auto px-8 py-4">
-                    <form id="order-modal-form" onSubmit={handleSubmit} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label htmlFor="customerName" className={labelStyles}>نام مشتری</label>
-                                <input list="customer-list" type="text" name="customerName" value={orderInfo.customerName} onChange={handleInfoChange} className={`${inputStyles} bg-gray-100`} required readOnly={mode==='return'} />
-                                <datalist id="customer-list">
-                                    {customers.map(c => <option key={c.id} value={c.name} />)}
-                                </datalist>
-                            </div>
-                            <div>
-                               <label htmlFor="status" className={labelStyles}>وضعیت</label>
-                                <select name="status" value={orderInfo.status} onChange={handleInfoChange} className={inputStyles} disabled={mode === 'return'}>
-                                    {mode === 'sale' && <>
-                                    <option value="در حال پردازش">در حال پردازش</option>
-                                    <option value="ارسال شده">ارسال شده</option>
-                                    </>}
-                                    <option value="تکمیل شده">تکمیل شده</option>
-                                    <option value="لغو شده">لغو شده</option>
-                                </select>
-                            </div>
+                <main className="flex-1 overflow-hidden flex flex-row">
+                    {/* LEFT PANEL: PRODUCT CATALOG */}
+                    <div className="w-1/3 border-l p-4 flex flex-col bg-gray-50">
+                        <h4 className="font-bold text-lg text-gray-800 mb-4">کاتالوگ محصولات</h4>
+                        <div className="flex gap-2 mb-4">
+                            <input 
+                                type="text"
+                                placeholder="جستجوی نام یا شرکت..."
+                                value={catalogSearchTerm}
+                                onChange={e => setCatalogSearchTerm(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                            />
+                             <button type="button" onClick={() => setIsScannerOpen(true)} title="اسکن با دوربین" className="p-2 border rounded-lg bg-white hover:bg-gray-100">
+                                <BarcodeScannerIcon />
+                            </button>
                         </div>
-
-                        <div className="space-y-4 rounded-lg border border-gray-200 p-4">
-                            <h4 className="font-bold text-gray-700">{mode === 'return' ? 'اقلام برگشتی' : 'افزودن اقلام به سفارش'}</h4>
-                             {mode === 'sale' && <div className="p-2 bg-gray-50 rounded-md grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div ref={searchWrapperRef}>
-                                    <label className="text-xs text-gray-600">۱. جستجوی دستی دارو</label>
-                                    <div className="relative flex">
-                                        <div className="relative flex-grow">
-                                            <input 
-                                                type="text" 
-                                                value={drugSearchTerm}
-                                                onChange={e => setDrugSearchTerm(e.target.value)}
-                                                onFocus={() => setIsSearchFocused(true)}
-                                                placeholder='بخشی از نام دارو را تایپ کنید...'
-                                                className={`${inputStyles} rounded-l-none`}
-                                            />
-                                            {isSearchFocused && availableDrugs.length > 0 && (
-                                                <div className="absolute top-full left-0 right-0 z-10 bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">
-                                                    {availableDrugs.map(drug => (
-                                                        <div key={drug.id} onClick={() => handleSelectDrug(drug)} className="p-3 hover:bg-teal-50 cursor-pointer border-b">
-                                                            <div className="flex justify-between items-center">
-                                                                <p className="font-semibold text-gray-800">{drug.name}</p>
-                                                                <p className="text-xs text-gray-500">موجودی: <span className="font-mono">{drug.totalStock}</span></p>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                         <input 
-                                            type="number" 
-                                            value={addQuantity} 
-                                            onChange={e => setAddQuantity(e.target.value)} 
-                                            className={`${inputStyles} w-20 text-center rounded-r-none border-l-0`}
-                                            min="1"
-                                            title="تعداد"
-                                        />
-                                         <button type="button" onClick={onOpenQuickAddModal} className="px-3 bg-gray-200 text-gray-700 rounded-l-lg hover:bg-gray-300 font-bold" title="افزودن محصول جدید به سیستم">+</button>
+                        <select
+                            value={catalogCategory}
+                            onChange={e => setCatalogCategory(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white mb-4"
+                        >
+                             <option value="all">همه دسته‌بندی‌ها</option>
+                             {drugCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                        </select>
+                        <div className="flex-1 overflow-y-auto -mx-4 px-4">
+                            {availableDrugsForCatalog.map(drug => (
+                                <div key={drug.id} onClick={() => handleAddFromCatalog(drug)} className="p-3 border-b bg-white hover:bg-teal-50 cursor-pointer rounded-md mb-2 shadow-sm">
+                                    <div className="flex justify-between items-center">
+                                        <p className="font-semibold text-gray-800">{drug.name}</p>
+                                        <span className="text-xs font-mono bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">{drug.totalStock}</span>
                                     </div>
+                                    <p className="text-xs text-gray-500">{drug.manufacturer}</p>
                                 </div>
-                                <div className="flex items-end gap-2">
-                                    <div className="flex-grow">
-                                        <label className="text-xs text-gray-600">۲. اسکن با دستگاه</label>
-                                        <div className="relative">
-                                        <input 
-                                            type="text" 
-                                            placeholder="بارکد را اسکن کنید..."
-                                            value={deviceScanInput}
-                                            onChange={(e) => setDeviceScanInput(e.target.value)}
-                                            onKeyDown={handleDeviceScan}
-                                            className={`${inputStyles} pl-10`}
-                                        />
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                                            <BarcodeScannerIcon />
-                                        </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex-shrink-0">
-                                    <button type="button" onClick={() => setIsScannerOpen(true)} title="اسکن با دوربین" className="h-10 px-4 flex items-center gap-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold">
-                                        <CameraIcon className="w-5 h-5" />
-                                    </button>
-                                    </div>
+                            ))}
+                        </div>
+                    </div>
+                    {/* RIGHT PANEL: ORDER FORM */}
+                    <div className="w-2/3 overflow-y-auto p-6">
+                        <form id="order-modal-form" onSubmit={handleSubmit} className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="customerName" className={labelStyles}>نام مشتری</label>
+                                    <input list="customer-list" type="text" name="customerName" value={orderInfo.customerName} onChange={handleInfoChange} className={`${inputStyles} bg-gray-100`} required readOnly={mode==='return'} />
+                                    <datalist id="customer-list">
+                                        {customers.map(c => <option key={c.id} value={c.name} />)}
+                                    </datalist>
                                 </div>
-                            </div>}
-
-                            <div className="max-h-48 overflow-y-auto">
-                                {items.length === 0 ? <p className="text-center text-gray-500 py-4">هنوز هیچ آیتمی اضافه نشده است.</p> :
-                                    <table className="w-full text-sm">
-                                        <thead className="text-right">
-                                            <tr className="border-b">
-                                                <th className="p-2 font-semibold">نام دارو</th>
-                                                <th className="p-2 font-semibold text-center w-56">{mode === 'return' ? 'تعداد برگشتی' : 'تعداد (فروش / بونس)'}</th>
-                                                <th className="p-2 font-semibold">قیمت واحد</th>
-                                                <th className="p-2 font-semibold">مبلغ جزء</th>
-                                                <th className="p-2 text-center">{mode === 'sale' ? 'سابقه' : ''}</th>
-                                                <th className="p-2"></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {items.map(item => {
-                                                const pricePerUnit = item.isPriceOverridden
-                                                    ? item.finalPrice
-                                                    : (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-                                                        ? item.originalPrice
-                                                        : item.finalPrice;
-                                                const history = lastPurchaseHistory.get(item.drugId);
-                                                return (
-                                                <React.Fragment key={item.drugId}>
-                                                <tr className="border-b last:border-0 hover:bg-gray-50">
-                                                    <td className="p-2">{item.drugName}</td>
-                                                    <td className="p-2">
-                                                        <div className="flex items-center justify-center gap-1">
-                                                            <input type="number" value={item.quantity} onChange={(e) => handleQuantityChange(item.drugId, e.target.value)} className="w-20 text-center border rounded-md py-1" min="0" aria-label={`تعداد فروش برای ${item.drugName}`} />
-                                                            {mode === 'sale' && <>
-                                                            <span className="text-gray-400">/</span>
-                                                            <input type="number" value={item.bonusQuantity} onChange={(e) => handleBonusQuantityChange(item.drugId, e.target.value)} className="w-20 text-center border rounded-md py-1 bg-yellow-50" min="0" placeholder="بونس" aria-label={`تعداد بونس برای ${item.drugName}`} />
-                                                            </>}
-                                                        </div>
-                                                        {mode === 'sale' && item.bonusQuantity > 0 && item.discountPercentage > 0 && (
-                                                             <div className="text-center mt-1">
-                                                                <label className="flex items-center justify-center gap-1.5 cursor-pointer text-xs text-gray-600">
-                                                                    <input type="checkbox" checked={!!item.applyDiscountWithBonus} onChange={e => handleApplyDiscountToggle(item.drugId, e.target.checked)} className="form-checkbox h-3.5 w-3.5 text-teal-600" />
-                                                                    اعمال تخفیف با بونس
-                                                                </label>
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="p-2">
-                                                         {editingPriceForDrugId === item.drugId ? (
-                                                            <input
-                                                                type="number"
-                                                                defaultValue={item.finalPrice}
-                                                                autoFocus
-                                                                onBlur={(e) => handleManualPriceChange(item.drugId, e.target.value)}
-                                                                onKeyDown={(e) => {
-                                                                    if (e.key === 'Enter') { e.preventDefault(); handleManualPriceChange(item.drugId, (e.target as HTMLInputElement).value); } 
-                                                                    else if (e.key === 'Escape') { setEditingPriceForDrugId(null); }
-                                                                }}
-                                                                className="w-24 text-center border rounded-md py-1"
-                                                            />
-                                                        ) : (
-                                                            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => permissions.canGiveManualDiscount && setEditingPriceForDrugId(item.drugId)}>
-                                                                {(item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (
-                                                                     <div className="flex items-center gap-2">
-                                                                        <span className="font-bold text-gray-800">{item.originalPrice.toLocaleString()}</span>
-                                                                        <span className="text-xs font-bold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full" title="چون بونس اعمال شده، تخفیف نادیده گرفته شد">بونس</span>
-                                                                    </div>
-                                                                ) : item.discountPercentage > 0 ? (
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-gray-500 line-through">{item.originalPrice.toLocaleString()}</span>
-                                                                        <span className="font-bold text-teal-600">{item.finalPrice.toLocaleString()}</span>
-                                                                        <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{item.discountPercentage}%</span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <span className="font-bold">{item.originalPrice.toLocaleString()}</span>
-                                                                )}
-                                                                 {permissions.canGiveManualDiscount && <button type="button" className="text-gray-400 hover:text-blue-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="ویرایش دستی قیمت">
-                                                                    <EditIcon />
-                                                                </button>}
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="p-2 font-semibold">{(item.quantity * pricePerUnit).toLocaleString()}</td>
-                                                    <td className="p-2 text-center">
-                                                        {mode === 'sale' && <button type="button" onClick={() => setHistoryVisibleForDrugId(historyVisibleForDrugId === item.drugId ? null : item.drugId)} className={`p-1 rounded-full ${historyVisibleForDrugId === item.drugId ? 'bg-blue-200 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`} title="نمایش سابقه خرید مشتری"><HistoryIcon /></button>}
-                                                    </td>
-                                                    <td className="p-2 text-center">
-                                                        <button type="button" onClick={() => handleRemoveItem(item.drugId)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
-                                                    </td>
+                                <div>
+                                <label htmlFor="status" className={labelStyles}>وضعیت</label>
+                                    <select name="status" value={orderInfo.status} onChange={handleInfoChange} className={inputStyles} disabled={mode === 'return'}>
+                                        {mode === 'sale' && <>
+                                        <option value="در حال پردازش">در حال پردازش</option>
+                                        <option value="ارسال شده">ارسال شده</option>
+                                        </>}
+                                        <option value="تکمیل شده">تکمیل شده</option>
+                                        <option value="لغو شده">لغو شده</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="space-y-4 rounded-lg border border-gray-200 p-4">
+                                <h4 className="font-bold text-gray-700">{mode === 'return' ? 'اقلام برگشتی' : 'اقلام سفارش'}</h4>
+                                <div className="max-h-48 overflow-y-auto">
+                                    {items.length === 0 ? <p className="text-center text-gray-500 py-4">برای شروع، محصولی را از کاتالوگ اضافه کنید.</p> :
+                                        <table className="w-full text-sm">
+                                            <thead className="text-right">
+                                                <tr className="border-b">
+                                                    <th className="p-2 font-semibold">نام دارو</th>
+                                                    <th className="p-2 font-semibold text-center w-56">{mode === 'return' ? 'تعداد برگشتی' : 'تعداد (فروش / بونس)'}</th>
+                                                    <th className="p-2 font-semibold">قیمت واحد</th>
+                                                    <th className="p-2 font-semibold">مبلغ جزء</th>
+                                                    <th className="p-2 text-center">{mode === 'sale' ? 'سابقه' : ''}</th>
+                                                    <th className="p-2"></th>
                                                 </tr>
-                                                {historyVisibleForDrugId === item.drugId && (
-                                                    <tr className="bg-blue-50 transition-all">
-                                                        <td colSpan={6} className="p-3 text-xs">
-                                                            {history ? (
-                                                                <div className="flex justify-around items-center">
-                                                                    <span className="font-semibold">آخرین خرید در تاریخ {new Date(history.orderDate).toLocaleDateString('fa-IR')}:</span>
-                                                                    <span><span className="font-semibold">{history.quantity}</span> عدد</span>
-                                                                    <span>بونس: <span className="font-semibold">{history.bonusQuantity > 0 ? history.bonusQuantity : 'نداشت'}</span></span>
-                                                                    <span>تخفیف: <span className="font-semibold">{history.discountPercentage > 0 ? `${history.discountPercentage}%` : 'نداشت'}</span></span>
-                                                                    <span>قیمت نهایی: <span className="font-semibold">{history.finalPrice.toLocaleString()}</span></span>
+                                            </thead>
+                                            <tbody>
+                                                {items.map(item => {
+                                                    const pricePerUnit = item.isPriceOverridden
+                                                        ? item.finalPrice
+                                                        : (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
+                                                            ? item.originalPrice
+                                                            : item.finalPrice;
+                                                    const history = lastPurchaseHistory.get(item.drugId);
+                                                    return (
+                                                    <React.Fragment key={item.drugId}>
+                                                    <tr className="border-b last:border-0 hover:bg-gray-50">
+                                                        <td className="p-2">{item.drugName}</td>
+                                                        <td className="p-2">
+                                                            <div className="flex items-center justify-center gap-1">
+                                                                <input type="number" value={item.quantity} onChange={(e) => handleQuantityChange(item.drugId, e.target.value)} className="w-20 text-center border rounded-md py-1" min="0" aria-label={`تعداد فروش برای ${item.drugName}`} />
+                                                                {mode === 'sale' && <>
+                                                                <span className="text-gray-400">/</span>
+                                                                <input type="number" value={item.bonusQuantity} onChange={(e) => handleBonusQuantityChange(item.drugId, e.target.value)} className="w-20 text-center border rounded-md py-1 bg-yellow-50" min="0" placeholder="بونس" aria-label={`تعداد بونس برای ${item.drugName}`} />
+                                                                </>}
+                                                            </div>
+                                                            {mode === 'sale' && item.bonusQuantity > 0 && item.discountPercentage > 0 && (
+                                                                <div className="text-center mt-1">
+                                                                    <label className="flex items-center justify-center gap-1.5 cursor-pointer text-xs text-gray-600">
+                                                                        <input type="checkbox" checked={!!item.applyDiscountWithBonus} onChange={e => handleApplyDiscountToggle(item.drugId, e.target.checked)} className="form-checkbox h-3.5 w-3.5 text-teal-600" />
+                                                                        اعمال تخفیف با بونس
+                                                                    </label>
                                                                 </div>
-                                                            ) : (
-                                                                <p className="text-center text-gray-600">سابقه خریدی برای این مشتری یافت نشد.</p>
                                                             )}
                                                         </td>
+                                                        <td className="p-2">
+                                                            {editingPriceForDrugId === item.drugId ? (
+                                                                <input
+                                                                    type="number"
+                                                                    defaultValue={item.finalPrice}
+                                                                    autoFocus
+                                                                    onBlur={(e) => handleManualPriceChange(item.drugId, e.target.value)}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter') { e.preventDefault(); handleManualPriceChange(item.drugId, (e.target as HTMLInputElement).value); } 
+                                                                        else if (e.key === 'Escape') { setEditingPriceForDrugId(null); }
+                                                                    }}
+                                                                    className="w-24 text-center border rounded-md py-1"
+                                                                />
+                                                            ) : (
+                                                                <div className="flex items-center gap-2 group cursor-pointer" onClick={() => permissions.canGiveManualDiscount && setEditingPriceForDrugId(item.drugId)}>
+                                                                    {(item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="font-bold text-gray-800">{item.originalPrice.toLocaleString()}</span>
+                                                                            <span className="text-xs font-bold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full" title="چون بونس اعمال شده، تخفیف نادیده گرفته شد">بونس</span>
+                                                                        </div>
+                                                                    ) : item.discountPercentage > 0 ? (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-gray-500 line-through">{item.originalPrice.toLocaleString()}</span>
+                                                                            <span className="font-bold text-teal-600">{item.finalPrice.toLocaleString()}</span>
+                                                                            <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{item.discountPercentage}%</span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="font-bold">{item.originalPrice.toLocaleString()}</span>
+                                                                    )}
+                                                                    {permissions.canGiveManualDiscount && <button type="button" className="text-gray-400 hover:text-blue-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="ویرایش دستی قیمت">
+                                                                        <EditIcon />
+                                                                    </button>}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-2 font-semibold">{(item.quantity * pricePerUnit).toLocaleString()}</td>
+                                                        <td className="p-2 text-center">
+                                                            {mode === 'sale' && <button type="button" onClick={() => setHistoryVisibleForDrugId(historyVisibleForDrugId === item.drugId ? null : item.drugId)} className={`p-1 rounded-full ${historyVisibleForDrugId === item.drugId ? 'bg-blue-200 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`} title="نمایش سابقه خرید مشتری"><HistoryIcon /></button>}
+                                                        </td>
+                                                        <td className="p-2 text-center">
+                                                            <button type="button" onClick={() => handleRemoveItem(item.drugId)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
+                                                        </td>
                                                     </tr>
-                                                )}
-                                                </React.Fragment>
-                                            )})}
-                                        </tbody>
-                                    </table>
-                                }
-                            </div>
-                        </div>
-                        
-                        {mode === 'sale' && (
-                            <div className="space-y-4 rounded-lg border border-gray-200 p-4">
-                                <h4 className="font-bold text-gray-700">هزینه‌های اضافی</h4>
-                                {extraCharges.length > 0 && (
-                                    <div className="max-h-32 overflow-y-auto">
-                                        <ul className="divide-y">
-                                            {extraCharges.map(charge => (
-                                                <li key={charge.id} className="py-2 flex justify-between items-center text-sm">
-                                                    <div>
-                                                        <p className="font-semibold">{charge.description}</p>
-                                                    </div>
-                                                    <div className="flex items-center gap-4">
-                                                         <p className="text-gray-800 font-semibold">{charge.amount.toLocaleString()} افغانی</p>
-                                                        <button type="button" onClick={() => handleRemoveCharge(charge.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
-                                                    </div>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-                                 <div className="flex gap-2 items-end pt-2 border-t">
-                                    <div className="flex-grow">
-                                        <label className="text-xs font-semibold text-gray-600">شرح هزینه</label>
-                                        <input type="text" value={newCharge.description} onChange={e => setNewCharge(p => ({...p, description: e.target.value}))} className={inputStyles} placeholder="مثلا: کرایه حمل" />
-                                    </div>
-                                    <div className="w-32">
-                                         <label className="text-xs font-semibold text-gray-600">مبلغ</label>
-                                        <input type="number" value={newCharge.amount} onChange={e => setNewCharge(p => ({...p, amount: e.target.value}))} className={inputStyles} placeholder="200" />
-                                    </div>
-                                    <button type="button" onClick={handleAddCharge} className="px-4 h-10 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold">افزودن</button>
+                                                    {historyVisibleForDrugId === item.drugId && (
+                                                        <tr className="bg-blue-50 transition-all">
+                                                            <td colSpan={6} className="p-3 text-xs">
+                                                                {history ? (
+                                                                    <div className="flex justify-around items-center">
+                                                                        <span className="font-semibold">آخرین خرید در تاریخ {new Date(history.orderDate).toLocaleDateString('fa-IR')}:</span>
+                                                                        <span><span className="font-semibold">{history.quantity}</span> عدد</span>
+                                                                        <span>بونس: <span className="font-semibold">{history.bonusQuantity > 0 ? history.bonusQuantity : 'نداشت'}</span></span>
+                                                                        <span>تخفیف: <span className="font-semibold">{history.discountPercentage > 0 ? `${history.discountPercentage}%` : 'نداشت'}</span></span>
+                                                                        <span>قیمت نهایی: <span className="font-semibold">{history.finalPrice.toLocaleString()}</span></span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-center text-gray-600">سابقه خریدی برای این مشتری یافت نشد.</p>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                    </React.Fragment>
+                                                )})}
+                                            </tbody>
+                                        </table>
+                                    }
                                 </div>
                             </div>
-                        )}
+                            
+                            {mode === 'sale' && (
+                                <div className="space-y-4 rounded-lg border border-gray-200 p-4">
+                                    <h4 className="font-bold text-gray-700">هزینه‌های اضافی</h4>
+                                    {extraCharges.length > 0 && (
+                                        <div className="max-h-32 overflow-y-auto">
+                                            <ul className="divide-y">
+                                                {extraCharges.map(charge => (
+                                                    <li key={charge.id} className="py-2 flex justify-between items-center text-sm">
+                                                        <div>
+                                                            <p className="font-semibold">{charge.description}</p>
+                                                        </div>
+                                                        <div className="flex items-center gap-4">
+                                                            <p className="text-gray-800 font-semibold">{charge.amount.toLocaleString()} افغانی</p>
+                                                            <button type="button" onClick={() => handleRemoveCharge(charge.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    <div className="flex gap-2 items-end pt-2 border-t">
+                                        <div className="flex-grow">
+                                            <label className="text-xs font-semibold text-gray-600">شرح هزینه</label>
+                                            <input type="text" value={newCharge.description} onChange={e => setNewCharge(p => ({...p, description: e.target.value}))} className={inputStyles} placeholder="مثلا: کرایه حمل" />
+                                        </div>
+                                        <div className="w-32">
+                                            <label className="text-xs font-semibold text-gray-600">مبلغ</label>
+                                            <input type="number" value={newCharge.amount} onChange={e => setNewCharge(p => ({...p, amount: e.target.value}))} className={inputStyles} placeholder="200" />
+                                        </div>
+                                        <button type="button" onClick={handleAddCharge} className="px-4 h-10 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold">افزودن</button>
+                                    </div>
+                                </div>
+                            )}
 
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
-                             <div>
-                                <label htmlFor="amountPaid" className={labelStyles}>{mode === 'return' ? 'مبلغ بازپرداخت شده' : 'مبلغ پرداخت شده'} (افغانی)</label>
-                                <input type="number" name="amountPaid" value={orderInfo.amountPaid} onChange={handleInfoChange} className={inputStyles} min="0" placeholder="مثلا: 5000" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                                <div>
+                                    <label htmlFor="amountPaid" className={labelStyles}>{mode === 'return' ? 'مبلغ بازپرداخت شده' : 'مبلغ پرداخت شده'} (افغانی)</label>
+                                    <input type="number" name="amountPaid" value={orderInfo.amountPaid} onChange={handleInfoChange} className={inputStyles} min="0" placeholder="مثلا: 5000" />
+                                </div>
+                                <div className="text-right">
+                                    <p className={labelStyles}>{mode === 'return' ? 'مبلغ کل مستردی' : 'مبلغ کل سفارش'}</p>
+                                    <p className={`text-2xl font-bold ${mode === 'return' ? 'text-red-600' : 'text-teal-600'}`}>{totalAmount.toLocaleString()} <span className="text-lg">افغانی</span></p>
+                                </div>
                             </div>
-                            <div className="text-right">
-                                <p className={labelStyles}>{mode === 'return' ? 'مبلغ کل مستردی' : 'مبلغ کل سفارش'}</p>
-                                <p className={`text-2xl font-bold ${mode === 'return' ? 'text-red-600' : 'text-teal-600'}`}>{totalAmount.toLocaleString()} <span className="text-lg">افغانی</span></p>
-                            </div>
-                        </div>
-                    </form>
+                        </form>
+                    </div>
                 </main>
-                <footer className="p-8 pt-4 flex-shrink-0 border-t border-gray-200 flex justify-end space-x-4 space-x-reverse">
+                <footer className="p-6 flex-shrink-0 border-t border-gray-200 flex justify-end space-x-4 space-x-reverse">
                     <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold transition-colors">انصراف</button>
                     <button type="submit" form="order-modal-form" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors shadow-md hover:shadow-lg">
                        {mode === 'return' ? 'ثبت مستردی' : (isEditMode ? 'ذخیره تغییرات' : 'ذخیره سفارش')}
@@ -841,7 +783,8 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
     const totalItemsDiscount = itemsSubtotal - itemsTotalAfterDiscount;
     const extraCharges = order.extraCharges || [];
     
-    const finalBalance = Number(previousBalance) + Number(order.totalAmount);
+    // FIX: Correctly calculate the final balance by also subtracting the amount paid for the current invoice.
+    const finalBalance = Number(previousBalance) + Number(order.totalAmount) - Number(order.amountPaid);
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[90] flex justify-center items-start p-4 overflow-y-auto" onClick={onClose}>
@@ -917,7 +860,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-gray-600">مجموع تخفیف:</span>
-                                <span className="font-semibold text-green-600">{totalItemsDiscount.toLocaleString()}</span>
+                                <span className="font-semibold text-green-600">{(+totalItemsDiscount.toFixed(2)).toLocaleString()}</span>
                             </div>
                             {extraCharges.map(charge => (
                                 <div key={charge.id} className="flex justify-between">
@@ -927,19 +870,19 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                             ))}
                             <div className="flex justify-between text-xl font-bold text-gray-800 pt-2 border-t">
                                 <span>مبلغ نهایی قابل پرداخت:</span>
-                                <span>{order.totalAmount.toLocaleString()} افغانی</span>
+                                <span>{(+order.totalAmount.toFixed(2)).toLocaleString()} افغانی</span>
                             </div>
                              <div className="flex justify-between">
                                 <span>مبلغ پرداخت شده:</span>
-                                <span>{order.amountPaid.toLocaleString()}</span>
+                                <span>{(+order.amountPaid.toFixed(2)).toLocaleString()}</span>
                             </div>
                              <div className="flex justify-between">
                                 <span>مانده قبلی:</span>
-                                <span>{previousBalance.toLocaleString()}</span>
+                                <span>{(+previousBalance.toFixed(2)).toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-lg font-bold">
                                 <span>مانده نهایی:</span>
-                                <span>{finalBalance.toLocaleString()}</span>
+                                <span>{(+finalBalance.toFixed(2)).toLocaleString()}</span>
                             </div>
                         </div>
                     </div>
@@ -1108,6 +1051,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                                 <th className="p-4">مشتری</th>
                                 <th className="p-4">تاریخ</th>
                                 <th className="p-4">مبلغ کل</th>
+                                <th className="p-4">سود</th>
                                 <th className="p-4">وضعیت پرداخت</th>
                                 <th className="p-4">وضعیت سفارش</th>
                                 <th className="p-4">عملیات</th>
@@ -1117,12 +1061,22 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                             {filteredOrders.map(order => {
                                 const orderStatusStyle = getOrderStatusStyle(order.status);
                                 const paymentStatusStyle = getPaymentStatusStyle(order.paymentStatus);
+                                const itemsRevenue = order.items.reduce((sum, item) => {
+                                     const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
+                                        ? item.originalPrice
+                                        : item.finalPrice;
+                                    return sum + (item.quantity * pricePerUnit);
+                                }, 0);
+                                const cogs = order.items.reduce((sum, item) => sum + (item.batchAllocations || []).reduce((cogsSum, alloc) => cogsSum + (alloc.quantity * alloc.purchasePrice), 0), 0);
+                                // FIX: Correctly calculate profit for sale returns as a negative value.
+                                const profit = order.type === 'sale_return' ? -(itemsRevenue - cogs) : (itemsRevenue - cogs);
                                 return (
                                 <tr key={order.id} className={order.type === 'sale_return' ? 'bg-orange-50 hover:bg-orange-100' : 'hover:bg-gray-50'}>
                                     <td className="p-4 font-mono">{order.orderNumber}</td>
                                     <td className="p-4">{order.customerName}</td>
                                     <td className="p-4">{new Date(order.orderDate).toLocaleDateString('fa-IR')}</td>
                                     <td className="p-4 font-semibold">{Math.abs(order.totalAmount).toLocaleString()}</td>
+                                    <td className={`p-4 font-semibold ${profit < 0 ? 'text-red-600' : 'text-gray-700'}`}>{profit.toLocaleString()}</td>
                                     <td className="p-4"><span className={`px-2 py-1 text-xs font-bold rounded-full ${paymentStatusStyle.bg} ${paymentStatusStyle.text}`}>{order.paymentStatus}</span></td>
                                     <td className="p-4"><span className={`px-2 py-1 text-xs font-bold rounded-full ${orderStatusStyle.bg} ${orderStatusStyle.text}`}>{order.status}</span></td>
                                     <td className="p-4"><div className="flex gap-2">

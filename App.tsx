@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 // FIX: Removed import of non-existent SupabaseUser type from '@supabase/supabase-js'.
@@ -289,25 +290,89 @@ export type StockRequisition = {
 
 
 //=========== MOCK DATA FOR DEMO ===========//
+// Base Drug Definitions (without stock)
+const drugDefinitions: Omit<Drug, 'batches'>[] = [
+    { id: 1, name: 'Paracetamol 500mg', code: 'P-500', manufacturer: 'حکمت', unitsPerCarton: 100, price: 50, discountPercentage: 5, category: 'مسکن', barcode: '8901234567890' },
+    { id: 2, name: 'Amoxicillin 250mg', code: 'AMX-250', manufacturer: 'کابل فارما', unitsPerCarton: 120, price: 120, discountPercentage: 0, category: 'آنتی‌بیوتیک', barcode: '8902345678901' },
+    { id: 3, name: 'Vitamin C 1000mg', code: 'VITC-1K', manufacturer: 'سپیداج', unitsPerCarton: 50, price: 250, discountPercentage: 10, category: 'ویتامین و مکمل', barcode: '8903456789012' },
+    { id: 4, name: 'Ibuprofen 400mg', code: 'IBU-400', manufacturer: 'حکمت', unitsPerCarton: 80, price: 75, discountPercentage: 0, category: 'مسکن', barcode: '8904567890123' },
+    { id: 5, name: 'Loratadine 10mg', code: 'LOR-10', manufacturer: 'کابل فارما', unitsPerCarton: 30, price: 90, discountPercentage: 0, category: 'ضد حساسیت', barcode: '8905678901234' },
+    { id: 6, name: 'Metformin 500mg', code: 'MET-500', manufacturer: 'سپیداج', unitsPerCarton: 60, price: 180, discountPercentage: 0, category: 'دیابت', barcode: '8906789012345' },
+];
+
 // --- Sales Warehouse ---
-const initialMockDrugs: Drug[] = [];
+const initialMockDrugs: Drug[] = [
+    { ...drugDefinitions[0], batches: [{ lotNumber: 'P500-A01', quantity: 450, expiryDate: '2025-08-01', purchasePrice: 30 }] },
+    { ...drugDefinitions[1], batches: [{ lotNumber: 'AMX250-B02', quantity: 280, expiryDate: '2024-12-15', purchasePrice: 80 }] },
+    { ...drugDefinitions[2], batches: [{ lotNumber: 'VITC-C03', quantity: 600, expiryDate: '2026-01-01', purchasePrice: 150 }] },
+    { ...drugDefinitions[3], batches: [{ lotNumber: 'IBU400-D04', quantity: 720, expiryDate: '2025-06-20', purchasePrice: 45 }] },
+];
 
 // --- Main Warehouse ---
-const initialMockMainWarehouseDrugs: Drug[] = [];
+const initialMockMainWarehouseDrugs: Drug[] = [
+    { ...drugDefinitions[0], batches: [{ lotNumber: 'P500-A01', quantity: 5000, expiryDate: '2025-08-01', purchasePrice: 30 }] },
+    { ...drugDefinitions[1], batches: [{ lotNumber: 'AMX250-B02', quantity: 8000, expiryDate: '2024-12-15', purchasePrice: 80 }] },
+    { ...drugDefinitions[2], batches: [{ lotNumber: 'VITC-C03', quantity: 10000, expiryDate: '2026-01-01', purchasePrice: 150 }] },
+    { ...drugDefinitions[3], batches: [{ lotNumber: 'IBU400-D04', quantity: 4000, expiryDate: '2025-06-20', purchasePrice: 45 }] },
+    { ...drugDefinitions[4], batches: [{ lotNumber: 'LOR10-E05', quantity: 3000, expiryDate: '2025-11-30', purchasePrice: 60 }] },
+    { ...drugDefinitions[5], batches: [{ lotNumber: 'MET500-F06', quantity: 6000, expiryDate: '2026-02-10', purchasePrice: 110 }] },
+];
 
 
-const initialMockCustomers: Customer[] = [];
+const initialMockCustomers: Customer[] = [
+    { id: 1, name: 'داروخانه صحت', manager: 'احمد ولی', phone: '0788123456', address: 'کارته سه, کابل', registrationDate: '2023-01-15', status: 'فعال' },
+    { id: 2, name: 'شفاخانه مرکزی', manager: 'فاطمه محمدی', phone: '0799876543', address: 'شهر نو, کابل', registrationDate: '2023-02-20', status: 'فعال' },
+    { id: 3, name: 'کلینیک امید', manager: 'علی رضا', phone: '0777112233', address: 'خیرخانه, کابل', registrationDate: '2023-03-05', status: 'غیرفعال' },
+    { id: 4, name: 'داروخانه آریانا', manager: 'نرگس احمدی', phone: '0766445566', address: 'تایمنی, کابل', registrationDate: '2023-05-10', status: 'فعال' },
+];
 
-const initialMockOrders: Order[] = [];
+const initialMockOrders: Order[] = [
+    { id: 1, type: 'sale', orderNumber: 'SO-2024-0001', customerName: 'داروخانه صحت', orderDate: '2024-07-20', items: [
+        { drugId: 1, drugName: 'Paracetamol 500mg', quantity: 100, bonusQuantity: 10, originalPrice: 50, discountPercentage: 5, finalPrice: 47.5, batchAllocations: [{lotNumber: 'P500-A01', quantity: 110, purchasePrice: 30, expiryDate: '2025-08-01'}] },
+        { drugId: 2, drugName: 'Amoxicillin 250mg', quantity: 50, bonusQuantity: 0, originalPrice: 120, discountPercentage: 0, finalPrice: 120, batchAllocations: [{lotNumber: 'AMX250-B02', quantity: 50, purchasePrice: 80, expiryDate: '2024-12-15'}] },
+    ], extraCharges: [{ id: 1, description: 'کرایه حمل', amount: 200 }], totalAmount: 11450, amountPaid: 11450, status: 'تکمیل شده', paymentStatus: 'پرداخت شده' },
+    { id: 2, type: 'sale', orderNumber: 'SO-2024-0002', customerName: 'شفاخانه مرکزی', orderDate: '2024-07-22', items: [
+        { drugId: 3, drugName: 'Vitamin C 1000mg', quantity: 200, bonusQuantity: 0, originalPrice: 250, discountPercentage: 10, finalPrice: 225, batchAllocations: [{lotNumber: 'VITC-C03', quantity: 200, purchasePrice: 150, expiryDate: '2026-01-01'}] },
+    ], extraCharges: [], totalAmount: 45000, amountPaid: 20000, status: 'ارسال شده', paymentStatus: 'قسمتی پرداخت شده' },
+    { id: 3, type: 'sale', orderNumber: 'SO-2024-0003', customerName: 'داروخانه آریانا', orderDate: '2024-07-25', items: [
+        { drugId: 4, drugName: 'Ibuprofen 400mg', quantity: 80, bonusQuantity: 0, originalPrice: 75, discountPercentage: 0, finalPrice: 75, batchAllocations: [{lotNumber: 'IBU400-D04', quantity: 80, purchasePrice: 45, expiryDate: '2025-06-20'}] },
+    ], extraCharges: [], totalAmount: 6000, amountPaid: 0, status: 'در حال پردازش', paymentStatus: 'پرداخت نشده' },
+];
 
-const initialMockExpenses: Expense[] = [];
+const initialMockExpenses: Expense[] = [
+    { id: 1, description: 'حقوق ماه سرطان', amount: 80000, date: '2024-07-21', category: 'حقوق' },
+    { id: 2, description: 'کرایه دفتر', amount: 25000, date: '2024-07-05', category: 'کرایه' },
+    { id: 3, description: 'هزینه حمل و نقل شهری', amount: 5000, date: '2024-07-15', category: 'حمل و نقل' },
+];
 
-const initialMockSuppliers: Supplier[] = [];
+const initialMockSuppliers: Supplier[] = [
+    { id: 1, name: 'شرکت داروسازی حکمت', representative: 'عبدالله انصاری', phone: '0789123123', email: 'info@hekmat.af', address: 'صنعتی پارک‌ها, هرات', status: 'فعال' },
+    { id: 2, name: 'واردات دارویی افغان', representative: 'محمد نبی', phone: '0799456456', email: 'sales@afghanpharma.af', address: 'شهرنو, کابل', status: 'فعال' },
+    { id: 3, name: 'پخش سپیداج', representative: 'زهرا حسینی', phone: '0777890890', email: 'contact@sepidaj.co', address: 'کارته چهار, کابل', status: 'فعال' },
+];
 
-const initialMockPurchaseBills: PurchaseBill[] = [];
+const initialMockPurchaseBills: PurchaseBill[] = [
+    { id: 1, type: 'purchase', billNumber: 'HEK-24-101', supplierName: 'شرکت داروسازی حکمت', purchaseDate: '2024-05-10', items: [
+        { drugId: 1, drugName: 'Paracetamol 500mg', quantity: 5000, purchasePrice: 30, lotNumber: 'P500-A01', expiryDate: '2025-08-01' },
+        { drugId: 4, drugName: 'Ibuprofen 400mg', quantity: 4000, purchasePrice: 45, lotNumber: 'IBU400-D04', expiryDate: '2025-06-20' },
+    ], totalAmount: 330000, amountPaid: 330000, status: 'دریافت شده', currency: 'AFN', exchangeRate: 1 },
+    { id: 2, type: 'purchase', billNumber: 'AFG-24-205', supplierName: 'واردات دارویی افغان', purchaseDate: '2024-04-20', items: [
+         { drugId: 2, drugName: 'Amoxicillin 250mg', quantity: 8000, purchasePrice: 80, lotNumber: 'AMX250-B02', expiryDate: '2024-12-15' },
+         { drugId: 5, drugName: 'Loratadine 10mg', quantity: 3000, purchasePrice: 1.0, lotNumber: 'LOR10-E05', expiryDate: '2025-11-30' },
+    ], totalAmount: 9142.8, amountPaid: 9000, status: 'دریافت شده', currency: 'USD', exchangeRate: 70.0 },
+     { id: 3, type: 'purchase', billNumber: 'SEP-24-310', supplierName: 'پخش سپیداج', purchaseDate: '2024-06-01', items: [
+         { drugId: 3, drugName: 'Vitamin C 1000mg', quantity: 10000, purchasePrice: 150, lotNumber: 'VITC-C03', expiryDate: '2026-01-01' },
+         { drugId: 6, drugName: 'Metformin 500mg', quantity: 6000, purchasePrice: 110, lotNumber: 'MET500-F06', expiryDate: '2026-02-10' },
+    ], totalAmount: 2160000, amountPaid: 2000000, status: 'دریافت شده', currency: 'AFN', exchangeRate: 1 },
+];
 
 // --- Checkneh Mock Data (Will be managed by its own hook) ---
-const initialMockChecknehInvoices: ChecknehInvoice[] = [];
+const initialMockChecknehInvoices: ChecknehInvoice[] = [
+    { id: 1, invoiceNumber: 'CHK-2407-001', customerName: 'داروخانه صحت', supplierName: 'فروش متفرقه', invoiceDate: '2024-07-18', items: [
+        { id: 101, drugName: 'Syrup Gripe Water', quantity: 20, purchasePrice: 80, sellingPrice: 120, discountPercentage: 0 },
+        { id: 102, drugName: 'Bandage Roll 4"', quantity: 50, purchasePrice: 20, sellingPrice: 35, discountPercentage: 0 },
+    ], totalAmount: 4150 },
+];
 
 // --- Internal Transfers Mock Data ---
 export type InternalTransfer = { 
@@ -546,6 +611,8 @@ const App: React.FC = () => {
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [activeItem, setActiveItem] = usePersistentState<string>('hayat_activeItem', 'dashboard');
     const [isQuickAddDrugModalOpen, setIsQuickAddDrugModalOpen] = useState(false);
+    const [preselectedCustomerId, setPreselectedCustomerId] = useState<number | null>(null);
+    const [lotNumberToTrace, setLotNumberToTrace] = useState<string | null>(null);
 
     // All data states
     const [drugs, setDrugs] = usePersistentState<Drug[]>('hayat_drugs', initialMockDrugs);
@@ -821,14 +888,17 @@ const App: React.FC = () => {
                 for (const item of bill.items) {
                     let drug = updatedWarehouse.find(d => d.id === item.drugId);
                     
+                    // **FIX: Convert purchase price to base currency (AFN) before storing.**
+                    const priceInBaseCurrency = item.purchasePrice * (bill.exchangeRate || 1);
+
                     if (drug) {
                         let batch = drug.batches.find(b => b.lotNumber === item.lotNumber);
                         if (batch) {
                             addToast(`هشدار: لات ${item.lotNumber} برای محصول ${item.drugName} از قبل موجود بود. قیمت خرید میانگین‌گیری و تعداد اضافه شد.`, 'info');
                             const oldQty = batch.quantity;
-                            const oldPrice = batch.purchasePrice;
+                            const oldPrice = batch.purchasePrice; // Already in AFN
                             const newQty = item.quantity;
-                            const newPrice = item.purchasePrice;
+                            const newPrice = priceInBaseCurrency; // Use converted price
                             
                             const totalQty = oldQty + newQty;
                             batch.purchasePrice = ((oldQty * oldPrice) + (newQty * newPrice)) / totalQty;
@@ -839,7 +909,7 @@ const App: React.FC = () => {
                                 quantity: item.quantity,
                                 expiryDate: item.expiryDate,
                                 productionDate: item.productionDate,
-                                purchasePrice: item.purchasePrice,
+                                purchasePrice: priceInBaseCurrency, // Use converted price
                             });
                         }
                     } else {
@@ -854,7 +924,7 @@ const App: React.FC = () => {
                                     quantity: item.quantity,
                                     expiryDate: item.expiryDate,
                                     productionDate: item.productionDate,
-                                    purchasePrice: item.purchasePrice,
+                                    purchasePrice: priceInBaseCurrency, // Use converted price
                                 }]
                             });
                         } else {
@@ -1050,6 +1120,40 @@ const App: React.FC = () => {
                 return; 
             }
             setDrugs(tempDrugs);
+        } else if (order.type === 'sale_return') {
+            // **CRITICAL FIX**: Add stock back to inventory for sale returns.
+            for (const item of order.items) {
+                const drugToUpdate = tempDrugs.find(d => d.id === item.drugId);
+                if (!drugToUpdate) {
+                    addToast(`خطای بازگشت: محصول ${item.drugName} در انبار یافت نشد.`, 'error');
+                    continue; 
+                }
+                // When returning, we assume it goes back to the same lot it came from.
+                // The original batchAllocations should be preserved from the original sale order.
+                if (item.batchAllocations) {
+                    for (const allocation of item.batchAllocations) {
+                         const batchToUpdate = drugToUpdate.batches.find(b => b.lotNumber === allocation.lotNumber);
+                         if (batchToUpdate) {
+                            batchToUpdate.quantity += allocation.quantity;
+                         } else {
+                            // Re-create the batch if it doesn't exist (e.g., was fully sold and now is being returned)
+                             drugToUpdate.batches.push({
+                                lotNumber: allocation.lotNumber,
+                                quantity: allocation.quantity,
+                                expiryDate: allocation.expiryDate,
+                                purchasePrice: allocation.purchasePrice,
+                             });
+                         }
+                    }
+                } else {
+                    // Fallback if batch info is missing (less accurate) - add to first available batch
+                    addToast(`هشدار: اطلاعات بچ برای ${item.drugName} یافت نشد. موجودی به اولین بچ اضافه شد.`, 'info');
+                    if(drugToUpdate.batches.length > 0) {
+                        drugToUpdate.batches[0].quantity += item.quantity;
+                    }
+                }
+            }
+             setDrugs(tempDrugs);
         }
 
         setOrders(prev => {
@@ -1149,20 +1253,41 @@ const App: React.FC = () => {
         return alerts;
     }, [drugs, alertSettings, orders, customers, customerBalances]);
 
+    // --- NEW: Handler for customer ledger shortcut ---
+    const handleViewLedger = (customerId: number) => {
+        setPreselectedCustomerId(customerId);
+        setActiveItem('customer_accounts');
+    };
+
+    // --- NEW: Handler for batch traceability shortcut ---
+    const handleTraceLotNumber = (lotNumber: string) => {
+        setLotNumberToTrace(lotNumber);
+        setActiveItem('reports');
+    };
+    
+    // --- NEW: Clear trace state when navigating away from reports ---
+    useEffect(() => {
+        if (activeItem !== 'reports') {
+            setLotNumberToTrace(null);
+        }
+        if (activeItem !== 'customer_accounts') {
+            setPreselectedCustomerId(null);
+        }
+    }, [activeItem]);
 
     const renderActiveComponent = () => {
         if (!currentUser) return null;
         switch(activeItem) {
             case 'dashboard': return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
-            case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={(id) => {}} onWriteOff={() => {}} onSaveRequisition={handleSaveRequisition} currentUser={currentUser} rolePermissions={rolePermissions} addToast={addToast} />;
+            case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={(id) => {}} onWriteOff={() => {}} onSaveRequisition={handleSaveRequisition} currentUser={currentUser} rolePermissions={rolePermissions} addToast={addToast} onTraceLotNumber={handleTraceLotNumber} />;
             case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} rolePermissions={rolePermissions} documentSettings={documentSettings} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
-            case 'customers': return <Customers customers={customers} onSave={(c) => setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev])} onDelete={handleDeleteCustomer} currentUser={currentUser} rolePermissions={rolePermissions} addToast={addToast} />;
+            case 'customers': return <Customers customers={customers} onSave={(c) => setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev])} onDelete={handleDeleteCustomer} currentUser={currentUser} rolePermissions={rolePermissions} addToast={addToast} onViewLedger={handleViewLedger} />;
             case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev])} onDelete={handleDeleteSupplier} currentUser={currentUser} />;
             case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={currentUser} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
             case 'finance': return <Accounting orders={orders} expenses={expenses} onSave={(e) => setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev])} onDelete={handleDeleteExpense} currentUser={currentUser} />;
-            case 'reports': return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} companyInfo={companyInfo} documentSettings={documentSettings} />;
+            case 'reports': return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} companyInfo={companyInfo} documentSettings={documentSettings} lotNumberToTrace={lotNumberToTrace} />;
             case 'fulfillment': return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} />;
-            case 'customer_accounts': return <CustomerAccounts customers={customers} orders={orders} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} />;
+            case 'customer_accounts': return <CustomerAccounts customers={customers} orders={orders} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} preselectedCustomerId={preselectedCustomerId} />;
             case 'supplier_accounts': return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} />;
             case 'main_warehouse': return <MainWarehouse 
                 mainWarehouseDrugs={mainWarehouseDrugs} 

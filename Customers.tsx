@@ -14,6 +14,8 @@ const PlusIcon = () => <Icon path="M12 4v16m8-8H4" />;
 const SearchIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" className="w-5 h-5 text-gray-400" />;
 const EditIcon = () => <Icon path="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />;
 const TrashIcon = () => <Icon path="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />;
+const AccountStatementIcon = () => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />;
+
 
 //=========== TYPES ===========//
 export type CustomerStatus = 'فعال' | 'غیرفعال';
@@ -154,9 +156,10 @@ type CustomersProps = {
     currentUser: User;
     rolePermissions: RolePermissions;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    onViewLedger: (customerId: number) => void;
 };
 
-const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, currentUser, rolePermissions, addToast }) => {
+const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, currentUser, rolePermissions, addToast, onViewLedger }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -297,6 +300,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
                                             </td>
                                             <td className="p-4">
                                                 <div className="flex items-center space-x-2 space-x-reverse">
+                                                    <button onClick={() => onViewLedger(customer.id)} title="صورت حساب" className="text-teal-600 hover:text-teal-800 p-1"><AccountStatementIcon /></button>
                                                     {permissions.canEditCustomer && (
                                                         <button onClick={() => handleOpenEditModal(customer)} className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>
                                                     )}

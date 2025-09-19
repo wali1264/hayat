@@ -33,6 +33,12 @@ const CameraIcon = () => <Icon path="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812
 const QrCodeIcon = () => <Icon path="M3.75 4.5A.75.75 0 003 5.25v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5zm4.5 0a.75.75 0 00-.75.75v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5zm4.5 0a.75.75 0 00-.75.75v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5zm4.5 0a.75.75 0 00-.75.75v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5z" className="w-4 h-4" />;
 const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0 00-2 2v4a2 2 0 002 2h2m8 0v4H9v-4m4 0h-2" />;
 const RequestIcon = () => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />;
+const ChevronIcon = ({ isExpanded }: { isExpanded: boolean }) => (
+    <Icon path={isExpanded ? "M19 9l-7 7-7-7" : "M5 15l7-7 7 7"} className="w-4 h-4 text-gray-500" />
+);
+const TraceIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 4H4v6M14 20h6v-6" className="w-4 h-4" />;
+
+
 
 const CloseIcon = ({ className = "w-6 h-6" }: { className?: string}) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -138,6 +144,47 @@ const getRequisitionStatusStyle = (status: StockRequisition['status']) => {
         default: return { text: 'text-gray-700', bg: 'bg-gray-100' };
     }
 };
+
+// --- NEW SUB-COMPONENT ---
+const BatchDetailsRow = ({ drug, colSpan, onTraceLotNumber }: { drug: Drug; colSpan: number; onTraceLotNumber: (lotNumber: string) => void; }) => (
+    <tr className="bg-teal-50">
+        <td colSpan={colSpan} className="p-4">
+            <h4 className="font-bold text-sm text-teal-800 mb-2">جزئیات بچ‌ها برای «{drug.name}»</h4>
+            <div className="bg-white rounded-md border max-h-48 overflow-y-auto">
+                <table className="w-full text-xs text-right">
+                    <thead className="bg-gray-100">
+                        <tr>
+                            <th className="p-2 font-semibold">شماره لات</th>
+                            <th className="p-2 font-semibold">تعداد موجود</th>
+                            <th className="p-2 font-semibold">تاریخ انقضا</th>
+                            <th className="p-2 font-semibold">قیمت خرید</th>
+                            <th className="p-2 font-semibold">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {drug.batches.filter(b => b.quantity > 0).length === 0 ? (
+                            <tr><td colSpan={5} className="p-4 text-center text-gray-500">هیچ بچ با موجودی برای این محصول یافت نشد.</td></tr>
+                        ) : (
+                            drug.batches.filter(b => b.quantity > 0).map(batch => (
+                                <tr key={batch.lotNumber}>
+                                    <td className="p-2 font-mono">{batch.lotNumber}</td>
+                                    <td className="p-2">{formatQuantity(batch.quantity, drug.unitsPerCarton)}</td>
+                                    <td className="p-2">{new Date(batch.expiryDate).toLocaleDateString('fa-IR')}</td>
+                                    <td className="p-2 font-mono">{batch.purchasePrice.toLocaleString()}</td>
+                                    <td className="p-2">
+                                        <button onClick={() => onTraceLotNumber(batch.lotNumber)} title="ردیابی این لات" className="p-1 text-teal-600 hover:text-teal-800">
+                                            <TraceIcon />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </td>
+    </tr>
+);
 
 
 //=========== MODAL COMPONENTS ===========//
@@ -625,11 +672,12 @@ type InventoryProps = {
     currentUser: User;
     rolePermissions: RolePermissions;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    onTraceLotNumber: (lotNumber: string) => void;
 };
 
 type Tab = 'stock' | 'requisitions';
 
-const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockRequisitions, onSaveDrug, onDelete, onWriteOff, onSaveRequisition, currentUser, rolePermissions, addToast }) => {
+const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockRequisitions, onSaveDrug, onDelete, onWriteOff, onSaveRequisition, currentUser, rolePermissions, addToast, onTraceLotNumber }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isWriteOffModalOpen, setIsWriteOffModalOpen] = useState(false);
     const [isRequisitionModalOpen, setIsRequisitionModalOpen] = useState(false);
@@ -645,6 +693,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
         direction: 'ascending',
     });
     const [activeTab, setActiveTab] = useState<Tab>('stock');
+    const [expandedDrugId, setExpandedDrugId] = useState<number | null>(null);
     
     const permissions = useMemo(() => {
         if (currentUser.role === 'مدیر کل') {
@@ -711,6 +760,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                 (drug.manufacturer && drug.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()));
             
             const statusMatch = statusFilter === 'all' || getStatus(drug).text === statusFilter;
+            // FIX: Corrected a typo where 'categoryMatch' was used in its own declaration.
             const categoryMatch = categoryFilter === 'all' || drug.category === categoryFilter;
 
             return searchTermMatch && statusMatch && categoryMatch;
@@ -878,6 +928,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                         <table className="w-full text-right">
                             <thead className="bg-gray-50 border-b-2 border-gray-200">
                                 <tr>
+                                    <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider"></th>
                                     <SortableHeader label="نام محصول" columnKey="name" />
                                     <SortableHeader label="کمپانی" columnKey="manufacturer" />
                                     <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">کد محصول</th>
@@ -890,16 +941,17 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                                     <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">عملیات</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-200">
+                            <tbody>
                                 {sortedAndFilteredDrugs.length === 0 ? (
                                     <tr>
-                                        <td colSpan={10} className="text-center p-8 text-gray-500">
+                                        <td colSpan={11} className="text-center p-8 text-gray-500">
                                             هیچ محصولی با این مشخصات یافت نشد.
                                         </td>
                                     </tr>
                                 ) : (
                                     sortedAndFilteredDrugs.map(drug => {
                                         const status = getStatus(drug);
+                                        const isExpanded = expandedDrugId === drug.id;
                                         let indicatorElement = null;
                                         if (status.text === 'منقضی شده' || status.text === 'انقضا فوری') {
                                             indicatorElement = <span className="w-2.5 h-2.5 bg-red-500 rounded-full ml-3 flex-shrink-0" title={status.text}></span>;
@@ -908,7 +960,13 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                                         }
 
                                         return (
-                                            <tr key={drug.id} className={getRowStyle(status.text)}>
+                                            <React.Fragment key={drug.id}>
+                                            <tr className={getRowStyle(status.text)}>
+                                                 <td className="p-2 text-center">
+                                                    <button onClick={() => setExpandedDrugId(isExpanded ? null : drug.id)} className="p-2 rounded-full hover:bg-gray-200">
+                                                        <ChevronIcon isExpanded={isExpanded} />
+                                                    </button>
+                                                </td>
                                                 <td className="p-4 whitespace-nowrap text-gray-800 font-medium">
                                                     <div className="flex items-center">
                                                         {indicatorElement}
@@ -945,6 +1003,8 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                                                     </div>
                                                 </td>
                                             </tr>
+                                            {isExpanded && <BatchDetailsRow drug={drug} colSpan={11} onTraceLotNumber={onTraceLotNumber} />}
+                                            </React.Fragment>
                                         );
                                     })
                                 )}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Order, OrderItem } from './Sales';
 import { PurchaseBill, PurchaseItem } from './Purchasing';
 import { Customer } from './Customers';
@@ -427,24 +427,25 @@ type TraceabilityResult = {
 } | null;
 
 // --- New Batch Traceability View ---
-const BatchTraceabilityView = ({ orders, purchaseBills, drugs, mainWarehouseDrugs, onPrint }: { orders: Order[], purchaseBills: PurchaseBill[], drugs: Drug[], mainWarehouseDrugs: Drug[], onPrint: (data: any) => void }) => {
+const BatchTraceabilityView = ({ orders, purchaseBills, drugs, mainWarehouseDrugs, onPrint, lotNumberToTrace }: { orders: Order[], purchaseBills: PurchaseBill[], drugs: Drug[], mainWarehouseDrugs: Drug[], onPrint: (data: any) => void, lotNumberToTrace: string | null }) => {
     const [lotNumber, setLotNumber] = useState('');
     const [result, setResult] = useState<TraceabilityResult>(null);
     const [isLoading, setIsLoading] = useState(false);
 
-    const handleSearch = () => {
-        if (!lotNumber.trim()) return;
+    const handleSearch = useCallback(() => {
+        const searchTerm = lotNumber.trim();
+        if (!searchTerm) return;
         setIsLoading(true);
 
         const purchaseInfo = purchaseBills
             .flatMap(bill => bill.items.map(item => ({ ...item, bill })))
-            .find(item => item.lotNumber === lotNumber.trim()) || null;
+            .find(item => item.lotNumber === searchTerm) || null;
 
         const salesInfo = orders
             .flatMap(order => order.items.map(item => ({ item, order })))
-            .filter(({ item }) => item.batchAllocations?.some(alloc => alloc.lotNumber === lotNumber.trim()))
+            .filter(({ item }) => item.batchAllocations?.some(alloc => alloc.lotNumber === searchTerm))
             .map(({ item, order }) => {
-                const allocation = item.batchAllocations!.find(alloc => alloc.lotNumber === lotNumber.trim())!;
+                const allocation = item.batchAllocations!.find(alloc => alloc.lotNumber === searchTerm)!;
                 return {
                     customer: order.customerName,
                     orderNumber: order.orderNumber,
@@ -455,12 +456,24 @@ const BatchTraceabilityView = ({ orders, purchaseBills, drugs, mainWarehouseDrug
             
         const currentStock = [...drugs, ...mainWarehouseDrugs]
             .flatMap(drug => drug.batches.map(batch => ({...batch, drugName: drug.name})))
-            .filter(batch => batch.lotNumber === lotNumber.trim());
+            .filter(batch => batch.lotNumber === searchTerm);
 
         const searchResult = { purchaseInfo, salesInfo, currentStock };
         setResult(searchResult);
         setIsLoading(false);
-    };
+    }, [lotNumber, purchaseBills, orders, drugs, mainWarehouseDrugs]);
+    
+    useEffect(() => {
+        if (lotNumberToTrace) {
+            setLotNumber(lotNumberToTrace);
+        }
+    }, [lotNumberToTrace]);
+    
+    useEffect(() => {
+        if (lotNumberToTrace && lotNumber === lotNumberToTrace) {
+            handleSearch();
+        }
+    }, [lotNumber, lotNumberToTrace, handleSearch]);
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
@@ -607,21 +620,29 @@ type ReportsProps = {
     inventoryWriteOffs: InventoryWriteOff[];
     companyInfo: CompanyInfo;
     documentSettings: DocumentSettings;
+    lotNumberToTrace: string | null;
 };
 
-const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, customers, suppliers, purchaseBills, inventoryWriteOffs, companyInfo, documentSettings }) => {
+const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, customers, suppliers, purchaseBills, inventoryWriteOffs, companyInfo, documentSettings, lotNumberToTrace }) => {
+    const today = new Date();
     const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setDate(today.getDate() - 30);
 
     const [activeTab, setActiveTab] = useState<ReportTab>('profitability');
     const [filters, setFilters] = useState({
         startDate: thirtyDaysAgo.toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0],
+        endDate: today.toISOString().split('T')[0],
     });
     const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
     const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
     const [printData, setPrintData] = useState<any>(null); // For generic print data
     const exportMenuRef = useRef<HTMLDivElement>(null);
+    
+    useEffect(() => {
+        if(lotNumberToTrace) {
+            setActiveTab('batch_traceability');
+        }
+    }, [lotNumberToTrace]);
 
 
     const filteredData = useMemo(() => {
@@ -751,6 +772,32 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
         setIsPrintPreviewOpen(true);
     };
     
+    const handleQuickFilter = (period: 'today' | 'week' | 'month' | 'last_month') => {
+        const end = new Date();
+        let start = new Date();
+        
+        switch (period) {
+            case 'today':
+                start.setHours(0, 0, 0, 0);
+                break;
+            case 'week':
+                start.setDate(end.getDate() - 6);
+                break;
+            case 'month':
+                start.setDate(1);
+                break;
+            case 'last_month':
+                start.setMonth(start.getMonth() - 1, 1);
+                end.setDate(0);
+                break;
+        }
+        
+        setFilters({
+            startDate: start.toISOString().split('T')[0],
+            endDate: end.toISOString().split('T')[0],
+        });
+    };
+    
     const ReportTabButton = ({ tabId, children, icon }: { tabId: ReportTab, children: React.ReactNode, icon: React.ReactNode }) => (
         <button 
             onClick={() => setActiveTab(tabId)} 
@@ -814,15 +861,23 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
             </div>
 
             <div className="bg-white rounded-xl shadow-md p-4 flex flex-col md:flex-row gap-4 justify-between items-center">
-                <div className="flex flex-col md:flex-row gap-4 items-end">
-                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">از تاریخ</label>
-                        <input type="date" value={filters.startDate} onChange={e => setFilters(f => ({ ...f, startDate: e.target.value }))} className="w-full bg-gray-100 p-2 border rounded-lg" />
+                <div className="flex flex-col md:flex-row gap-4 items-center">
+                     <div className="flex gap-2">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">از تاریخ</label>
+                            <input type="date" value={filters.startDate} onChange={e => setFilters(f => ({ ...f, startDate: e.target.value }))} className="w-full bg-gray-100 p-2 border rounded-lg" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">تا تاریخ</label>
+                            <input type="date" value={filters.endDate} onChange={e => setFilters(f => ({ ...f, endDate: e.target.value }))} className="w-full bg-gray-100 p-2 border rounded-lg" />
+                        </div>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">تا تاریخ</label>
-                        <input type="date" value={filters.endDate} onChange={e => setFilters(f => ({ ...f, endDate: e.target.value }))} className="w-full bg-gray-100 p-2 border rounded-lg" />
-                    </div>
+                     <div className="flex gap-2 items-center pt-5">
+                        <button onClick={() => handleQuickFilter('today')} className="px-3 py-1 text-sm bg-gray-200 rounded-full hover:bg-gray-300">امروز</button>
+                        <button onClick={() => handleQuickFilter('week')} className="px-3 py-1 text-sm bg-gray-200 rounded-full hover:bg-gray-300">۷ روز اخیر</button>
+                        <button onClick={() => handleQuickFilter('month')} className="px-3 py-1 text-sm bg-gray-200 rounded-full hover:bg-gray-300">این ماه</button>
+                        <button onClick={() => handleQuickFilter('last_month')} className="px-3 py-1 text-sm bg-gray-200 rounded-full hover:bg-gray-300">ماه گذشته</button>
+                     </div>
                 </div>
                  <div className="relative" ref={exportMenuRef}>
                     <button onClick={() => setIsExportMenuOpen(prev => !prev)} className="flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors text-sm bg-gray-600 text-white hover:bg-gray-700 shadow" disabled={activeTab === 'batch_traceability' || activeTab === 'inventory'}>
@@ -855,7 +910,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 {activeTab === 'inventory' && <InventoryReportView salesWarehouseDrugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} />}
                 {activeTab === 'bonuses' && <BonusSummaryView filteredSales={filteredData.sales} drugs={drugs} />}
                 {activeTab === 'wasted_stock' && <WastedStockView filteredWastedStock={filteredData.wastedStock} />}
-                {activeTab === 'batch_traceability' && <BatchTraceabilityView orders={orders} purchaseBills={purchaseBills} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} onPrint={handleTraceabilityPrint} />}
+                {activeTab === 'batch_traceability' && <BatchTraceabilityView orders={orders} purchaseBills={purchaseBills} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} onPrint={handleTraceabilityPrint} lotNumberToTrace={lotNumberToTrace} />}
             </div>
         </div>
     );
