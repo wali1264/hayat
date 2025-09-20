@@ -814,7 +814,10 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                         </div>
                         <div>
                             <h4 className="text-sm text-gray-500 font-bold mb-1">تاریخ صدور:</h4>
-                            <p className="font-semibold text-gray-800">{new Date(order.orderDate).toLocaleDateString('fa-IR')}</p>
+                            <p className="font-semibold text-gray-800">
+                                {new Date(order.orderDate).toLocaleDateString('fa-IR')}
+                                <span className="block text-xs font-normal font-mono text-gray-500 mt-1">{formatGregorianForDisplay(order.orderDate)}</span>
+                            </p>
                         </div>
                     </div>
                     <table className="w-full text-right">
@@ -1074,7 +1077,10 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                                 <tr key={order.id} className={order.type === 'sale_return' ? 'bg-orange-50 hover:bg-orange-100' : 'hover:bg-gray-50'}>
                                     <td className="p-4 font-mono">{order.orderNumber}</td>
                                     <td className="p-4">{order.customerName}</td>
-                                    <td className="p-4">{new Date(order.orderDate).toLocaleDateString('fa-IR')}</td>
+                                    <td className="p-4 whitespace-nowrap text-gray-500 text-sm">
+                                        {new Date(order.orderDate).toLocaleDateString('fa-IR')}
+                                        <div className="font-mono text-xs text-gray-400">{formatGregorianForDisplay(order.orderDate)}</div>
+                                    </td>
                                     <td className="p-4 font-semibold">{Math.abs(order.totalAmount).toLocaleString()}</td>
                                     <td className={`p-4 font-semibold ${profit < 0 ? 'text-red-600' : 'text-gray-700'}`}>{profit.toLocaleString()}</td>
                                     <td className="p-4"><span className={`px-2 py-1 text-xs font-bold rounded-full ${paymentStatusStyle.bg} ${paymentStatusStyle.text}`}>{order.paymentStatus}</span></td>

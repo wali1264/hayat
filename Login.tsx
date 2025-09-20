@@ -28,8 +28,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     <div className="p-4 bg-teal-800 rounded-full mb-4">
                         <LogoIcon />
                     </div>
-                    <h1 className="text-3xl font-bold text-teal-800">پلتفرم حیات</h1>
-                    <p className="mt-2 text-gray-600">برای ادامه وارد سیستم شوید</p>
+                    <h1 className="text-3xl font-bold text-teal-800">ورود کاربران</h1>
+                    <p className="mt-2 text-gray-600">وارد حساب کاربری داخلی خود شوید</p>
                 </div>
                 <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
                     <div className="rounded-md shadow-sm -space-y-px">

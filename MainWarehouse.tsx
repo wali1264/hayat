@@ -18,6 +18,20 @@ const CloseIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
 const SearchIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" className="w-5 h-5 text-gray-400" />;
 const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0 00-2 2v4a2 2 0 002 2h2m8 0v4H9v-4m4 0h-2" className="w-5 h-5"/>;
 
+//=========== HELPERS ===========//
+const formatGregorianForDisplay = (dateStr: string): string => {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    } catch (e) {
+        return '';
+    }
+};
 
 //=========== FULFILLMENT MODAL ===========//
 type FulfillmentModalProps = {
@@ -131,9 +145,9 @@ const PrintPreviewModal = ({ isOpen, onClose, requisition, companyInfo, document
                         <p className="text-sm text-gray-500 mt-1">شماره درخواست: {requisition.id}</p>
                     </div>
                     <div className="grid grid-cols-2 gap-4 my-8 text-sm">
-                        <p><strong>تاریخ درخواست:</strong> {new Date(requisition.date).toLocaleDateString('fa-IR')}</p>
+                        <p><strong>تاریخ درخواست:</strong> {new Date(requisition.date).toLocaleDateString('fa-IR')} <span className="font-mono text-xs">({formatGregorianForDisplay(requisition.date)})</span></p>
                         <p><strong>درخواست کننده:</strong> {requisition.requestedBy}</p>
-                        <p><strong>تاریخ تکمیل:</strong> {new Date().toLocaleDateString('fa-IR')}</p>
+                        <p><strong>تاریخ تکمیل:</strong> {new Date().toLocaleDateString('fa-IR')} <span className="font-mono text-xs">({formatGregorianForDisplay(new Date().toISOString())})</span></p>
                         <p><strong>تکمیل کننده:</strong> {requisition.fulfilledBy}</p>
                     </div>
                     <table className="w-full text-right">

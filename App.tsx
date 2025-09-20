@@ -1,9 +1,5 @@
-
-
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
-// FIX: Removed import of non-existent SupabaseUser type from '@supabase/supabase-js'.
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import Inventory, { Drug, Batch, WriteOffReason, DrugModal } from './Inventory';
 import Sales, { Order, OrderItem, ExtraCharge, BatchAllocation } from './Sales';
@@ -146,7 +142,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, children }: Conf
 const UpdateNotification = ({ onUpdate }: { onUpdate: () => void; }) => (
     <div className="fixed bottom-8 right-8 z-[101] bg-gray-800 text-white rounded-lg shadow-2xl p-4 flex items-center gap-4 animate-fade-in-up">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h5M20 20v-5h-5m-4-1a4 4 0 01-4-4V7a4 4 0 014-4h1.586a1 1 0 01.707.293l1.414 1.414a1 1 0 00.707.293h4.586a4 4 0 014 4v5a4 4 0 01-4 4H7z" />
+            <path strokeLinecap="round" strokeWidth={2} d="M4 4v5h5M20 20v-5h-5m-4-1a4 4 0 01-4-4V7a4 4 0 014-4h1.586a1 1 0 01.707.293l1.414 1.414a1 1 0 00.707.293h4.586a4 4 0 014 4v5a4 4 0 01-4 4H7z" />
         </svg>
         <div>
             <p className="font-semibold">نسخه جدیدی از برنامه در دسترس است.</p>
@@ -290,88 +286,119 @@ export type StockRequisition = {
 
 
 //=========== MOCK DATA FOR DEMO ===========//
-// Base Drug Definitions (without stock)
-const drugDefinitions: Omit<Drug, 'batches'>[] = [
-    { id: 1, name: 'Paracetamol 500mg', code: 'P-500', manufacturer: 'حکمت', unitsPerCarton: 100, price: 50, discountPercentage: 5, category: 'مسکن', barcode: '8901234567890' },
-    { id: 2, name: 'Amoxicillin 250mg', code: 'AMX-250', manufacturer: 'کابل فارما', unitsPerCarton: 120, price: 120, discountPercentage: 0, category: 'آنتی‌بیوتیک', barcode: '8902345678901' },
-    { id: 3, name: 'Vitamin C 1000mg', code: 'VITC-1K', manufacturer: 'سپیداج', unitsPerCarton: 50, price: 250, discountPercentage: 10, category: 'ویتامین و مکمل', barcode: '8903456789012' },
-    { id: 4, name: 'Ibuprofen 400mg', code: 'IBU-400', manufacturer: 'حکمت', unitsPerCarton: 80, price: 75, discountPercentage: 0, category: 'مسکن', barcode: '8904567890123' },
-    { id: 5, name: 'Loratadine 10mg', code: 'LOR-10', manufacturer: 'کابل فارما', unitsPerCarton: 30, price: 90, discountPercentage: 0, category: 'ضد حساسیت', barcode: '8905678901234' },
-    { id: 6, name: 'Metformin 500mg', code: 'MET-500', manufacturer: 'سپیداج', unitsPerCarton: 60, price: 180, discountPercentage: 0, category: 'دیابت', barcode: '8906789012345' },
+const initialMockSuppliers: Supplier[] = [
+    { id: 1, name: 'کابل فارما', representative: 'احمد ولی', phone: '0788112233', email: 'info@kabulpharma.af', address: 'پارک صنعتی، کابل', status: 'فعال' },
+    { id: 2, name: 'پخش البرز', representative: 'سارا محمدی', phone: '0799445566', email: 'sales@alborz.af', address: 'شهرنو، کابل', status: 'فعال' },
+    { id: 3, name: 'طب گستر شرق', representative: 'هارون پوپل', phone: '0777889900', email: 'support@tebgostar.af', address: 'منطقه صنعتی، هرات', status: 'فعال' },
 ];
-
-// --- Sales Warehouse ---
-const initialMockDrugs: Drug[] = [
-    { ...drugDefinitions[0], batches: [{ lotNumber: 'P500-A01', quantity: 450, expiryDate: '2025-08-01', purchasePrice: 30 }] },
-    { ...drugDefinitions[1], batches: [{ lotNumber: 'AMX250-B02', quantity: 280, expiryDate: '2024-12-15', purchasePrice: 80 }] },
-    { ...drugDefinitions[2], batches: [{ lotNumber: 'VITC-C03', quantity: 600, expiryDate: '2026-01-01', purchasePrice: 150 }] },
-    { ...drugDefinitions[3], batches: [{ lotNumber: 'IBU400-D04', quantity: 720, expiryDate: '2025-06-20', purchasePrice: 45 }] },
-];
-
-// --- Main Warehouse ---
-const initialMockMainWarehouseDrugs: Drug[] = [
-    { ...drugDefinitions[0], batches: [{ lotNumber: 'P500-A01', quantity: 5000, expiryDate: '2025-08-01', purchasePrice: 30 }] },
-    { ...drugDefinitions[1], batches: [{ lotNumber: 'AMX250-B02', quantity: 8000, expiryDate: '2024-12-15', purchasePrice: 80 }] },
-    { ...drugDefinitions[2], batches: [{ lotNumber: 'VITC-C03', quantity: 10000, expiryDate: '2026-01-01', purchasePrice: 150 }] },
-    { ...drugDefinitions[3], batches: [{ lotNumber: 'IBU400-D04', quantity: 4000, expiryDate: '2025-06-20', purchasePrice: 45 }] },
-    { ...drugDefinitions[4], batches: [{ lotNumber: 'LOR10-E05', quantity: 3000, expiryDate: '2025-11-30', purchasePrice: 60 }] },
-    { ...drugDefinitions[5], batches: [{ lotNumber: 'MET500-F06', quantity: 6000, expiryDate: '2026-02-10', purchasePrice: 110 }] },
-];
-
 
 const initialMockCustomers: Customer[] = [
-    { id: 1, name: 'داروخانه صحت', manager: 'احمد ولی', phone: '0788123456', address: 'کارته سه, کابل', registrationDate: '2023-01-15', status: 'فعال' },
-    { id: 2, name: 'شفاخانه مرکزی', manager: 'فاطمه محمدی', phone: '0799876543', address: 'شهر نو, کابل', registrationDate: '2023-02-20', status: 'فعال' },
-    { id: 3, name: 'کلینیک امید', manager: 'علی رضا', phone: '0777112233', address: 'خیرخانه, کابل', registrationDate: '2023-03-05', status: 'غیرفعال' },
-    { id: 4, name: 'داروخانه آریانا', manager: 'نرگس احمدی', phone: '0766445566', address: 'تایمنی, کابل', registrationDate: '2023-05-10', status: 'فعال' },
-];
-
-const initialMockOrders: Order[] = [
-    { id: 1, type: 'sale', orderNumber: 'SO-2024-0001', customerName: 'داروخانه صحت', orderDate: '2024-07-20', items: [
-        { drugId: 1, drugName: 'Paracetamol 500mg', quantity: 100, bonusQuantity: 10, originalPrice: 50, discountPercentage: 5, finalPrice: 47.5, batchAllocations: [{lotNumber: 'P500-A01', quantity: 110, purchasePrice: 30, expiryDate: '2025-08-01'}] },
-        { drugId: 2, drugName: 'Amoxicillin 250mg', quantity: 50, bonusQuantity: 0, originalPrice: 120, discountPercentage: 0, finalPrice: 120, batchAllocations: [{lotNumber: 'AMX250-B02', quantity: 50, purchasePrice: 80, expiryDate: '2024-12-15'}] },
-    ], extraCharges: [{ id: 1, description: 'کرایه حمل', amount: 200 }], totalAmount: 11450, amountPaid: 11450, status: 'تکمیل شده', paymentStatus: 'پرداخت شده' },
-    { id: 2, type: 'sale', orderNumber: 'SO-2024-0002', customerName: 'شفاخانه مرکزی', orderDate: '2024-07-22', items: [
-        { drugId: 3, drugName: 'Vitamin C 1000mg', quantity: 200, bonusQuantity: 0, originalPrice: 250, discountPercentage: 10, finalPrice: 225, batchAllocations: [{lotNumber: 'VITC-C03', quantity: 200, purchasePrice: 150, expiryDate: '2026-01-01'}] },
-    ], extraCharges: [], totalAmount: 45000, amountPaid: 20000, status: 'ارسال شده', paymentStatus: 'قسمتی پرداخت شده' },
-    { id: 3, type: 'sale', orderNumber: 'SO-2024-0003', customerName: 'داروخانه آریانا', orderDate: '2024-07-25', items: [
-        { drugId: 4, drugName: 'Ibuprofen 400mg', quantity: 80, bonusQuantity: 0, originalPrice: 75, discountPercentage: 0, finalPrice: 75, batchAllocations: [{lotNumber: 'IBU400-D04', quantity: 80, purchasePrice: 45, expiryDate: '2025-06-20'}] },
-    ], extraCharges: [], totalAmount: 6000, amountPaid: 0, status: 'در حال پردازش', paymentStatus: 'پرداخت نشده' },
-];
-
-const initialMockExpenses: Expense[] = [
-    { id: 1, description: 'حقوق ماه سرطان', amount: 80000, date: '2024-07-21', category: 'حقوق' },
-    { id: 2, description: 'کرایه دفتر', amount: 25000, date: '2024-07-05', category: 'کرایه' },
-    { id: 3, description: 'هزینه حمل و نقل شهری', amount: 5000, date: '2024-07-15', category: 'حمل و نقل' },
-];
-
-const initialMockSuppliers: Supplier[] = [
-    { id: 1, name: 'شرکت داروسازی حکمت', representative: 'عبدالله انصاری', phone: '0789123123', email: 'info@hekmat.af', address: 'صنعتی پارک‌ها, هرات', status: 'فعال' },
-    { id: 2, name: 'واردات دارویی افغان', representative: 'محمد نبی', phone: '0799456456', email: 'sales@afghanpharma.af', address: 'شهرنو, کابل', status: 'فعال' },
-    { id: 3, name: 'پخش سپیداج', representative: 'زهرا حسینی', phone: '0777890890', email: 'contact@sepidaj.co', address: 'کارته چهار, کابل', status: 'فعال' },
+    { id: 1, name: 'داروخانه شفا', manager: 'دکتر نجیب', phone: '0700123456', address: 'کارته سه، کابل', registrationDate: '2023-01-15T10:00:00Z', status: 'فعال' },
+    { id: 2, name: 'شفاخانه مرکزی آریانا', manager: 'خانم رحیمی', phone: '0729123456', address: 'وزیر اکبر خان، کابل', registrationDate: '2023-02-20T10:00:00Z', status: 'فعال' },
+    { id: 3, name: 'کلینیک صحت', manager: 'دکتر احمدزی', phone: '0786987654', address: 'خیرخانه، کابل', registrationDate: '2023-03-10T10:00:00Z', status: 'فعال' },
+    { id: 4, name: 'داروخانه پامیر', manager: 'آقای نظری', phone: '0772123123', address: 'تایمنی، کابل', registrationDate: '2023-04-05T10:00:00Z', status: 'فعال' },
+    { id: 5, name: 'شفاخانه امید', manager: 'مدیریت عمومی', phone: '0799555444', address: 'کارته چهار، کابل', registrationDate: '2023-05-12T10:00:00Z', status: 'فعال' },
 ];
 
 const initialMockPurchaseBills: PurchaseBill[] = [
-    { id: 1, type: 'purchase', billNumber: 'HEK-24-101', supplierName: 'شرکت داروسازی حکمت', purchaseDate: '2024-05-10', items: [
-        { drugId: 1, drugName: 'Paracetamol 500mg', quantity: 5000, purchasePrice: 30, lotNumber: 'P500-A01', expiryDate: '2025-08-01' },
-        { drugId: 4, drugName: 'Ibuprofen 400mg', quantity: 4000, purchasePrice: 45, lotNumber: 'IBU400-D04', expiryDate: '2025-06-20' },
-    ], totalAmount: 330000, amountPaid: 330000, status: 'دریافت شده', currency: 'AFN', exchangeRate: 1 },
-    { id: 2, type: 'purchase', billNumber: 'AFG-24-205', supplierName: 'واردات دارویی افغان', purchaseDate: '2024-04-20', items: [
-         { drugId: 2, drugName: 'Amoxicillin 250mg', quantity: 8000, purchasePrice: 80, lotNumber: 'AMX250-B02', expiryDate: '2024-12-15' },
-         { drugId: 5, drugName: 'Loratadine 10mg', quantity: 3000, purchasePrice: 1.0, lotNumber: 'LOR10-E05', expiryDate: '2025-11-30' },
-    ], totalAmount: 9142.8, amountPaid: 9000, status: 'دریافت شده', currency: 'USD', exchangeRate: 70.0 },
-     { id: 3, type: 'purchase', billNumber: 'SEP-24-310', supplierName: 'پخش سپیداج', purchaseDate: '2024-06-01', items: [
-         { drugId: 3, drugName: 'Vitamin C 1000mg', quantity: 10000, purchasePrice: 150, lotNumber: 'VITC-C03', expiryDate: '2026-01-01' },
-         { drugId: 6, drugName: 'Metformin 500mg', quantity: 6000, purchasePrice: 110, lotNumber: 'MET500-F06', expiryDate: '2026-02-10' },
-    ], totalAmount: 2160000, amountPaid: 2000000, status: 'دریافت شده', currency: 'AFN', exchangeRate: 1 },
+    { id: 1, type: 'purchase', billNumber: 'KP-2024-001', supplierName: 'کابل فارما', purchaseDate: '2024-05-10T10:00:00Z', totalAmount: 110000, amountPaid: 110000, status: 'دریافت شده', currency: 'AFN', exchangeRate: 1, items: [
+        { drugId: 1, drugName: 'Amoxicillin 500mg', quantity: 1000, purchasePrice: 50, lotNumber: 'A001', expiryDate: '2026-12-31' },
+        { drugId: 2, drugName: 'Paracetamol 500mg', quantity: 2000, purchasePrice: 10, lotNumber: 'P001', expiryDate: '2027-06-30' },
+        { drugId: 3, drugName: 'Vitamin C 1000mg', quantity: 500, purchasePrice: 25, lotNumber: 'V001', expiryDate: '2025-10-31' },
+        { drugId: 10, drugName: 'Ciprofloxacin 500mg', quantity: 600, purchasePrice: 80, lotNumber: 'C001', expiryDate: '2025-09-30' },
+    ]},
+    { id: 2, type: 'purchase', billNumber: 'AB-2024-005', supplierName: 'پخش البرز', purchaseDate: '2024-05-15T10:00:00Z', totalAmount: 43500, amountPaid: 43500, status: 'دریافت شده', currency: 'AFN', exchangeRate: 1, items: [
+        { drugId: 4, drugName: 'Loratadine 10mg', quantity: 800, purchasePrice: 30, lotNumber: 'L001', expiryDate: '2026-08-31' },
+        { drugId: 6, drugName: 'Salbutamol Inhaler', quantity: 100, purchasePrice: 195, lotNumber: 'S001', expiryDate: '2025-11-30' },
+    ]},
+    { id: 3, type: 'purchase', billNumber: 'KP-2024-008', supplierName: 'کابل فارما', purchaseDate: '2024-05-20T10:00:00Z', totalAmount: 44000, amountPaid: 40000, status: 'دریافت شده', currency: 'AFN', exchangeRate: 1, items: [
+        { drugId: 1, drugName: 'Amoxicillin 500mg', quantity: 500, purchasePrice: 52, lotNumber: 'A002', expiryDate: '2027-03-31' },
+        { drugId: 9, drugName: 'Ibuprofen 400mg', quantity: 1000, purchasePrice: 18, lotNumber: 'I001', expiryDate: '2026-05-31' },
+    ]},
 ];
 
-// --- Checkneh Mock Data (Will be managed by its own hook) ---
+const initialMockMainWarehouseDrugs: Drug[] = [
+    { id: 1, name: 'Amoxicillin 500mg', code: 'AMX500', manufacturer: 'Kabul Pharma', unitsPerCarton: 100, price: 70, discountPercentage: 5, category: 'آنتی‌بیوتیک', batches: [ { lotNumber: 'A001', quantity: 600, expiryDate: '2026-12-31', purchasePrice: 50 }, { lotNumber: 'A002', quantity: 300, expiryDate: '2027-03-31', purchasePrice: 52 } ] },
+    { id: 2, name: 'Paracetamol 500mg', code: 'PAR500', manufacturer: 'Generic Co', unitsPerCarton: 200, price: 15, discountPercentage: 0, category: 'مسکن', batches: [ { lotNumber: 'P001', quantity: 1200, expiryDate: '2027-06-30', purchasePrice: 10 } ] },
+    { id: 3, name: 'Vitamin C 1000mg', code: 'VITC1K', manufacturer: 'HealthPlus', unitsPerCarton: 50, price: 40, discountPercentage: 10, category: 'ویتامین و مکمل', batches: [ { lotNumber: 'V001', quantity: 300, expiryDate: '2025-10-31', purchasePrice: 25 } ] },
+    { id: 4, name: 'Loratadine 10mg', code: 'LOR10', manufacturer: 'Alborz', unitsPerCarton: 30, price: 45, discountPercentage: 0, category: 'ضد حساسیت', batches: [ { lotNumber: 'L001', quantity: 500, expiryDate: '2026-08-31', purchasePrice: 30 } ] },
+    { id: 6, name: 'Salbutamol Inhaler', code: 'SALB-INH', manufacturer: 'Respira', unitsPerCarton: 1, price: 250, discountPercentage: 0, category: 'تنفسی', batches: [ { lotNumber: 'S001', quantity: 100, expiryDate: '2025-11-30', purchasePrice: 195 } ] },
+    { id: 9, name: 'Ibuprofen 400mg', code: 'IBU400', manufacturer: 'Generic Co', unitsPerCarton: 100, price: 25, discountPercentage: 0, category: 'مسکن', batches: [ { lotNumber: 'I001', quantity: 600, expiryDate: '2026-05-31', purchasePrice: 18 } ] },
+    { id: 10, name: 'Ciprofloxacin 500mg', code: 'CIP500', manufacturer: 'Kabul Pharma', unitsPerCarton: 50, price: 100, discountPercentage: 0, category: 'آنتی‌بیوتیک', batches: [ { lotNumber: 'C001', quantity: 600, expiryDate: '2025-09-30', purchasePrice: 80 } ] },
+    { id: 5, name: 'Metformin 500mg', code: 'MET500', manufacturer: 'DiaCare', unitsPerCarton: 60, price: 22, discountPercentage: 0, category: 'دیابت', batches: [] },
+    { id: 7, name: 'Omeprazole 20mg', code: 'OME20', manufacturer: 'GastroWell', unitsPerCarton: 14, price: 90, discountPercentage: 0, category: 'گوارشی', batches: [] },
+    { id: 8, name: 'Aspirin 81mg', code: 'ASP81', manufacturer: 'CardioSafe', unitsPerCarton: 100, price: 35, discountPercentage: 0, category: 'بیماری‌های قلبی', batches: [] },
+];
+
+const initialMockDrugs: Drug[] = [
+    { id: 1, name: 'Amoxicillin 500mg', code: 'AMX500', manufacturer: 'Kabul Pharma', unitsPerCarton: 100, price: 70, discountPercentage: 5, category: 'آنتی‌بیوتیک', batches: [ { lotNumber: 'A001', quantity: 250, expiryDate: '2026-12-31', purchasePrice: 50 } ] },
+    { id: 2, name: 'Paracetamol 500mg', code: 'PAR500', manufacturer: 'Generic Co', unitsPerCarton: 200, price: 15, discountPercentage: 0, category: 'مسکن', batches: [ { lotNumber: 'P001', quantity: 490, expiryDate: '2027-06-30', purchasePrice: 10 } ] },
+    { id: 3, name: 'Vitamin C 1000mg', code: 'VITC1K', manufacturer: 'HealthPlus', unitsPerCarton: 50, price: 40, discountPercentage: 10, category: 'ویتامین و مکمل', batches: [ { lotNumber: 'V001', quantity: 160, expiryDate: '2025-10-31', purchasePrice: 25 } ] },
+    { id: 4, name: 'Loratadine 10mg', code: 'LOR10', manufacturer: 'Alborz', unitsPerCarton: 30, price: 45, discountPercentage: 0, category: 'ضد حساسیت', batches: [ { lotNumber: 'L001', quantity: 275, expiryDate: '2026-08-31', purchasePrice: 30 } ] },
+    { id: 9, name: 'Ibuprofen 400mg', code: 'IBU400', manufacturer: 'Generic Co', unitsPerCarton: 100, price: 25, discountPercentage: 0, category: 'مسکن', batches: [ { lotNumber: 'I001', quantity: 340, expiryDate: '2026-05-31', purchasePrice: 18 } ] },
+    { id: 5, name: 'Metformin 500mg', code: 'MET500', manufacturer: 'DiaCare', unitsPerCarton: 60, price: 22, discountPercentage: 0, category: 'دیابت', batches: [] },
+    { id: 7, name: 'Omeprazole 20mg', code: 'OME20', manufacturer: 'GastroWell', unitsPerCarton: 14, price: 90, discountPercentage: 0, category: 'گوارشی', batches: [] },
+    { id: 8, name: 'Aspirin 81mg', code: 'ASP81', manufacturer: 'CardioSafe', unitsPerCarton: 100, price: 35, discountPercentage: 0, category: 'بیماری‌های قلبی', batches: [] },
+    { id: 6, name: 'Salbutamol Inhaler', code: 'SALB-INH', manufacturer: 'Respira', unitsPerCarton: 1, price: 250, discountPercentage: 0, category: 'تنفسی', batches: [] },
+    { id: 10, name: 'Ciprofloxacin 500mg', code: 'CIP500', manufacturer: 'Kabul Pharma', unitsPerCarton: 50, price: 100, discountPercentage: 0, category: 'آنتی‌بیوتیک', batches: [] },
+];
+
+const initialMockOrders: Order[] = [
+    { id: 1, type: 'sale', orderNumber: 'SO-2024-0001', customerName: 'داروخانه شفا', orderDate: '2024-06-01', totalAmount: 4825, amountPaid: 4825, status: 'تکمیل شده', paymentStatus: 'پرداخت شده', items: [
+        { drugId: 1, drugName: 'Amoxicillin 500mg', quantity: 50, bonusQuantity: 0, originalPrice: 70, discountPercentage: 5, finalPrice: 66.5, batchAllocations: [{ lotNumber: 'A001', quantity: 50, purchasePrice: 50, expiryDate: '2026-12-31' }] },
+        { drugId: 2, drugName: 'Paracetamol 500mg', quantity: 100, bonusQuantity: 0, originalPrice: 15, discountPercentage: 0, finalPrice: 15, batchAllocations: [{ lotNumber: 'P001', quantity: 100, purchasePrice: 10, expiryDate: '2027-06-30' }] },
+    ], extraCharges: [] },
+    { id: 2, type: 'sale', orderNumber: 'SO-2024-0002', customerName: 'شفاخانه مرکزی آریانا', orderDate: '2024-06-02', totalAmount: 4050, amountPaid: 2000, status: 'تکمیل شده', paymentStatus: 'قسمتی پرداخت شده', items: [
+        { drugId: 4, drugName: 'Loratadine 10mg', quantity: 30, bonusQuantity: 0, originalPrice: 45, discountPercentage: 0, finalPrice: 45, batchAllocations: [{ lotNumber: 'L001', quantity: 30, purchasePrice: 30, expiryDate: '2026-08-31' }] },
+        { drugId: 9, drugName: 'Ibuprofen 400mg', quantity: 60, bonusQuantity: 0, originalPrice: 25, discountPercentage: 0, finalPrice: 25, batchAllocations: [{ lotNumber: 'I001', quantity: 60, purchasePrice: 18, expiryDate: '2026-05-31' }] },
+    ], extraCharges: [{ id: 1, description: 'کرایه حمل', amount: 1200 }] },
+    { id: 3, type: 'sale', orderNumber: 'SO-2024-0003', customerName: 'داروخانه پامیر', orderDate: '2024-06-03', totalAmount: 6000, amountPaid: 0, status: 'ارسال شده', paymentStatus: 'پرداخت نشده', items: [
+        { drugId: 2, drugName: 'Paracetamol 500mg', quantity: 200, bonusQuantity: 0, originalPrice: 15, discountPercentage: 0, finalPrice: 15, batchAllocations: [{ lotNumber: 'P001', quantity: 200, purchasePrice: 10, expiryDate: '2027-06-30' }] },
+    ], extraCharges: [{ id: 1, description: 'کرایه حمل', amount: 3000 }] },
+    { id: 4, type: 'sale', orderNumber: 'SO-2024-0004', customerName: 'داروخانه شفا', orderDate: '2024-06-04', totalAmount: 7990, amountPaid: 7990, status: 'تکمیل شده', paymentStatus: 'پرداخت شده', items: [
+        { drugId: 3, drugName: 'Vitamin C 1000mg', quantity: 40, bonusQuantity: 0, originalPrice: 40, discountPercentage: 10, finalPrice: 36, batchAllocations: [{ lotNumber: 'V001', quantity: 40, purchasePrice: 25, expiryDate: '2025-10-31' }] },
+        { drugId: 1, drugName: 'Amoxicillin 500mg', quantity: 100, bonusQuantity: 0, originalPrice: 70, discountPercentage: 5, finalPrice: 66.5, batchAllocations: [{ lotNumber: 'A001', quantity: 100, purchasePrice: 50, expiryDate: '2026-12-31' }] },
+    ], extraCharges: [] },
+    { id: 5, type: 'sale_return', orderNumber: 'SR-2024-0001', customerName: 'شفاخانه مرکزی آریانا', orderDate: '2024-06-05', totalAmount: -225, amountPaid: -225, status: 'تکمیل شده', paymentStatus: 'پرداخت شده', items: [
+        { drugId: 4, drugName: 'Loratadine 10mg', quantity: 5, bonusQuantity: 0, originalPrice: 45, discountPercentage: 0, finalPrice: 45, batchAllocations: [{ lotNumber: 'L001', quantity: 5, purchasePrice: 30, expiryDate: '2026-08-31' }] },
+    ], extraCharges: [] },
+];
+
+const initialMockStockRequisitions: StockRequisition[] = [
+    { id: 1, date: '2024-05-25T10:00:00Z', requestedBy: 'sales_user', fulfilledBy: 'warehouse_user', status: 'تکمیل شده', items: [
+        { drugId: 1, drugName: 'Amoxicillin 500mg', quantityRequested: 400, quantityFulfilled: 400 },
+        { drugId: 2, drugName: 'Paracetamol 500mg', quantityRequested: 800, quantityFulfilled: 800 },
+        { drugId: 3, drugName: 'Vitamin C 1000mg', quantityRequested: 200, quantityFulfilled: 200 },
+    ], notes: 'برای کمپاین فروش' },
+    { id: 2, date: '2024-05-28T10:00:00Z', requestedBy: 'sales_user', fulfilledBy: 'warehouse_user', status: 'تکمیل شده', items: [
+        { drugId: 4, drugName: 'Loratadine 10mg', quantityRequested: 300, quantityFulfilled: 300 },
+        { drugId: 9, drugName: 'Ibuprofen 400mg', quantityRequested: 400, quantityFulfilled: 400 },
+    ]},
+    { id: 3, date: '2024-06-02T10:00:00Z', requestedBy: 'sales_user', status: 'در انتظار', items: [
+        { drugId: 6, drugName: 'Salbutamol Inhaler', quantityRequested: 50, quantityFulfilled: 0 },
+        { drugId: 1, drugName: 'Amoxicillin 500mg', quantityRequested: 200, quantityFulfilled: 0 },
+    ], notes: 'نیاز فوری' },
+];
+
+const initialMockInventoryWriteOffs: InventoryWriteOff[] = [
+    { id: 1, drugId: 2, drugName: 'Paracetamol 500mg', lotNumber: 'P001', quantity: 10, reason: 'آسیب دیده', date: '2024-06-03T10:00:00Z', adjustedBy: 'warehouse_user', costAtTime: 10, totalLossValue: 100, notes: 'آب خوردگی در کارتن' },
+];
+
+const initialMockExpenses: Expense[] = [
+    { id: 1, description: 'حقوق ماه جوزا کارمندان', amount: 150000, date: '2024-05-31', category: 'حقوق' },
+    { id: 2, description: 'کرایه دفتر ماه جوزا', amount: 40000, date: '2024-05-30', category: 'کرایه' },
+    { id: 3, description: 'مصرف دیزل موتر پخش', amount: 8500, date: '2024-05-28', category: 'حمل و نقل' },
+    { id: 4, description: 'مصارف پذیرایی از مهمانان', amount: 3200, date: '2024-05-25', category: 'سایر' },
+];
+
 const initialMockChecknehInvoices: ChecknehInvoice[] = [
-    { id: 1, invoiceNumber: 'CHK-2407-001', customerName: 'داروخانه صحت', supplierName: 'فروش متفرقه', invoiceDate: '2024-07-18', items: [
-        { id: 101, drugName: 'Syrup Gripe Water', quantity: 20, purchasePrice: 80, sellingPrice: 120, discountPercentage: 0 },
-        { id: 102, drugName: 'Bandage Roll 4"', quantity: 50, purchasePrice: 20, sellingPrice: 35, discountPercentage: 0 },
-    ], totalAmount: 4150 },
+    { id: 1, invoiceNumber: 'CHK-2406-001', customerName: 'داروخانه امید', supplierName: 'فروش متفرقه', invoiceDate: '2024-06-01', totalAmount: 2400, items: [
+        { id: 1, drugName: 'Aspirin 81mg', quantity: 20, purchasePrice: 20, sellingPrice: 30, discountPercentage: 0 },
+        { id: 2, drugName: 'Metformin 500mg', quantity: 50, purchasePrice: 15, sellingPrice: 20, discountPercentage: 0 },
+    ]},
+    { id: 2, invoiceNumber: 'CHK-2406-002', customerName: 'کلینیک صحت', supplierName: 'فروش متفرقه', invoiceDate: '2024-06-03', totalAmount: 9000, items: [
+        { id: 1, drugName: 'Omeprazole 20mg', quantity: 100, purchasePrice: 70, sellingPrice: 90, discountPercentage: 0 },
+    ]},
 ];
 
 // --- Internal Transfers Mock Data ---
@@ -454,7 +481,7 @@ const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout, pendingRequisi
                             label={item.label}
                             isActive={activeItem === item.id}
                             onClick={() => setActiveItem(item.id)}
-                            badgeCount={item.id === 'main_warehouse' ? pendingRequisitionCount : 0}
+                            badgeCount={item.id === 'main_warehouse' ? pendingRequisitionCount : undefined}
                         />
                     ))}
                 </ul>
@@ -605,10 +632,157 @@ const HayatAssistant: React.FC<HayatAssistantProps> = ({ isOpen, onClose, messag
     );
 };
 
+//=========== LICENSE SYSTEM TYPES AND HELPERS ===========//
+type LicenseStatus = 'LOADING' | 'NEEDS_ACTIVATION' | 'NEEDS_VALIDATION' | 'INVALID' | 'VALID';
+type OnlineValidationResult = 'VALID' | 'INVALID_DEACTIVATED' | 'INVALID_MACHINE_ID' | 'NOT_FOUND' | 'NETWORK_ERROR';
+
+type LicenseInfo = {
+    id: string; // This is the license table row UUID
+    user_id: string; // This is the auth.users UUID
+    machine_id: string;
+    session: Session;
+};
+
+function getOrCreateMachineId(): string {
+    let machineId = localStorage.getItem('hayat_machine_id');
+    if (!machineId) {
+        machineId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = (Math.random() * 16) | 0;
+            const v = c === 'x' ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+        });
+        localStorage.setItem('hayat_machine_id', machineId);
+    }
+    return machineId;
+}
+
 
 //=========== MAIN APP COMPONENT ===========//
 const App: React.FC = () => {
     const [toasts, setToasts] = useState<Toast[]>([]);
+    const addToast = (message: string, type: ToastType = 'info') => {
+        setToasts(prev => [...prev, { id: Date.now(), message, type }]);
+    };
+    
+    // --- NEW LICENSE STATE MANAGEMENT ---
+    const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>('LOADING');
+    const [licenseInfo, setLicenseInfo] = usePersistentState<LicenseInfo | null>('hayat_license_info', null);
+    const [lastCheck, setLastCheck] = usePersistentState<string | null>('hayat_last_license_check', null);
+
+    const performOnlineValidation = async (): Promise<OnlineValidationResult> => {
+        if (!licenseInfo) {
+            return 'NOT_FOUND';
+        }
+        try {
+            const { data: licenseData, error } = await supabase
+                .from('licenses')
+                .select('is_active, machine_id')
+                .match({ id: licenseInfo.id, user_id: licenseInfo.user_id })
+                .single();
+
+            if (error) {
+                if (error.code === 'PGRST116') { // "Found 0 rows"
+                    return 'NOT_FOUND';
+                }
+                throw new Error(error.message);
+            }
+            if (!licenseData) {
+                return 'NOT_FOUND';
+            }
+
+            if (!licenseData.is_active) {
+                 return 'INVALID_DEACTIVATED';
+            }
+            if (licenseData.machine_id !== getOrCreateMachineId()) {
+                return 'INVALID_MACHINE_ID';
+            }
+
+            return 'VALID';
+
+        } catch (error: any) {
+            console.error("Online validation network error:", error.message);
+            return 'NETWORK_ERROR';
+        }
+    };
+    
+    const validateLicense = async () => {
+        addToast("در حال اعتبارسنجی آنلاین...", "info");
+        const result = await performOnlineValidation();
+
+        if (result === 'VALID') {
+            setLastCheck(new Date().toISOString());
+            setLicenseStatus('VALID');
+            addToast("اعتبارسنجی با موفقیت انجام شد.", "success");
+        } else if (result !== 'NETWORK_ERROR') {
+            // Deactivated, machine ID mismatch, or not found
+            setLastCheck(null); // Revoke offline access
+            setLicenseStatus('INVALID');
+            // Specific toast is shown within performOnlineValidation
+        } else {
+             addToast("خطا در اعتبارسنجی آنلاین. لطفاً اتصال اینترنت خود را بررسی کرده و دوباره تلاش کنید.", 'error');
+        }
+    };
+
+
+    useEffect(() => {
+        const checkLicenseOnStartup = async () => {
+            if (!licenseInfo) {
+                setLicenseStatus('NEEDS_ACTIVATION');
+                return;
+            }
+
+            const validationResult = await performOnlineValidation();
+
+            switch (validationResult) {
+                case 'VALID':
+                    setLastCheck(new Date().toISOString());
+                    setLicenseStatus('VALID');
+                    break;
+                
+                case 'INVALID_DEACTIVATED':
+                    addToast("لایسنس شما توسط مدیر غیرفعال شده است.", 'error');
+                    setLastCheck(null);
+                    setLicenseStatus('INVALID');
+                    break;
+
+                case 'INVALID_MACHINE_ID':
+                    addToast("این لایسنس به دستگاه دیگری منتقل شده است.", 'error');
+                    setLastCheck(null);
+                    setLicenseStatus('INVALID');
+                    break;
+
+                case 'NOT_FOUND':
+                    addToast("لایسنس شما در سیستم یافت نشد.", 'error');
+                    setLastCheck(null);
+                    setLicenseStatus('INVALID');
+                    break;
+
+                case 'NETWORK_ERROR':
+                    console.warn("Online license check failed, falling back to offline validation.");
+                    const now = new Date();
+                    const lastCheckDate = lastCheck ? new Date(lastCheck) : new Date(0);
+                    const diffDays = Math.ceil((now.getTime() - lastCheckDate.getTime()) / (1000 * 60 * 60 * 24));
+                    
+                    if (diffDays > 30) {
+                        setLicenseStatus('NEEDS_VALIDATION');
+                    } else {
+                        setLicenseStatus('VALID');
+                    }
+                    break;
+            }
+        };
+
+        checkLicenseOnStartup();
+    }, [licenseInfo]);
+
+    const handleActivationSuccess = (newLicenseInfo: LicenseInfo) => {
+        setLicenseInfo(newLicenseInfo);
+        setLastCheck(new Date().toISOString());
+        setLicenseStatus('VALID');
+    };
+
+
+    // --- ORIGINAL APP STATE ---
     const [activeItem, setActiveItem] = usePersistentState<string>('hayat_activeItem', 'dashboard');
     const [isQuickAddDrugModalOpen, setIsQuickAddDrugModalOpen] = useState(false);
     const [preselectedCustomerId, setPreselectedCustomerId] = useState<number | null>(null);
@@ -622,9 +796,10 @@ const App: React.FC = () => {
     const [expenses, setExpenses] = usePersistentState<Expense[]>('hayat_expenses', initialMockExpenses);
     const [suppliers, setSuppliers] = usePersistentState<Supplier[]>('hayat_suppliers', initialMockSuppliers);
     const [purchaseBills, setPurchaseBills] = usePersistentState<PurchaseBill[]>('hayat_purchaseBills', initialMockPurchaseBills);
-    const [stockRequisitions, setStockRequisitions] = usePersistentState<StockRequisition[]>('hayat_stockRequisitions', []);
-    const [inventoryWriteOffs, setInventoryWriteOffs] = usePersistentState<InventoryWriteOff[]>('hayat_inventoryWriteOffs', []);
+    const [stockRequisitions, setStockRequisitions] = usePersistentState<StockRequisition[]>('hayat_stockRequisitions', initialMockStockRequisitions);
+    const [inventoryWriteOffs, setInventoryWriteOffs] = usePersistentState<InventoryWriteOff[]>('hayat_inventoryWriteOffs', initialMockInventoryWriteOffs);
     const [trash, setTrash] = usePersistentState<TrashItem[]>('hayat_trash', []);
+    const [checknehInvoices, setChecknehInvoices] = usePersistentState<ChecknehInvoice[]>('hayat_checkneh_invoices', initialMockChecknehInvoices);
 
     // Settings States
     const [users, setUsers] = usePersistentState<User[]>('hayat_users', initialMockUsers);
@@ -664,10 +839,6 @@ const App: React.FC = () => {
         setConfirmationModal(null);
     };
 
-    // Simple toast helper
-    const addToast = (message: string, type: ToastType = 'info') => {
-        setToasts(prev => [...prev, { id: Date.now(), message, type }]);
-    };
     
     // --- NEW AUTH & USER MANAGEMENT LOGIC ---
     const handleLogin = (username: string, password_raw: string) => {
@@ -723,6 +894,244 @@ const App: React.FC = () => {
             return u;
         }));
         addToast(`رمز عبور کاربر ${username} با موفقیت تغییر کرد.`, 'success');
+    };
+    
+    // --- NEW: ONLINE BACKUP & RESTORE ---
+    const handleBackupOnline = async () => {
+        if (!licenseInfo) {
+            addToast("برای پشتیبان‌گیری آنلاین ابتدا باید برنامه را فعال کنید.", 'error');
+            return false;
+        }
+
+        addToast("در حال آماده‌سازی و آپلود نسخه پشتیبان...", 'info');
+
+        const backupData = {
+            drugs, mainWarehouseDrugs, customers, orders, expenses, suppliers,
+            purchaseBills, stockRequisitions, inventoryWriteOffs, trash, users,
+            companyInfo, documentSettings, alertSettings, rolePermissions,
+            checknehInvoices,
+            backupVersion: 1, 
+        };
+
+        try {
+            // FIX: Replace upsert with a more robust select-then-update/insert logic
+            const { data: existingBackup, error: selectError } = await supabase
+                .from('backups')
+                .select('license_id')
+                .eq('license_id', licenseInfo.id)
+                .maybeSingle();
+
+            if (selectError) throw selectError;
+
+            let RpcError;
+
+            if (existingBackup) {
+                // If backup exists, update it
+                const { error: updateError } = await supabase
+                    .from('backups')
+                    .update({
+                        backup_data: backupData,
+                        created_at: new Date().toISOString(),
+                    })
+                    .eq('license_id', licenseInfo.id);
+                RpcError = updateError;
+            } else {
+                // If it doesn't exist, insert a new one
+                const { error: insertError } = await supabase
+                    .from('backups')
+                    .insert({
+                        license_id: licenseInfo.id,
+                        backup_data: backupData,
+                    });
+                RpcError = insertError;
+            }
+            
+            if (RpcError) throw RpcError;
+
+            addToast("نسخه پشتیبان با موفقیت در فضای ابری ذخیره شد.", 'success');
+            return true;
+        } catch (error: any) {
+            console.error("Online backup failed:", error);
+
+            let errorMessage = "یک خطای ناشناخته رخ داد.";
+            
+            if (error instanceof Error) {
+                errorMessage = error.message;
+            } else if (error && typeof error === 'object') {
+                if (typeof error.message === 'string' && error.message) {
+                    errorMessage = error.message;
+                } else if (typeof error.details === 'string' && error.details) {
+                    errorMessage = error.details;
+                } else {
+                    errorMessage = "پاسخ نامعتبر از سرور دریافت شد.";
+                }
+            } else if (typeof error === 'string' && error) {
+                errorMessage = error;
+            }
+
+            if (errorMessage.toLowerCase().includes('fetch')) {
+                 errorMessage = "خطا در ارتباط با سرور. لطفاً اتصال اینترنت خود را بررسی کنید.";
+            } else if (errorMessage.includes('security policy')) {
+                errorMessage = "خطای دسترسی امنیتی. لطفا با پشتیبانی تماس بگیرید.";
+            }
+
+            addToast(`خطا در پشتیبان‌گیری آنلاین: ${errorMessage}`, 'error');
+            return false;
+        }
+    };
+
+    const handleRestoreOnline = () => {
+        showConfirmation(
+            'بازیابی اطلاعات از فضای ابری',
+            <p>آیا مطمئنید؟ <strong className="text-red-600">تمام اطلاعات فعلی شما با آخرین نسخه پشتیبان آنلاین جایگزین خواهد شد.</strong> این عمل غیرقابل بازگشت است.</p>,
+            async () => {
+                if (!licenseInfo) {
+                    addToast("اطلاعات لایسنس برای بازیابی یافت نشد.", 'error');
+                    return;
+                }
+                
+                addToast("در حال دریافت و بازیابی اطلاعات...", 'info');
+
+                try {
+                    const { data, error } = await supabase
+                        .from('backups')
+                        .select('backup_data')
+                        .eq('license_id', licenseInfo.id)
+                        .single();
+
+                    if (error) throw error;
+                    if (!data || !data.backup_data) throw new Error("هیچ نسخه پشتیبانی برای این لایسنس یافت نشد.");
+                    
+                    const restoredData = data.backup_data;
+                    
+                    setDrugs(restoredData.drugs || []);
+                    setMainWarehouseDrugs(restoredData.mainWarehouseDrugs || []);
+                    setCustomers(restoredData.customers || []);
+                    setOrders(restoredData.orders || []);
+                    setExpenses(restoredData.expenses || []);
+                    setSuppliers(restoredData.suppliers || []);
+                    setPurchaseBills(restoredData.purchaseBills || []);
+                    setStockRequisitions(restoredData.stockRequisitions || []);
+                    setInventoryWriteOffs(restoredData.inventoryWriteOffs || []);
+                    setTrash(restoredData.trash || []);
+                    setUsers(restoredData.users || initialMockUsers);
+                    setCompanyInfo(restoredData.companyInfo || { name: 'شفاخانه حیات', address: 'کابل, افغانستان', phone: '+93 78 123 4567', logo: null });
+                    setDocumentSettings(restoredData.documentSettings || { logoPosition: 'right', accentColor: '#0d9488', backgroundImage: null });
+                    setAlertSettings(restoredData.alertSettings || { expiry: { enabled: true, months: 6 }, lowStock: { enabled: true, quantity: 50 }, customerDebt: { enabled: true, limits: {} }, totalDebt: { enabled: false, threshold: 1000000 } });
+                    setRolePermissions(restoredData.rolePermissions || initialRolePermissions);
+                    setChecknehInvoices(restoredData.checknehInvoices || []);
+
+                    addToast("اطلاعات با موفقیت از فضای ابری بازیابی شد.", 'success');
+                    setTimeout(() => window.location.reload(), 1000);
+
+                } catch (error: any) {
+                     console.error("Online restore failed:", error);
+
+                     let errorMessage = "یک خطای ناشناخته رخ داد.";
+            
+                     if (error instanceof Error) {
+                         errorMessage = error.message;
+                     } else if (error && typeof error === 'object') {
+                         if (typeof error.message === 'string' && error.message) {
+                             errorMessage = error.message;
+                         } else if (typeof error.details === 'string' && error.details) {
+                             errorMessage = error.details;
+                         } else {
+                             errorMessage = "پاسخ نامعتبر از سرور دریافت شد.";
+                         }
+                     } else if (typeof error === 'string' && error) {
+                         errorMessage = error;
+                     }
+         
+                     if (errorMessage.toLowerCase().includes('fetch')) {
+                          errorMessage = "خطا در ارتباط با سرور. لطفاً اتصال اینترنت خود را بررسی کنید.";
+                     } else if (errorMessage.includes('PGRST116') || errorMessage.includes(' یافت نشد')) { 
+                          errorMessage = "هیچ نسخه پشتیبانی برای این لایسنس یافت نشد.";
+                     }
+
+                     addToast(`خطا در بازیابی اطلاعات: ${errorMessage}`, 'error');
+                }
+            }
+        );
+    };
+
+    // --- NEW: LOCAL BACKUP & RESTORE ---
+    const handleBackupLocal = () => {
+        addToast("در حال آماده‌سازی فایل پشتیبان...", 'info');
+        try {
+            const backupData = {
+                drugs, mainWarehouseDrugs, customers, orders, expenses, suppliers,
+                purchaseBills, stockRequisitions, inventoryWriteOffs, trash, users,
+                companyInfo, documentSettings, alertSettings, rolePermissions,
+                checknehInvoices,
+                backupVersion: 1,
+            };
+            const jsonString = JSON.stringify(backupData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const href = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = href;
+            link.download = `hayat-local-backup-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(href);
+            addToast("فایل پشتیبان با موفقیت دانلود شد.", 'success');
+        } catch (error) {
+            console.error("Local backup failed:", error);
+            addToast("خطا در ایجاد فایل پشتیبان محلی.", 'error');
+        }
+    };
+
+    const handleRestoreLocal = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        showConfirmation(
+            'بازیابی اطلاعات از فایل محلی',
+            <p>آیا مطمئنید؟ <strong className="text-red-600">تمام اطلاعات فعلی شما با اطلاعات فایل پشتیبان جایگزین خواهد شد.</strong> این عمل غیرقابل بازگشت است.</p>,
+            () => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const text = e.target?.result;
+                        if (typeof text !== 'string') {
+                            throw new Error("File content is not readable.");
+                        }
+                        const restoredData = JSON.parse(text);
+                        
+                        setDrugs(restoredData.drugs || []);
+                        setMainWarehouseDrugs(restoredData.mainWarehouseDrugs || []);
+                        setCustomers(restoredData.customers || []);
+                        setOrders(restoredData.orders || []);
+                        setExpenses(restoredData.expenses || []);
+                        setSuppliers(restoredData.suppliers || []);
+                        setPurchaseBills(restoredData.purchaseBills || []);
+                        setStockRequisitions(restoredData.stockRequisitions || []);
+                        setInventoryWriteOffs(restoredData.inventoryWriteOffs || []);
+                        setTrash(restoredData.trash || []);
+                        setUsers(restoredData.users || initialMockUsers);
+                        setCompanyInfo(restoredData.companyInfo || { name: 'شفاخانه حیات', address: 'کابل, افغانستان', phone: '+93 78 123 4567', logo: null });
+                        setDocumentSettings(restoredData.documentSettings || { logoPosition: 'right', accentColor: '#0d9488', backgroundImage: null });
+                        setAlertSettings(restoredData.alertSettings || { expiry: { enabled: true, months: 6 }, lowStock: { enabled: true, quantity: 50 }, customerDebt: { enabled: true, limits: {} }, totalDebt: { enabled: false, threshold: 1000000 } });
+                        setRolePermissions(restoredData.rolePermissions || initialRolePermissions);
+                        setChecknehInvoices(restoredData.checknehInvoices || []);
+
+                        addToast("اطلاعات با موفقیت از فایل محلی بازیابی شد.", 'success');
+                        setTimeout(() => window.location.reload(), 1000);
+
+                    } catch (error) {
+                        console.error("Local restore failed:", error);
+                        addToast("خطا در خواندن یا پردازش فایل پشتیبان. لطفاً از معتبر بودن فایل اطمینان حاصل کنید.", 'error');
+                    } finally {
+                        if (event.target) {
+                            event.target.value = '';
+                        }
+                    }
+                };
+                reader.readAsText(file);
+            }
+        );
     };
 
     // --- RECYCLE BIN LOGIC ---
@@ -838,6 +1247,19 @@ const App: React.FC = () => {
             handleSoftDelete('expense', expense);
         }
     };
+
+    const handleDeleteDrug = (id: number) => {
+        const drug = [...drugs, ...mainWarehouseDrugs].find(d => d.id === id);
+        if (!drug) return;
+    
+        const isInOrder = orders.some(o => o.items.some(i => i.drugId === id));
+        const isInPurchaseBill = purchaseBills.some(p => p.items.some(i => i.drugId === id));
+    
+        const dependencyCheck = () => isInOrder || isInPurchaseBill;
+        const dependencyMessage = `امکان حذف محصول "${drug.name}" وجود ندارد زیرا در فاکتورهای فروش یا خرید استفاده شده است.`;
+        
+        handleSoftDelete('drug', drug, dependencyCheck, dependencyMessage);
+    };
     
     const handleRestoreItem = (item: TrashItem) => {
         switch (item.itemType) {
@@ -872,6 +1294,49 @@ const App: React.FC = () => {
 
     
     // CORE LOGIC HANDLERS
+    const handleWriteOff = (drugId: number, lotNumber: string, quantity: number, reason: WriteOffReason, notes: string) => {
+        const drug = drugs.find(d => d.id === drugId);
+        const batch = drug?.batches.find(b => b.lotNumber === lotNumber);
+    
+        if (!drug || !batch) {
+            addToast("خطا: محصول یا بچ مورد نظر برای ضایعات یافت نشد.", "error");
+            return;
+        }
+    
+        const newWriteOff: InventoryWriteOff = {
+            id: Date.now(),
+            drugId: drugId,
+            drugName: drug.name,
+            lotNumber: lotNumber,
+            quantity: quantity,
+            reason: reason,
+            notes: notes,
+            date: new Date().toISOString(),
+            adjustedBy: currentUser!.username,
+            costAtTime: batch.purchasePrice,
+            totalLossValue: batch.purchasePrice * quantity
+        };
+    
+        setInventoryWriteOffs(prev => [newWriteOff, ...prev]);
+    
+        setDrugs(prevDrugs => prevDrugs.map(d => {
+            if (d.id === drugId) {
+                return {
+                    ...d,
+                    batches: d.batches.map(b => {
+                        if (b.lotNumber === lotNumber) {
+                            return { ...b, quantity: b.quantity - quantity };
+                        }
+                        return b;
+                    })
+                };
+            }
+            return d;
+        }));
+    
+        addToast(`تعداد ${quantity} از محصول ${drug.name} به عنوان ضایعات ثبت شد.`, 'success');
+    };
+
     const handleSavePurchaseBill = (bill: PurchaseBill) => {
         setPurchaseBills(prev => {
             const exists = prev.some(b => b.id === bill.id);
@@ -1274,12 +1739,56 @@ const App: React.FC = () => {
             setPreselectedCustomerId(null);
         }
     }, [activeItem]);
+    
+    // RENDER LOGIC
+    // ==========================================================
 
+    // Loading Screen
+    if (licenseStatus === 'LOADING') {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-100">
+                <p>در حال بارگذاری...</p>
+            </div>
+        );
+    }
+    
+    // License Screens
+    if (licenseStatus === 'NEEDS_ACTIVATION') {
+        return (
+            <>
+                <LicenseAuthScreen onActivationSuccess={handleActivationSuccess} addToast={addToast} showConfirmation={showConfirmation} />
+                <ToastContainer toasts={toasts} setToasts={setToasts} />
+                 <ConfirmationModal
+                    isOpen={!!confirmationModal?.isOpen}
+                    onClose={handleCloseConfirmation}
+                    onConfirm={handleConfirm}
+                    title={confirmationModal?.title || ''}
+                >
+                    {confirmationModal?.message}
+                </ConfirmationModal>
+            </>
+        );
+    }
+
+     if (licenseStatus === 'NEEDS_VALIDATION') {
+        return (
+             <>
+                <UpdateRequiredScreen onValidate={validateLicense} />
+                <ToastContainer toasts={toasts} setToasts={setToasts} />
+             </>
+        );
+    }
+    
+    if (licenseStatus === 'INVALID') {
+        return <InvalidLicenseScreen />;
+    }
+
+    // Main App Screens (License is VALID)
     const renderActiveComponent = () => {
         if (!currentUser) return null;
         switch(activeItem) {
             case 'dashboard': return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
-            case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={(id) => {}} onWriteOff={() => {}} onSaveRequisition={handleSaveRequisition} currentUser={currentUser} rolePermissions={rolePermissions} addToast={addToast} onTraceLotNumber={handleTraceLotNumber} />;
+            case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={handleDeleteDrug} onWriteOff={handleWriteOff} onSaveRequisition={handleSaveRequisition} currentUser={currentUser} rolePermissions={rolePermissions} addToast={addToast} onTraceLotNumber={handleTraceLotNumber} />;
             case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} rolePermissions={rolePermissions} documentSettings={documentSettings} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
             case 'customers': return <Customers customers={customers} onSave={(c) => setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev])} onDelete={handleDeleteCustomer} currentUser={currentUser} rolePermissions={rolePermissions} addToast={addToast} onViewLedger={handleViewLedger} />;
             case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev])} onDelete={handleDeleteSupplier} currentUser={currentUser} />;
@@ -1299,14 +1808,17 @@ const App: React.FC = () => {
                 documentSettings={documentSettings} 
                 />;
             case 'recycle_bin': return <RecycleBin trashItems={trash} onRestore={handleRestoreItem} onDelete={handleDeletePermanently} onEmptyTrash={handleEmptyTrash} />;
-            case 'checkneh': return <Checkneh customers={customers} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} showConfirmation={showConfirmation} />;
+            case 'checkneh': return <Checkneh customers={customers} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} showConfirmation={showConfirmation} invoices={checknehInvoices} setInvoices={setChecknehInvoices} />;
             case 'alerts': return <Alerts settings={alertSettings} setSettings={setAlertSettings} customers={customers} />;
             case 'settings': return <Settings 
                 companyInfo={companyInfo} onSetCompanyInfo={setCompanyInfo} 
                 users={users} onSaveUser={handleSaveUser} onDeleteUser={handleDeleteUser} onPasswordReset={handlePasswordReset}
                 backupKey={null} onBackupKeyChange={()=>{}} 
-                supabase={supabase} licenseId={null}
-                onBackupLocal={()=>{}} onRestoreLocal={()=>{}} onBackupOnline={async () => false} onRestoreOnline={()=>{}}
+                supabase={supabase} licenseId={licenseInfo?.id || null}
+                onBackupLocal={handleBackupLocal} 
+                onRestoreLocal={handleRestoreLocal} 
+                onBackupOnline={handleBackupOnline} 
+                onRestoreOnline={handleRestoreOnline}
                 onPurgeData={()=>{}}
                 documentSettings={documentSettings} onSetDocumentSettings={setDocumentSettings}
                 rolePermissions={rolePermissions} onSetRolePermissions={setRolePermissions}
@@ -1359,5 +1871,283 @@ const App: React.FC = () => {
         </div>
     );
 };
+//=========== NEW LICENSE COMPONENTS ===========//
+const LicenseAuthScreen = ({ onActivationSuccess, addToast, showConfirmation }) => {
+    const [view, setView] = useState<'activate' | 'login'>('activate');
+
+    if (view === 'login') {
+        return <TransferLoginScreen onSwitchToActivate={() => setView('activate')} onTransferSuccess={onActivationSuccess} addToast={addToast} showConfirmation={showConfirmation} />;
+    }
+    return <ActivationScreen onSwitchToLogin={() => setView('login')} onActivationSuccess={onActivationSuccess} addToast={addToast} />;
+};
+const ActivationScreen = ({ onSwitchToLogin, onActivationSuccess, addToast }) => {
+    const machineId = useMemo(() => getOrCreateMachineId(), []);
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [activationKey, setActivationKey] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleCopyToClipboard = () => {
+        navigator.clipboard.writeText(machineId);
+        addToast('شناسه دستگاه کپی شد!', 'success');
+    };
+
+    const handleActivate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (password !== confirmPassword) {
+            addToast('رمزهای عبور مطابقت ندارند.', 'error');
+            return;
+        }
+        if (password.length < 6) {
+             addToast('رمز عبور باید حداقل ۶ کاراکتر باشد.', 'error');
+            return;
+        }
+        setIsLoading(true);
+        let createdAuthUser: any = null;
+
+        try {
+            // 1. Create Supabase User
+            const { data: authData, error: signUpError } = await supabase.auth.signUp({
+                email: `${username}@example.com`,
+                password: password,
+            });
+
+            if (signUpError) {
+                if (signUpError.message.includes('User already registered')) {
+                    addToast('این نام کاربری قبلاً استفاده شده است. لطفاً نام دیگری انتخاب کنید.', 'error');
+                    setIsLoading(false);
+                    return;
+                }
+                throw new Error(signUpError.message || "خطا در ایجاد حساب کاربری.");
+            }
+            if (!authData.user) {
+                 throw new Error("خطا در ایجاد حساب کاربری.");
+            }
+            createdAuthUser = authData.user;
+
+            // 2. Insert new license record with user_id to satisfy RLS
+            const { data: licenseData, error: insertError } = await supabase
+                .from('licenses')
+                .insert({
+                    activation_key: activationKey,
+                    machine_id: machineId,
+                    username: username,
+                    is_active: true,
+                    user_id: createdAuthUser.id
+                })
+                .select('id')
+                .single();
+
+            if (insertError) {
+                if (insertError.code === '23505') { // Postgres code for unique violation
+                    throw new Error("این کلید فعال‌سازی قبلاً استفاده شده است.");
+                }
+                throw new Error(insertError.message);
+            }
+            
+            addToast('برنامه با موفقیت فعال شد!', 'success');
+            onActivationSuccess({ id: licenseData.id, user_id: createdAuthUser.id, machine_id: machineId, session: authData.session! });
+
+        } catch (error) {
+            console.error("Activation failed:", error);
+            // Cleanup on failure (manual step needed if this fails often)
+            // It's complex to automate user deletion from client-side on failure.
+            let errorMessage = "یک خطای ناشناخته در هنگام فعال‌سازی رخ داد.";
+            if (error instanceof Error) {
+                errorMessage = error.message.includes('security policy') 
+                    ? "خطا در سیاست‌های امنیتی پایگاه داده. لطفاً با مدیر تماس بگیرید."
+                    : error.message;
+            } else if (typeof error === 'string') {
+                errorMessage = error;
+            }
+            addToast(`خطا در فعال‌سازی: ${errorMessage}`, 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+            <div className="w-full max-w-lg p-8 space-y-6 bg-white rounded-2xl shadow-2xl">
+                <div className="text-center">
+                    <h1 className="text-2xl font-bold text-gray-800">فعال‌سازی پلتفرم حیات</h1>
+                    <p className="mt-2 text-gray-600">برای استفاده از برنامه، لطفاً آن را فعال کنید.</p>
+                </div>
+                <form className="space-y-4" onSubmit={handleActivate}>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">۱. شناسه دستگاه شما:</label>
+                        <div className="mt-1 flex rounded-md shadow-sm">
+                            <input type="text" readOnly value={machineId} className="flex-1 block w-full rounded-none rounded-r-md p-2 bg-gray-200 border-gray-300 text-gray-700 font-mono text-sm" />
+                            <button type="button" onClick={handleCopyToClipboard} className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-700 text-sm hover:bg-gray-100">
+                                کپی کردن شناسه
+                            </button>
+                        </div>
+                         <p className="mt-1 text-xs text-gray-500">این شناسه را برای توسعه‌دهنده ارسال کنید تا کلید فعال‌سازی را دریافت نمایید.</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">۲. نام کاربری (برای پشتیبان‌گیری آنلاین)</label>
+                        <input type="text" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="یک نام کاربری به انگلیسی انتخاب کنید" />
+                    </div>
+                     <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">رمز عبور</label>
+                            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="حداقل ۶ کاراکتر" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">تکرار رمز عبور</label>
+                            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">۳. کلید فعال‌سازی:</label>
+                        <input type="text" value={activationKey} onChange={e => setActivationKey(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="کلید دریافت شده را اینجا وارد کنید" />
+                    </div>
+                    
+                    <div className="pt-2 space-y-2">
+                        <button type="submit" disabled={isLoading} className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400">
+                            {isLoading ? 'در حال بررسی...' : 'فعال‌سازی برنامه'}
+                        </button>
+                         <button type="button" onClick={onSwitchToLogin} className="w-full text-center py-2 text-sm text-gray-600 hover:text-teal-600">
+                            حساب کاربری دارید؟ وارد شوید
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+const TransferLoginScreen = ({ onSwitchToActivate, onTransferSuccess, addToast, showConfirmation }) => {
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleLogin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        try {
+            // 1. Sign in to validate credentials
+            const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+                email: `${username}@example.com`,
+                password: password,
+            });
+            if (signInError || !authData.user) {
+                throw new Error("نام کاربری یا رمز عبور اشتباه است.");
+            }
+
+            // 2. Fetch license data using the secure user_id
+            const { data: license, error: fetchError } = await supabase
+                .from('licenses')
+                .select('id, machine_id')
+                .eq('user_id', authData.user.id)
+                .single();
+            if (fetchError || !license) {
+                throw new Error("اطلاعات لایسنس برای این کاربر یافت نشد.");
+            }
+
+            // 3. Check for device transfer
+            const newMachineId = getOrCreateMachineId();
+            if (license.machine_id !== newMachineId) {
+                showConfirmation(
+                    'انتقال لایسنس به دستگاه جدید',
+                    <p>به نظر می‌رسد شما از یک دستگاه جدید وارد شده‌اید. آیا می‌خواهید لایسنس خود را به این دستگاه منتقل کنید؟ <strong className="text-red-600">با این کار، دسترسی از دستگاه قبلی مسدود خواهد شد.</strong></p>,
+                    async () => {
+                        setIsLoading(true); // Re-enable loading for the transfer process
+                        addToast("در حال انتقال لایسنس...", "info");
+                        const { error: updateError } = await supabase
+                            .from('licenses')
+                            .update({ machine_id: newMachineId })
+                            .eq('id', license.id);
+                        
+                        if (updateError) {
+                            addToast(`خطا در انتقال لایسنس: ${updateError.message}`, 'error');
+                            setIsLoading(false); // Stop loading on error
+                            return;
+                        }
+                        addToast('لایسنس با موفقیت به این دستگاه منتقل شد.', 'success');
+                        onTransferSuccess({ id: license.id, user_id: authData.user!.id, machine_id: newMachineId, session: authData.session! });
+                    }
+                );
+                setIsLoading(false); // Stop loading to show the modal
+                return; // Exit function, let modal handle the next step
+            } else {
+                 addToast('شما با موفقیت وارد شدید.', 'success');
+                 onTransferSuccess({ id: license.id, user_id: authData.user!.id, machine_id: newMachineId, session: authData.session! });
+            }
+
+        } catch (error) {
+            console.error("Login/Transfer failed:", error);
+            let errorMessage = "یک خطای ناشناخته در هنگام ورود رخ داد.";
+            if (error instanceof Error) {
+                errorMessage = error.message;
+            } else if (typeof error === 'string') {
+                errorMessage = error;
+            }
+            addToast(errorMessage, 'error');
+            setIsLoading(false);
+        }
+    };
+    
+    return (
+         <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+            <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-2xl shadow-2xl">
+                <div className="flex flex-col items-center">
+                    <div className="w-16 h-16 flex items-center justify-center bg-teal-800 rounded-full mb-4">
+                        <svg className="w-10 h-10 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5-10-5-10 5z" /></svg>
+                    </div>
+                    <h1 className="text-2xl font-bold text-gray-800">ورود به پلتفرم حیات</h1>
+                    <p className="mt-2 text-gray-600">برای بازیابی اطلاعات، وارد حساب کاربری خود شوید</p>
+                </div>
+                <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-sm font-medium text-gray-700">نام کاربری</label>
+                            <input type="text" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md" />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-700">رمز عبور</label>
+                            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md" />
+                        </div>
+                    </div>
+                    <div className="pt-2 space-y-2">
+                         <button type="submit" disabled={isLoading} className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400">
+                             {isLoading ? 'در حال ورود...' : 'ورود به سیستم'}
+                        </button>
+                         <button type="button" onClick={onSwitchToActivate} className="w-full text-center py-2 text-sm text-gray-600 hover:text-teal-600">
+                            حساب کاربری ندارید؟ فعال‌سازی کنید
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+const UpdateRequiredScreen = ({ onValidate }) => (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 text-center p-4">
+        <div className="bg-white p-10 rounded-2xl shadow-lg border">
+            <CloudSyncIcon className="w-16 h-16 text-teal-500 mx-auto" />
+            <h2 className="mt-4 text-2xl font-bold text-gray-800">نیاز به اعتبارسنجی لایسنس</h2>
+            <p className="mt-2 text-gray-600 max-w-sm">
+                بیش از ۳۰ روز از آخرین بررسی آنلاین لایسنس شما گذشته است. لطفاً به اینترنت متصل شده و دکمه زیر را برای ادامه استفاده از برنامه فشار دهید.
+            </p>
+            <button onClick={onValidate} className="mt-6 px-8 py-3 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">
+                اعتبارسنجی آنلاین
+            </button>
+        </div>
+    </div>
+);
+const InvalidLicenseScreen = () => (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-red-50 text-center p-4">
+        <div className="bg-white p-10 rounded-2xl shadow-lg border-2 border-red-200">
+            <Icon path="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" className="w-16 h-16 text-red-500 mx-auto" />
+            <h2 className="mt-4 text-2xl font-bold text-red-800">دسترسی مسدود شد</h2>
+            <p className="mt-2 text-gray-600 max-w-sm">
+                لایسنس شما نامعتبر است یا به دستگاه دیگری منتقل شده است. لطفاً با پشتیبانی تماس بگیرید.
+            </p>
+        </div>
+    </div>
+);
 
 export default App;

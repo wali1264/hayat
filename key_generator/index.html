@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>ابزار تولید کلید فعال‌سازی حیات</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap');
+      body {
+        font-family: 'Vazirmatn', sans-serif;
+      }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+    <div class="w-full max-w-lg p-8 space-y-6 bg-white rounded-2xl shadow-2xl border">
+        <div class="text-center">
+            <h1 class="text-3xl font-bold text-gray-800">ابزار تولید کلید فعال‌سازی</h1>
+            <p class="mt-2 text-gray-500">این ابزار را به صورت محرمانه نزد خود نگهدارید.</p>
+        </div>
+
+        <div class="space-y-4">
+            <div>
+                <label for="machine-id" class="block text-sm font-medium text-gray-700">شناسه دستگاه مشتری:</label>
+                <input type="text" id="machine-id" class="mt-1 block w-full p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono" placeholder="شناسه دستگاه را اینجا وارد کنید...">
+            </div>
+
+            <button id="generate-btn" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">
+                تولید کلید
+            </button>
+
+            <div>
+                <label for="activation-key" class="block text-sm font-medium text-gray-700">کلید فعال‌سازی (برای مشتری ارسال کنید):</label>
+                <div class="mt-1 flex rounded-md shadow-sm">
+                    <input type="text" id="activation-key" readonly class="flex-1 block w-full rounded-none rounded-r-md p-3 bg-gray-100 border-gray-300 text-gray-700 font-mono text-center text-lg tracking-widest" />
+                    <button id="copy-btn" class="inline-flex items-center px-4 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-700 text-sm hover:bg-gray-100">
+                        کپی
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const machineIdInput = document.getElementById('machine-id');
+        const generateBtn = document.getElementById('generate-btn');
+        const activationKeyOutput = document.getElementById('activation-key');
+        const copyBtn = document.getElementById('copy-btn');
+
+        // This is the secret salt. Keep it secret!
+        // It should match a corresponding secret in your validation logic if you ever decide to verify keys mathematically.
+        // For the current setup (just checking against Supabase), this just ensures the key is unique and not easily guessable.
+        const SECRET_SALT = "HAYAT_PHARMA_MANAGEMENT_SYSTEM_SECRET_SAUCE_2025";
+
+        generateBtn.addEventListener('click', () => {
+            const machineId = machineIdInput.value.trim();
+            if (!machineId) {
+                alert('لطفاً شناسه دستگاه را وارد کنید.');
+                return;
+            }
+
+            // A simple, deterministic transformation algorithm.
+            // 1. Reverse the machineId string.
+            // 2. Append the secret salt.
+            // 3. Base64 encode the result.
+            // 4. Convert to uppercase and take a substring to make it look cleaner.
+            const reversedIdWithSalt = machineId.split('').reverse().join('') + SECRET_SALT;
+            const encodedKey = btoa(reversedIdWithSalt);
+            const finalKey = encodedKey.toUpperCase().replace(/=/g, '').substring(0, 25);
+            
+            activationKeyOutput.value = finalKey;
+        });
+
+        copyBtn.addEventListener('click', () => {
+            const key = activationKeyOutput.value;
+            if (key) {
+                navigator.clipboard.writeText(key)
+                    .then(() => alert('کلید فعال‌سازی کپی شد!'))
+                    .catch(err => alert('خطا در کپی کردن.'));
+            }
+        });
+    </script>
+
+</body>
+</html>

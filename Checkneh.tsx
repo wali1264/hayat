@@ -2,30 +2,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Customer } from './Customers';
 import { CompanyInfo, DocumentSettings } from './Settings';
 
-//=========== PERSISTENCE HOOK (Copied for isolation) ===========//
-function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-    const [state, setState] = useState<T>(() => {
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
-        } catch (error) {
-            console.error(error);
-            return initialValue;
-        }
-    });
-
-    useEffect(() => {
-        try {
-            window.localStorage.setItem(key, JSON.stringify(state));
-        } catch (error) {
-            console.error(error);
-        }
-    }, [key, state]);
-
-    return [state, setState];
-}
-
-
 //=========== ICONS ===========//
 const Icon = ({ path, className = "w-5 h-5" }) => (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -39,6 +15,20 @@ const CloseIcon = () => <Icon path="M6 18L18 6M6 6l12 12" className="w-5 h-5 tex
 const UploadIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />;
 const DownloadIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />;
 
+//=========== HELPERS ===========//
+const formatGregorianForDisplay = (dateStr: string): string => {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    } catch (e) {
+        return '';
+    }
+};
 
 //=========== TYPES ===========//
 export type ChecknehItem = {
@@ -106,7 +96,10 @@ const ChecknehInvoicePrintModal = ({ isOpen, onClose, invoice, companyInfo, docu
                         </div>
                         <div>
                             <h4 className="text-sm text-gray-500 font-bold mb-1">تاریخ صدور:</h4>
-                            <p className="font-semibold text-gray-800">{new Date(invoice.invoiceDate).toLocaleDateString('fa-IR')}</p>
+                            <p className="font-semibold text-gray-800">
+                                {new Date(invoice.invoiceDate).toLocaleDateString('fa-IR')}
+                                <span className="block text-xs font-normal font-mono text-gray-500 mt-1">{formatGregorianForDisplay(invoice.invoiceDate)}</span>
+                            </p>
                         </div>
                     </div>
                     <table className="w-full text-right">
@@ -178,9 +171,10 @@ type ChecknehInvoiceFormProps = {
     onSave: (invoice: Omit<ChecknehInvoice, 'id' | 'invoiceNumber' | 'totalAmount'>) => ChecknehInvoice;
     setTab: (tab: Tab) => void;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    invoices: ChecknehInvoice[]; // Add invoices to calculate daily count for invoice number
 };
 
-const ChecknehInvoiceForm = ({ customers, onSave, setTab, addToast }: ChecknehInvoiceFormProps) => {
+const ChecknehInvoiceForm = ({ customers, onSave, setTab, addToast, invoices }: ChecknehInvoiceFormProps) => {
     const defaultInfo = { customerName: '', supplierName: '', invoiceDate: new Date().toISOString().split('T')[0] };
     const [info, setInfo] = useState(defaultInfo);
     const [items, setItems] = useState<ChecknehItem[]>([]);
@@ -417,11 +411,12 @@ interface ChecknehProps {
     documentSettings: DocumentSettings;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     showConfirmation: (title: string, message: React.ReactNode, onConfirm: () => void) => void;
+    invoices: ChecknehInvoice[];
+    setInvoices: React.Dispatch<React.SetStateAction<ChecknehInvoice[]>>;
 }
 
-const Checkneh: React.FC<ChecknehProps> = ({ customers, companyInfo, documentSettings, addToast, showConfirmation }) => {
+const Checkneh: React.FC<ChecknehProps> = ({ customers, companyInfo, documentSettings, addToast, showConfirmation, invoices, setInvoices }) => {
     const [activeTab, setActiveTab] = useState<Tab>('new_invoice');
-    const [invoices, setInvoices] = usePersistentState<ChecknehInvoice[]>('hayat_checkneh_invoices', []);
     const [invoiceToPrint, setInvoiceToPrint] = useState<ChecknehInvoice | null>(null);
 
     const handleSaveInvoice = (newInvoiceData: Omit<ChecknehInvoice, 'id' | 'invoiceNumber' | 'totalAmount'>): ChecknehInvoice => {
@@ -479,7 +474,7 @@ const Checkneh: React.FC<ChecknehProps> = ({ customers, companyInfo, documentSet
             </div>
 
             <div>
-                {activeTab === 'new_invoice' && <ChecknehInvoiceForm customers={customers} onSave={handleSaveInvoice} setTab={setActiveTab} addToast={addToast} />}
+                {activeTab === 'new_invoice' && <ChecknehInvoiceForm customers={customers} onSave={handleSaveInvoice} setTab={setActiveTab} addToast={addToast} invoices={invoices} />}
                 {activeTab === 'invoice_list' && (
                      <div className="bg-white p-6 rounded-xl shadow-lg">
                          <h3 className="text-xl font-bold text-gray-800 mb-4">لیست فاکتورهای چکنه</h3>

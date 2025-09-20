@@ -360,13 +360,14 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
         const openingBalance = openingBalanceOrders.reduce((balance, order) => balance + (order.totalAmount - order.amountPaid), 0);
         // **FIX END**
 
-        const customerOrdersInRange = orders.filter(o => {
-            const orderDate = new Date(o.orderDate);
-            return o.customerName === customer.name &&
-                   orderDate >= new Date(startDate) &&
-                   orderDate <= new Date(endDate);
-// FIX: The 'date' property does not exist on type 'Order'. It should be 'orderDate'.
-        }).sort((a,b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
+        const customerOrdersInRange = orders
+            .filter(o => {
+                const orderDate = new Date(o.orderDate);
+                return o.customerName === customer.name &&
+                    orderDate >= new Date(startDate) &&
+                    orderDate <= new Date(endDate);
+            })
+            .sort((a, b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
 
         const transactions: ReportData['transactions'] = [];
         let runningBalance = openingBalance;

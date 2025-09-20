@@ -69,7 +69,10 @@ export type RolePermissions = {
 
 //=========== MOCK DATA ===========//
 export const mockUsers: User[] = [
-    { id: 1, username: 'admin', password: 'admin', role: 'مدیر کل', lastLogin: 'هرگز وارد نشده' },
+    { id: 1, username: 'admin', password: 'admin', role: 'مدیر کل', lastLogin: '1403/03/15، 09:30:15' },
+    { id: 2, username: 'sales_user', password: '123', role: 'فروشنده', lastLogin: '1403/03/15، 08:45:10' },
+    { id: 3, username: 'warehouse_user', password: '123', role: 'انباردار', lastLogin: '1403/03/14، 14:00:05' },
+    { id: 4, username: 'accountant_user', password: '123', role: 'حسابدار', lastLogin: '1403/03/14، 16:20:45' },
 ];
 
 //=========== HELPERS ===========//
