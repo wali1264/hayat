@@ -64,7 +64,8 @@ export type Drug = {
     barcode?: string;
     code: string;
     manufacturer: string;
-    unitsPerCarton?: number;
+    unitsPerCarton?: number; // Units per SMALL carton
+    cartonSize?: number; // SMALL cartons per LARGE carton
     price: number; // Selling price (per-product)
     discountPercentage: number; // Per-product discount
     category?: string;
@@ -79,23 +80,38 @@ export const drugCategories = ['آنتی‌بیوتیک', 'مسکن', 'ویتا�
 
 
 //=========== HELPERS ===========//
-export const formatQuantity = (totalUnits: number, unitsPerCarton?: number) => {
+export const formatQuantity = (totalUnits: number, unitsPerCarton?: number, cartonSize?: number) => {
+    if (totalUnits === 0) return '0 عدد';
+    if (!totalUnits || isNaN(totalUnits)) return '-';
     if (!unitsPerCarton || unitsPerCarton <= 1) {
         return `${totalUnits.toLocaleString()} عدد`;
     }
-    const cartons = Math.floor(totalUnits / unitsPerCarton);
-    const units = totalUnits % unitsPerCarton;
-    
+
     let result = '';
-    if (cartons > 0) {
-        result += `${cartons} کارتن`;
+    let remainingUnits = totalUnits;
+
+    if (cartonSize && cartonSize > 1) {
+        const unitsPerLargeCarton = unitsPerCarton * cartonSize;
+        const largeCartons = Math.floor(remainingUnits / unitsPerLargeCarton);
+        if (largeCartons > 0) {
+            result += `${largeCartons} کارتن بزرگ`;
+            remainingUnits %= unitsPerLargeCarton;
+        }
     }
-    if (units > 0) {
+    
+    const smallCartons = Math.floor(remainingUnits / unitsPerCarton);
+    if (smallCartons > 0) {
         if (result) result += ' / ';
-        result += `${units} عدد`;
+        result += `${smallCartons} کارتن کوچک`;
+        remainingUnits %= unitsPerCarton;
     }
-     if (!result) return '0 عدد';
-    return result;
+
+    if (remainingUnits > 0) {
+        if (result) result += ' / ';
+        result += `${remainingUnits} عدد`;
+    }
+    
+    return result || '0 عدد';
 };
 
 
@@ -168,7 +184,7 @@ const BatchDetailsRow = ({ drug, colSpan, onTraceLotNumber }: { drug: Drug; colS
                             drug.batches.filter(b => b.quantity > 0).map(batch => (
                                 <tr key={batch.lotNumber}>
                                     <td className="p-2 font-mono">{batch.lotNumber}</td>
-                                    <td className="p-2">{formatQuantity(batch.quantity, drug.unitsPerCarton)}</td>
+                                    <td className="p-2">{formatQuantity(batch.quantity, drug.unitsPerCarton, drug.cartonSize)}</td>
                                     <td className="p-2">{new Date(batch.expiryDate).toLocaleDateString('fa-IR')}</td>
                                     <td className="p-2 font-mono">{batch.purchasePrice.toLocaleString()}</td>
                                     <td className="p-2">
@@ -304,7 +320,7 @@ type DrugModalProps = {
 };
 
 export const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
-    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', unitsPerCarton: '', price: '', discountPercentage: '0', category: 'سایر' };
+    const defaultState = { name: '', barcode: '', code: '', manufacturer: '', unitsPerCarton: '', cartonSize: '', price: '', discountPercentage: '0', category: 'سایر' };
     const [drug, setDrug] = useState(defaultState);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const isEditMode = initialData !== null;
@@ -318,6 +334,7 @@ export const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, i
                      code: initialData.code,
                      manufacturer: initialData.manufacturer,
                      unitsPerCarton: String(initialData.unitsPerCarton || ''),
+                     cartonSize: String(initialData.cartonSize || ''),
                      price: String(initialData.price),
                      discountPercentage: String(initialData.discountPercentage || '0'),
                      category: initialData.category || 'سایر'
@@ -352,6 +369,7 @@ export const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, i
             manufacturer: drug.manufacturer,
             category: drug.category,
             unitsPerCarton: Number(drug.unitsPerCarton) || 1,
+            cartonSize: Number(drug.cartonSize) || undefined,
             price: priceValue,
             discountPercentage: Number(drug.discountPercentage) || 0,
         };
@@ -412,7 +430,7 @@ export const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, i
                             </div>
                         </div>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                              <div>
                                 <label htmlFor="price" className={labelStyles}>قیمت فروش (ضروری)</label>
                                 <input type="number" name="price" id="price" value={drug.price} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 150" />
@@ -421,9 +439,15 @@ export const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, i
                                 <label htmlFor="discountPercentage" className={labelStyles}>تخفیف (٪)</label>
                                 <input type="number" name="discountPercentage" id="discountPercentage" value={drug.discountPercentage} onChange={handleChange} className={inputStyles} min="0" max="100" placeholder="مثلا: 5"/>
                             </div>
+                        </div>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 p-4 border rounded-lg bg-gray-50">
                              <div>
-                                <label htmlFor="unitsPerCarton" className={labelStyles}>تعداد در کارتن</label>
+                                <label htmlFor="unitsPerCarton" className={labelStyles}>تعداد واحد در کارتن <span className="font-normal text-gray-500">(کوچک)</span></label>
                                 <input type="number" name="unitsPerCarton" id="unitsPerCarton" value={drug.unitsPerCarton} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 100" />
+                            </div>
+                            <div>
+                                <label htmlFor="cartonSize" className={labelStyles}>تعداد کارتن کوچک در کارتن <span className="font-normal text-gray-500">(بزرگ)</span></label>
+                                <input type="number" name="cartonSize" id="cartonSize" value={drug.cartonSize} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 10" />
                             </div>
                         </div>
                     </form>
@@ -492,7 +516,7 @@ const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfir
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md" onClick={e => e.stopPropagation()}>
                 <h3 className="text-2xl font-bold text-gray-800 mb-2">ثبت ضایعات برای <span className="text-teal-600">{drug.name}</span></h3>
-                <p className="text-sm text-gray-500 mb-6">موجودی کل: {formatQuantity(totalQuantity, drug.unitsPerCarton)}</p>
+                <p className="text-sm text-gray-500 mb-6">موجودی کل: {formatQuantity(totalQuantity, drug.unitsPerCarton, drug.cartonSize)}</p>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-bold mb-2">انتخاب بچ/لات</label>
@@ -544,7 +568,9 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
     const [notes, setNotes] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
-    const [quantity, setQuantity] = useState('');
+    const [reqLarge, setReqLarge] = useState('');
+    const [reqSmall, setReqSmall] = useState('');
+    const [reqUnit, setReqUnit] = useState('');
     const searchWrapperRef = useRef<HTMLDivElement>(null);
 
      const availableDrugs = useMemo(() => {
@@ -568,19 +594,32 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
     if (!isOpen) return null;
 
     const handleAddItem = () => {
-        if (!selectedDrug || !quantity || Number(quantity) <= 0) {
-            addToast("لطفا دارو و تعداد معتبر را انتخاب کنید.", "error");
+        if (!selectedDrug) {
+            addToast("لطفا ابتدا یک دارو را انتخاب کنید.", "error");
             return;
         }
+
+        const unitsPerCarton = selectedDrug.unitsPerCarton || 1;
+        const cartonSize = selectedDrug.cartonSize || 1;
+        const unitsPerLargeCarton = unitsPerCarton * cartonSize;
+        const totalQuantity = (Number(reqLarge || 0) * unitsPerLargeCarton) + (Number(reqSmall || 0) * unitsPerCarton) + Number(reqUnit || 0);
+
+        if (totalQuantity <= 0) {
+            addToast("لطفا تعداد معتبر وارد کنید.", "error");
+            return;
+        }
+
         const totalStock = selectedDrug.batches.reduce((sum, b) => sum + b.quantity, 0);
-        if (Number(quantity) > totalStock) {
-             addToast(`تعداد درخواستی (${quantity}) بیشتر از موجودی انبار اصلی (${totalStock}) است.`, "error");
+        if (totalQuantity > totalStock) {
+             addToast(`تعداد درخواستی (${totalQuantity}) بیشتر از موجودی انبار اصلی (${totalStock}) است.`, "error");
             return;
         }
-        setItems(prev => [...prev, { drugId: selectedDrug.id, drugName: selectedDrug.name, quantityRequested: Number(quantity) }]);
+        setItems(prev => [...prev, { drugId: selectedDrug.id, drugName: selectedDrug.name, quantityRequested: totalQuantity }]);
         setSelectedDrug(null);
         setSearchTerm('');
-        setQuantity('');
+        setReqLarge('');
+        setReqSmall('');
+        setReqUnit('');
     };
     
     const handleRemoveItem = (drugId: number) => {
@@ -599,10 +638,10 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-3xl" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-4xl" onClick={e => e.stopPropagation()}>
                 <h3 className="text-2xl font-bold text-gray-800 mb-6">ایجاد درخواست جدید کالا از انبار اصلی</h3>
                 <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end p-4 border rounded-lg bg-gray-50">
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end p-4 border rounded-lg bg-gray-50">
                         <div className="md:col-span-2 relative" ref={searchWrapperRef}>
                             <label className="block text-sm font-bold mb-1">انتخاب دارو</label>
                             <input type="text" placeholder="جستجو..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full p-2 border rounded-lg" />
@@ -618,9 +657,19 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
                                 </div>
                             )}
                         </div>
-                         <div>
-                            <label className="block text-sm font-bold mb-1">تعداد</label>
-                            <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={selectedDrug ? selectedDrug.batches.reduce((s, b) => s + b.quantity, 0) : undefined} className="w-full p-2 border rounded-lg" disabled={!selectedDrug} />
+                         <div className="grid grid-cols-3 gap-1 md:col-span-3">
+                            <div>
+                                <label className="block text-sm font-bold mb-1">کارتن بزرگ</label>
+                                <input type="number" value={reqLarge} onChange={e => setReqLarge(e.target.value)} min="0" className="w-full p-2 border rounded-lg" placeholder="بزرگ" title="کارتن بزرگ" disabled={!selectedDrug?.cartonSize} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold mb-1">کارتن کوچک</label>
+                                <input type="number" value={reqSmall} onChange={e => setReqSmall(e.target.value)} min="0" className="w-full p-2 border rounded-lg" placeholder="کوچک" title="کارتن کوچک" disabled={!selectedDrug?.unitsPerCarton} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold mb-1">عدد</label>
+                                <input type="number" value={reqUnit} onChange={e => setReqUnit(e.target.value)} min="0" className="w-full p-2 border rounded-lg" placeholder="عدد" title="عدد" disabled={!selectedDrug} />
+                            </div>
                         </div>
                         <button onClick={handleAddItem} className="w-full bg-teal-500 text-white p-2 rounded-lg hover:bg-teal-600 font-semibold h-10">افزودن</button>
                     </div>
@@ -635,13 +684,15 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
                                 </tr>
                             </thead>
                             <tbody>
-                                {items.map(item => (
+                                {items.map(item => {
+                                    const drugInfo = mainWarehouseDrugs.find(d => d.id === item.drugId);
+                                    return (
                                     <tr key={item.drugId}>
                                         <td className="p-2">{item.drugName}</td>
-                                        <td className="p-2">{item.quantityRequested.toLocaleString()}</td>
+                                        <td className="p-2">{formatQuantity(item.quantityRequested, drugInfo?.unitsPerCarton, drugInfo?.cartonSize)}</td>
                                         <td className="p-2 text-center"><button onClick={() => handleRemoveItem(item.drugId)} className="text-red-500"><TrashIcon className="w-4 h-4" /></button></td>
                                     </tr>
-                                ))}
+                                )})}
                             </tbody>
                         </table>
                     </div>
@@ -987,7 +1038,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                                                     )}
                                                 </td>
                                                 <td className="p-4 whitespace-nowrap text-gray-800 font-semibold">
-                                                    {formatQuantity(drug.totalQuantity, drug.unitsPerCarton)}
+                                                    {formatQuantity(drug.totalQuantity, drug.unitsPerCarton, drug.cartonSize)}
                                                 </td>
                                                 <td className="p-4 whitespace-nowrap text-gray-500">{drug.earliestExpiry ? new Date(drug.earliestExpiry).toLocaleDateString('fa-IR') : '-'}</td>
                                                 <td className="p-4 whitespace-nowrap">

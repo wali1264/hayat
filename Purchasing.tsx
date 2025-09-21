@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Drug, Batch } from './Inventory';
+import { Drug, Batch, formatQuantity } from './Inventory';
 import { Supplier } from './Suppliers';
 import { User } from './Settings';
 
@@ -27,6 +27,8 @@ export type PurchaseItem = {
     drugId: number;
     drugName: string;
     quantity: number;
+    bonusQuantity: number;
+    discountPercentage: number;
     purchasePrice: number;
     lotNumber: string;
     expiryDate: string;
@@ -62,6 +64,32 @@ const formatGregorianForDisplay = (dateStr: string): string => {
     }
 };
 
+// --- NEW HELPER ---
+const deconstructQuantity = (totalUnits: number, drug?: Drug) => {
+    const unitsPerCarton = drug?.unitsPerCarton || 1;
+    const cartonSize = drug?.cartonSize;
+
+    if (!totalUnits || isNaN(totalUnits) || unitsPerCarton <= 1) {
+        return { large: 0, small: 0, unit: totalUnits || 0 };
+    }
+
+    let remainingUnits = totalUnits;
+    let large = 0;
+    let small = 0;
+
+    if (cartonSize && cartonSize > 1) {
+        const unitsPerLargeCarton = unitsPerCarton * cartonSize;
+        large = Math.floor(remainingUnits / unitsPerLargeCarton);
+        remainingUnits %= unitsPerLargeCarton;
+    }
+
+    small = Math.floor(remainingUnits / unitsPerCarton);
+    const unit = remainingUnits % unitsPerCarton;
+
+    return { large, small, unit };
+};
+
+
 // --- NEW SUB-COMPONENT ---
 const PurchaseBillDetailsRow = ({ bill, colSpan }: { bill: PurchaseBill; colSpan: number }) => (
     <tr className="bg-gray-100">
@@ -74,20 +102,27 @@ const PurchaseBillDetailsRow = ({ bill, colSpan }: { bill: PurchaseBill; colSpan
                             <th className="p-2 font-semibold">نام محصول</th>
                             <th className="p-2 font-semibold">شماره لات</th>
                             <th className="p-2 font-semibold">تعداد</th>
+                            <th className="p-2 font-semibold">بونس</th>
                             <th className="p-2 font-semibold">قیمت خرید</th>
+                            <th className="p-2 font-semibold">تخفیف</th>
                             <th className="p-2 font-semibold">مبلغ کل</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                         {bill.items.map(item => (
-                            <tr key={`${item.drugId}-${item.lotNumber}`}>
-                                <td className="p-2">{item.drugName}</td>
-                                <td className="p-2 font-mono">{item.lotNumber}</td>
-                                <td className="p-2">{item.quantity.toLocaleString()}</td>
-                                <td className="p-2 font-mono">{item.purchasePrice.toLocaleString()}</td>
-                                <td className="p-2 font-mono">{(item.quantity * item.purchasePrice).toLocaleString()}</td>
-                            </tr>
-                        ))}
+                         {bill.items.map(item => {
+                            const subtotal = item.quantity * item.purchasePrice * (1 - (item.discountPercentage || 0) / 100);
+                            return (
+                                <tr key={`${item.drugId}-${item.lotNumber}`}>
+                                    <td className="p-2">{item.drugName}</td>
+                                    <td className="p-2 font-mono">{item.lotNumber}</td>
+                                    <td className="p-2">{item.quantity.toLocaleString()}</td>
+                                    <td className="p-2">{(item.bonusQuantity || 0).toLocaleString()}</td>
+                                    <td className="p-2 font-mono">{item.purchasePrice.toLocaleString()}</td>
+                                    <td className="p-2 font-mono">{item.discountPercentage || 0}%</td>
+                                    <td className="p-2 font-mono">{subtotal.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+                                </tr>
+                            )
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -118,8 +153,11 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
     const [drugSearchTerm, setDrugSearchTerm] = useState('');
     const [addLotNumber, setAddLotNumber] = useState('');
     const [addExpiryDate, setAddExpiryDate] = useState('');
-    const [addCarton, setAddCarton] = useState('');
+    const [addLargeCarton, setAddLargeCarton] = useState('');
+    const [addSmallCarton, setAddSmallCarton] = useState('');
     const [addUnit, setAddUnit] = useState('');
+    const [addBonus, setAddBonus] = useState('');
+    const [addDiscount, setAddDiscount] = useState('');
     const [addPrice, setAddPrice] = useState('');
     const [isSearchFocused, setIsSearchFocused] = useState(false);
     const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
@@ -127,7 +165,11 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
 
     const isEditMode = mode === 'edit';
 
-    const totalAmount = useMemo(() => items.reduce((sum, item) => sum + item.quantity * item.purchasePrice, 0), [items]);
+    const totalAmount = useMemo(() => items.reduce((sum, item) => {
+        const itemTotal = item.quantity * item.purchasePrice * (1 - (item.discountPercentage || 0) / 100);
+        return sum + itemTotal;
+    }, 0), [items]);
+
     const availableDrugs = useMemo(() => {
         if (!drugSearchTerm) return [];
         return drugs.filter(d => d.name.toLowerCase().includes(drugSearchTerm.toLowerCase())).slice(0, 10);
@@ -141,14 +183,14 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                      setItems(initialData.items);
                 } else { // Edit mode
                     setBillInfo({ supplierName: initialData.supplierName, billNumber: initialData.billNumber, purchaseDate: initialData.purchaseDate, amountPaid: String(initialData.amountPaid), status: initialData.status, currency: initialData.currency, exchangeRate: initialData.exchangeRate });
-                    setItems(initialData.items);
+                    setItems(initialData.items.map(item => ({...item, bonusQuantity: item.bonusQuantity || 0, discountPercentage: item.discountPercentage || 0 })));
                 }
              } else { // New purchase mode
                 setBillInfo({ supplierName: '', billNumber: '', purchaseDate: new Date().toISOString().split('T')[0], amountPaid: '', status: 'دریافت شده', currency: 'AFN', exchangeRate: 1 });
                 setItems([]);
              }
              // Reset item form fields
-             setDrugSearchTerm(''); setAddCarton(''); setAddUnit(''); setAddPrice(''); setSelectedDrug(null); setAddLotNumber(''); setAddExpiryDate('');
+             setDrugSearchTerm(''); setAddLargeCarton(''); setAddSmallCarton(''); setAddUnit(''); setAddPrice(''); setSelectedDrug(null); setAddLotNumber(''); setAddExpiryDate(''); setAddBonus(''); setAddDiscount('');
         }
     }, [isOpen, initialData, mode]);
     
@@ -182,8 +224,9 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
         }
 
         const price = Number(addPrice);
-        const unitsPerCarton = selectedDrug.unitsPerCarton || 1;
-        const totalQuantity = (Number(addCarton || 0) * unitsPerCarton) + Number(addUnit || 0);
+        const unitsPerSmallCarton = selectedDrug.unitsPerCarton || 1;
+        const smallCartonsPerLarge = selectedDrug.cartonSize || 1;
+        const totalQuantity = (Number(addLargeCarton || 0) * smallCartonsPerLarge * unitsPerSmallCarton) + (Number(addSmallCarton || 0) * unitsPerSmallCarton) + Number(addUnit || 0);
 
         if (totalQuantity <= 0 || price <= 0) {
             addToast("لطفاً تعداد و قیمت خرید معتبر وارد کنید.", 'error');
@@ -195,14 +238,13 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
             return;
         }
         
-        setItems(prev => [...prev, { drugId: selectedDrug.id, drugName: selectedDrug.name, quantity: totalQuantity, purchasePrice: price, lotNumber: addLotNumber, expiryDate: addExpiryDate }]);
+        setItems(prev => [...prev, { drugId: selectedDrug.id, drugName: selectedDrug.name, quantity: totalQuantity, purchasePrice: price, lotNumber: addLotNumber, expiryDate: addExpiryDate, bonusQuantity: Number(addBonus) || 0, discountPercentage: Number(addDiscount) || 0 }]);
         
         // Reset inputs
-        setDrugSearchTerm(''); setSelectedDrug(null); setAddCarton(''); setAddUnit(''); setAddPrice(''); setIsSearchFocused(false); setAddLotNumber(''); setAddExpiryDate('');
+        setDrugSearchTerm(''); setSelectedDrug(null); setAddLargeCarton(''); setAddSmallCarton(''); setAddUnit(''); setAddPrice(''); setIsSearchFocused(false); setAddLotNumber(''); setAddExpiryDate(''); setAddBonus(''); setAddDiscount('');
     };
     
-     const handleItemQuantityChange = (drugId: number, lotNumber: string, newQuantityStr: string) => {
-        const newQuantity = parseInt(newQuantityStr, 10) || 0;
+     const handleItemQuantityChange = (drugId: number, lotNumber: string, newQuantity: number) => {
         if (mode === 'return' && initialData) {
             const originalItem = initialData.items.find(i => i.drugId === drugId && i.lotNumber === lotNumber);
             if (originalItem && newQuantity > originalItem.quantity) {
@@ -248,7 +290,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-6xl" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-7xl" onClick={e => e.stopPropagation()}>
                 <h3 className="text-2xl font-bold text-gray-800 mb-6">{modalTitle}</h3>
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -298,8 +340,8 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                     <div className="space-y-4 rounded-lg border p-4">
                         <h4 className="font-bold text-gray-700">{mode === 'purchase' || isEditMode ? 'افزودن اقلام به فاکتور' : 'اقلام برگشتی'}</h4>
                         {(mode === 'purchase' || isEditMode) && (
-                        <form onSubmit={handleAddItem} className="p-2 bg-gray-50 rounded-md grid grid-cols-1 lg:grid-cols-10 gap-3 items-end" ref={addItemFormRef}>
-                            <div className="relative lg:col-span-3">
+                        <form onSubmit={handleAddItem} className="p-2 bg-gray-50 rounded-md grid grid-cols-1 lg:grid-cols-12 gap-3 items-end" ref={addItemFormRef}>
+                            <div className="relative lg:col-span-2">
                                 <label className="text-xs font-semibold">جستجوی محصول</label>
                                 <div className="flex mt-1">
                                     <div className="relative flex-grow">
@@ -319,11 +361,14 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                             </div>
                             <div><label className="text-xs font-semibold">شماره لات</label><input type="text" value={addLotNumber} onChange={e => setAddLotNumber(e.target.value)} className="w-full p-2 border rounded-lg mt-1" required/></div>
                             <div><label className="text-xs font-semibold">تاریخ انقضا</label><input type="date" value={addExpiryDate} onChange={e => setAddExpiryDate(e.target.value)} className="w-full p-2 border rounded-lg mt-1" required/></div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div><label className="text-xs font-semibold">کارتن</label><input type="number" value={addCarton} onChange={e => setAddCarton(e.target.value)} min="0" className="w-full p-2 border rounded-lg mt-1" disabled={!selectedDrug || !selectedDrug.unitsPerCarton || selectedDrug.unitsPerCarton <= 1} /></div>
+                            <div className="grid grid-cols-3 gap-1 lg:col-span-2">
+                                <div><label className="text-xs font-semibold">بزرگ</label><input type="number" value={addLargeCarton} onChange={e => setAddLargeCarton(e.target.value)} min="0" className="w-full p-2 border rounded-lg mt-1" disabled={!selectedDrug?.cartonSize || selectedDrug.cartonSize <= 1} /></div>
+                                <div><label className="text-xs font-semibold">کوچک</label><input type="number" value={addSmallCarton} onChange={e => setAddSmallCarton(e.target.value)} min="0" className="w-full p-2 border rounded-lg mt-1" disabled={!selectedDrug || !selectedDrug.unitsPerCarton || selectedDrug.unitsPerCarton <= 1} /></div>
                                 <div><label className="text-xs font-semibold">عدد</label><input type="number" value={addUnit} onChange={e => setAddUnit(e.target.value)} min="0" className="w-full p-2 border rounded-lg mt-1" /></div>
                             </div>
-                            <div><label className="text-xs font-semibold">قیمت خرید ({billInfo.currency})</label><input type="number" value={addPrice} onChange={e => setAddPrice(e.target.value)} min="0.01" step="0.01" className="w-full p-2 border rounded-lg mt-1" required /></div>
+                             <div><label className="text-xs font-semibold">بونس</label><input type="number" value={addBonus} onChange={e => setAddBonus(e.target.value)} min="0" className="w-full p-2 border rounded-lg mt-1" /></div>
+                             <div><label className="text-xs font-semibold">تخفیف (٪)</label><input type="number" value={addDiscount} onChange={e => setAddDiscount(e.target.value)} min="0" max="100" className="w-full p-2 border rounded-lg mt-1" /></div>
+                            <div><label className="text-xs font-semibold">قیمت ({billInfo.currency})</label><input type="number" value={addPrice} onChange={e => setAddPrice(e.target.value)} min="0.01" step="0.01" className="w-full p-2 border rounded-lg mt-1" required /></div>
                             <div className="lg:col-span-2"><button type="submit" className="w-full bg-teal-500 text-white p-2 rounded-lg hover:bg-teal-600 h-10 flex items-center justify-center"><PlusIcon /> <span className="mr-2">افزودن قلم</span></button></div>
                         </form>
                         )}
@@ -335,24 +380,31 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                                         <th className="p-2 font-semibold">نام دارو</th>
                                         <th className="p-2 font-semibold">لات</th>
                                         <th className="p-2 font-semibold">تعداد</th>
-                                        <th className="p-2 font-semibold">قیمت خرید ({billInfo.currency})</th>
-                                        <th className="p-2 font-semibold">مبلغ جزء ({billInfo.currency})</th>
+                                        <th className="p-2 font-semibold">بونس</th>
+                                        <th className="p-2 font-semibold">تخفیف</th>
+                                        <th className="p-2 font-semibold">قیمت خرید</th>
+                                        <th className="p-2 font-semibold">مبلغ جزء</th>
                                         <th className="p-2"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {items.map(item => (
-                                    <tr key={`${item.drugId}-${item.lotNumber}`} className="border-b last:border-0 hover:bg-gray-50">
-                                        <td className="p-2">{item.drugName}</td>
-                                        <td className="p-2 font-mono text-xs">{item.lotNumber}</td>
-                                        <td className="p-2"><input type="number" value={item.quantity} onChange={(e) => handleItemQuantityChange(item.drugId, item.lotNumber, e.target.value)} className="w-24 text-center border rounded-md py-1" min="0" readOnly={mode !== 'return'} /></td>
-                                        <td className="p-2">{item.purchasePrice.toLocaleString()}</td>
-                                        <td className="p-2 font-semibold">{(item.quantity * item.purchasePrice).toLocaleString()}</td>
-                                        <td className="p-2 text-center">
-                                            <button type="button" onClick={() => handleRemoveItem(item.drugId, item.lotNumber)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
-                                        </td>
-                                    </tr>
-                                    ))}
+                                    {items.map(item => {
+                                        const subtotal = item.quantity * item.purchasePrice * (1 - (item.discountPercentage || 0) / 100);
+                                        const drugInfo = drugs.find(d => d.id === item.drugId);
+                                        return (
+                                        <tr key={`${item.drugId}-${item.lotNumber}`} className="border-b last:border-0 hover:bg-gray-50">
+                                            <td className="p-2">{item.drugName}</td>
+                                            <td className="p-2 font-mono text-xs">{item.lotNumber}</td>
+                                            <td className="p-2">{formatQuantity(item.quantity, drugInfo?.unitsPerCarton, drugInfo?.cartonSize)}</td>
+                                            <td className="p-2">{item.bonusQuantity || 0}</td>
+                                            <td className="p-2">{item.discountPercentage || 0}%</td>
+                                            <td className="p-2">{item.purchasePrice.toLocaleString()}</td>
+                                            <td className="p-2 font-semibold">{subtotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                                            <td className="p-2 text-center">
+                                                <button type="button" onClick={() => handleRemoveItem(item.drugId, item.lotNumber)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
+                                            </td>
+                                        </tr>
+                                    )})}
                                 </tbody>
                             </table>}
                         </div>
@@ -365,7 +417,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                         </div>
                         <div className="text-right">
                             <p className={labelStyles}>{mode === 'return' ? 'مبلغ کل مستردی' : 'مبلغ کل فاکتور'}</p>
-                            <p className={`text-2xl font-bold ${mode === 'return' ? 'text-red-600' : 'text-teal-600'}`}>{totalAmount.toLocaleString()} <span className="text-lg">{billInfo.currency}</span></p>
+                            <p className={`text-2xl font-bold ${mode === 'return' ? 'text-red-600' : 'text-teal-600'}`}>{totalAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} <span className="text-lg">{billInfo.currency}</span></p>
                         </div>
                     </div>
 
@@ -508,8 +560,8 @@ const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs
                                         {new Date(bill.purchaseDate).toLocaleDateString('fa-IR')}
                                         <div className="font-mono text-xs text-gray-400">{formatGregorianForDisplay(bill.purchaseDate)}</div>
                                     </td>
-                                    <td className={`p-4 font-semibold ${isReturn ? 'text-red-600' : 'text-gray-800'}`}>{bill.totalAmount.toLocaleString()} <span className="text-xs text-gray-500">{bill.currency}</span></td>
-                                    <td className={`p-4 font-semibold ${remaining > 0 ? 'text-red-600' : 'text-gray-800'}`}>{remaining.toLocaleString()}</td>
+                                    <td className={`p-4 font-semibold ${isReturn ? 'text-red-600' : 'text-gray-800'}`}>{bill.totalAmount.toLocaleString(undefined, {maximumFractionDigits: 2})} <span className="text-xs text-gray-500">{bill.currency}</span></td>
+                                    <td className={`p-4 font-semibold ${remaining > 0 ? 'text-red-600' : 'text-gray-800'}`}>{remaining.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
                                     <td className="p-4"><span className="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700">{bill.status}</span></td>
                                     <td className="p-4">
                                         <div className="flex items-center space-x-2 space-x-reverse">

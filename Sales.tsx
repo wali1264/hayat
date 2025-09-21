@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Drug, drugCategories, Batch } from './Inventory';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Drug, drugCategories, Batch, formatQuantity } from './Inventory';
 import { Customer } from './Customers';
 import { CompanyInfo, User, DocumentSettings, RolePermissions } from './Settings';
 import { NoPermissionMessage } from './App';
@@ -28,6 +28,34 @@ const CloseIcon = ({ className = "w-6 h-6" }) => (
 const BarcodeScannerIcon = () => <Icon path="M3.75 4.5A.75.75 0 003 5.25v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5zm4.5 0a.75.75 0 00-.75.75v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5zm4.5 0a.75.75 0 00-.75.75v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5zm4.5 0a.75.75 0 00-.75.75v13.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75h-1.5z" className="w-5 h-5"/>;
 const HistoryIcon = ({ className = "w-5 h-5" }: { className?: string}) => <Icon path="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" className={className} />;
 const ReturnIcon = () => <Icon path="M9 15l-6-6 6-6" />;
+
+
+//=========== PERSISTENCE HOOK ===========//
+function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+    const [state, setState] = useState<T>(() => {
+        try {
+            const item = window.localStorage.getItem(key);
+            return item ? JSON.parse(item) : initialValue;
+        } catch (error) {
+            console.error(error);
+            return initialValue;
+        }
+    });
+
+    useEffect(() => {
+        try {
+            if (state === null) {
+                window.localStorage.removeItem(key);
+            } else {
+                window.localStorage.setItem(key, JSON.stringify(state));
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    }, [key, state]);
+
+    return [state, setState];
+}
 
 
 //=========== TYPES ===========//
@@ -111,6 +139,298 @@ const formatGregorianForDisplay = (dateStr: string): string => {
     }
 };
 
+// --- NEW HELPER ---
+const deconstructQuantity = (totalUnits: number, drug?: Drug) => {
+    const unitsPerCarton = drug?.unitsPerCarton || 1;
+    const cartonSize = drug?.cartonSize;
+
+    if (!totalUnits || isNaN(totalUnits) || unitsPerCarton <= 1) {
+        return { large: 0, small: 0, unit: totalUnits || 0 };
+    }
+
+    let remainingUnits = totalUnits;
+    let large = 0;
+    let small = 0;
+
+    if (cartonSize && cartonSize > 1) {
+        const unitsPerLargeCarton = unitsPerCarton * cartonSize;
+        large = Math.floor(remainingUnits / unitsPerLargeCarton);
+        remainingUnits %= unitsPerLargeCarton;
+    }
+
+    small = Math.floor(remainingUnits / unitsPerCarton);
+    const unit = remainingUnits % unitsPerCarton;
+
+    return { large, small, unit };
+};
+
+
+//=========== MODAL SUB-COMPONENTS ===========//
+
+// --- NewItemRow for Excel View ---
+const NewItemRow = ({ drugs, onAddItem, onOpenQuickAddModal, addToast, mode, initialData }) => {
+    const defaultState = { drugName: '', quantity: '1', bonusQuantity: '0', finalPrice: '', discountPercentage: '0' };
+    const [newItem, setNewItem] = useState(defaultState);
+    const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
+    const [suggestions, setSuggestions] = useState<Drug[]>([]);
+    
+    const drugNameInputRef = useRef<HTMLInputElement>(null);
+    const quantityInputRef = useRef<HTMLInputElement>(null);
+    const bonusQuantityInputRef = useRef<HTMLInputElement>(null);
+    const finalPriceInputRef = useRef<HTMLInputElement>(null);
+    const discountInputRef = useRef<HTMLInputElement>(null);
+    // FIX: Changed ref type from HTMLDivElement to HTMLTableDataCellElement to match the `<td>` element.
+    const searchWrapperRef = useRef<HTMLTableDataCellElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target as Node)) {
+                setSuggestions([]);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [searchWrapperRef]);
+
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const term = e.target.value;
+        setNewItem(prev => ({ ...prev, drugName: term }));
+        setSelectedDrug(null);
+
+        if (term) {
+            const drugsWithStock = drugs.filter(d => d.batches.some(b => b.quantity > 0));
+            setSuggestions(
+                (mode === 'sale' ? drugsWithStock : drugs)
+                .filter(d => d.name.toLowerCase().includes(term.toLowerCase()))
+                .slice(0, 5)
+            );
+        } else {
+            setSuggestions([]);
+        }
+    };
+
+    const handleSelectSuggestion = (drug: Drug) => {
+        setSelectedDrug(drug);
+        setSuggestions([]);
+        const finalPrice = drug.price * (1 - drug.discountPercentage / 100);
+        setNewItem({
+            drugName: drug.name,
+            quantity: '1',
+            bonusQuantity: '0',
+            finalPrice: String(finalPrice),
+            discountPercentage: String(drug.discountPercentage)
+        });
+        quantityInputRef.current?.focus();
+        quantityInputRef.current?.select();
+    };
+
+    const handleItemChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setNewItem(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const target = e.target as HTMLInputElement;
+            if (target === discountInputRef.current) {
+                handleAddItem();
+            } else if (target === drugNameInputRef.current && suggestions.length > 0) {
+                 handleSelectSuggestion(suggestions[0]);
+            }
+        }
+    };
+    
+    const handleAddItem = () => {
+        if (!selectedDrug) {
+            addToast('لطفاً یک دارو از لیست انتخاب کنید.', 'error');
+            return;
+        }
+        const quantity = Number(newItem.quantity) || 0;
+        if (quantity <= 0) {
+            addToast('لطفاً تعداد معتبر وارد کنید.', 'error');
+            return;
+        }
+
+        onAddItem(selectedDrug, {
+            quantity: quantity,
+            bonusQuantity: Number(newItem.bonusQuantity) || 0,
+            finalPrice: Number(newItem.finalPrice) || 0,
+            discountPercentage: Number(newItem.discountPercentage) || 0,
+        });
+
+        setNewItem(defaultState);
+        setSelectedDrug(null);
+        drugNameInputRef.current?.focus();
+    };
+
+    return (
+        <tr className="bg-gray-100">
+            <td className="p-2" colSpan={2} ref={searchWrapperRef}>
+                <div className="relative">
+                    <input ref={drugNameInputRef} type="text" placeholder="جستجوی محصول..." value={newItem.drugName} onChange={handleSearchChange} onKeyDown={handleKeyDown} className="w-full p-1 border rounded-md" />
+                    {suggestions.length > 0 && (
+                        <div className="absolute bottom-full left-0 right-0 z-10 bg-white border shadow-lg max-h-48 overflow-y-auto">
+                            {suggestions.map(drug => <div key={drug.id} onClick={() => handleSelectSuggestion(drug)} className="p-2 hover:bg-teal-50 cursor-pointer">{drug.name}</div>)}
+                        </div>
+                    )}
+                </div>
+            </td>
+            <td className="p-2"><input ref={quantityInputRef} type="number" name="quantity" value={newItem.quantity} onChange={handleItemChange} onKeyDown={handleKeyDown} className="w-16 p-1 border rounded-md text-center" min="1"/></td>
+            <td className="p-2"><input ref={bonusQuantityInputRef} type="number" name="bonusQuantity" value={newItem.bonusQuantity} onChange={handleItemChange} onKeyDown={handleKeyDown} className="w-16 p-1 border rounded-md text-center" min="0" disabled={mode === 'return'}/></td>
+            <td className="p-2"><input ref={finalPriceInputRef} type="number" name="finalPrice" value={newItem.finalPrice} onChange={handleItemChange} onKeyDown={handleKeyDown} className="w-24 p-1 border rounded-md text-center" /></td>
+            <td className="p-2"><input ref={discountInputRef} type="number" name="discountPercentage" value={newItem.discountPercentage} onChange={handleItemChange} onKeyDown={handleKeyDown} className="w-20 p-1 border rounded-md text-center" min="0" max="100"/></td>
+            <td className="p-2 font-semibold">
+                {(Number(newItem.finalPrice) * Number(newItem.quantity)).toLocaleString(undefined, {maximumFractionDigits: 0})}
+            </td>
+            <td className="p-2 text-center">
+                <button type="button" onClick={handleAddItem} className="p-1 bg-teal-500 text-white rounded-full hover:bg-teal-600"><PlusIcon /></button>
+            </td>
+        </tr>
+    );
+};
+
+// --- Excel View ---
+const ExcelView = ({ items, drugs, handleQuantityChange, handleBonusQuantityChange, handleRemoveItem, handleAddItemFromExcel, addToast, onOpenQuickAddModal, mode, initialData }) => {
+    return (
+        <div className="space-y-4 rounded-lg border border-gray-200 p-4 h-full flex flex-col">
+             <div className="flex-1 overflow-y-auto">
+                <table className="w-full text-sm text-right">
+                    <thead><tr className="border-b"><th className="p-2" colSpan={2}>نام دارو</th><th className="p-2">تعداد</th><th className="p-2">بونس</th><th className="p-2">قیمت واحد</th><th className="p-2">تخفیف (٪)</th><th className="p-2">مبلغ جزء</th><th className="p-2"></th></tr></thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {items.map(item => (
+                             <tr key={item.drugId}>
+                                <td className="p-2" colSpan={2}>{item.drugName}</td>
+                                <td className="p-2"><input type="number" value={item.quantity} onChange={e => handleQuantityChange(item.drugId, e.target.value)} className="w-16 p-1 border rounded-md text-center" min="0"/></td>
+                                <td className="p-2"><input type="number" value={item.bonusQuantity} onChange={e => handleBonusQuantityChange(item.drugId, e.target.value)} className="w-16 p-1 border rounded-md text-center" min="0" disabled={mode === 'return'}/></td>
+                                <td className="p-2">{item.finalPrice.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+                                <td className="p-2">{item.discountPercentage.toFixed(1)}%</td>
+                                <td className="p-2 font-semibold">{(item.finalPrice * item.quantity).toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+                                <td className="p-2 text-center"><button type="button" onClick={() => handleRemoveItem(item.drugId)} className="text-red-500 p-1"><TrashIcon className="w-4 h-4" /></button></td>
+                            </tr>
+                        ))}
+                    </tbody>
+                    <tfoot>
+                        <NewItemRow drugs={drugs} onAddItem={handleAddItemFromExcel} addToast={addToast} onOpenQuickAddModal={onOpenQuickAddModal} mode={mode} initialData={initialData}/>
+                    </tfoot>
+                </table>
+             </div>
+        </div>
+    );
+};
+
+// --- Modern View ---
+const ModernView = ({ items, drugs, customers, orders, orderInfo, initialData, mode, permissions, handleQuantityChange, handleBonusQuantityChange, handleRemoveItem, handleApplyDiscountToggle, handleDragStart, historyVisibleForDrugId, setHistoryVisibleForDrugId, lastPurchaseHistory, catalogSearchTerm, setCatalogSearchTerm, setIsScannerOpen, catalogCategory, setCatalogCategory, availableDrugsForCatalog, handleAddFromCatalog }) => {
+    return (
+         <div className="flex-1 overflow-hidden flex flex-row">
+            {/* LEFT PANEL: PRODUCT CATALOG */}
+            <div className="w-1/3 border-l p-4 flex flex-col bg-gray-50">
+                <h4 className="font-bold text-lg text-gray-800 mb-4">کاتالوگ محصولات</h4>
+                <div className="flex gap-2 mb-4">
+                    <input type="text" placeholder="جستجوی نام یا شرکت..." value={catalogSearchTerm} onChange={e => setCatalogSearchTerm(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg"/>
+                    <button type="button" onClick={() => setIsScannerOpen(true)} title="اسکن با دوربین" className="p-2 border rounded-lg bg-white hover:bg-gray-100"><BarcodeScannerIcon /></button>
+                </div>
+                <select value={catalogCategory} onChange={e => setCatalogCategory(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white mb-4">
+                    <option value="all">همه دسته‌بندی‌ها</option>{drugCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+                <div className="flex-1 overflow-y-auto -mx-4 px-4">
+                    {availableDrugsForCatalog.map(drug => (
+                        <div key={drug.id} onClick={() => handleAddFromCatalog(drug)} className="p-3 border-b bg-white hover:bg-teal-50 cursor-pointer rounded-md mb-2 shadow-sm">
+                            <div className="flex justify-between items-center">
+                                <p className="font-semibold text-gray-800">{drug.name}</p>
+                                <span className="text-xs font-mono bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">{formatQuantity(drug.totalStock, drug.unitsPerCarton, drug.cartonSize)}</span>
+                            </div>
+                            <p className="text-xs text-gray-500">{drug.manufacturer}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            {/* RIGHT PANEL: ORDER FORM */}
+            <div className="w-2/3 overflow-y-auto p-6">
+                <div className="space-y-4 rounded-lg border border-gray-200 p-4">
+                    <h4 className="font-bold text-gray-700">{mode === 'return' ? 'اقلام برگشتی' : 'اقلام سفارش'}</h4>
+                    <div className="max-h-48 overflow-y-auto">
+                        {items.length === 0 ? <p className="text-center text-gray-500 py-4">برای شروع، محصولی را از کاتالوگ اضافه کنید.</p> :
+                            <table className="w-full text-sm">
+                                <thead><tr className="border-b"><th className="p-2 font-semibold">نام دارو</th><th className="p-2 font-semibold text-center w-56">{mode === 'return' ? 'تعداد برگشتی' : 'تعداد (فروش / بونس)'}</th><th className="p-2 font-semibold">قیمت واحد</th><th className="p-2 font-semibold">مبلغ جزء</th><th className="p-2 text-center">{mode === 'sale' ? 'سابقه' : ''}</th><th className="p-2"></th></tr></thead>
+                                <tbody>
+                                    {items.map(item => {
+                                        const drugInStock = drugs.find(d => d.id === item.drugId);
+                                        const deconstructedQty = deconstructQuantity(item.quantity, drugInStock);
+                                        const deconstructedBonus = deconstructQuantity(item.bonusQuantity, drugInStock);
+
+                                        const handleCartonBasedChange = (isBonus: boolean, field: 'large' | 'small' | 'unit', value: string) => {
+                                            if (!drugInStock) return;
+                                            const numValue = Number(value) || 0;
+                                            const currentDeconstructed = isBonus ? deconstructedBonus : deconstructedQty;
+                                            const newLarge = field === 'large' ? numValue : currentDeconstructed.large;
+                                            const newSmall = field === 'small' ? numValue : currentDeconstructed.small;
+                                            const newUnit = field === 'unit' ? numValue : currentDeconstructed.unit;
+                                            const unitsPerCarton = drugInStock.unitsPerCarton || 1;
+                                            const cartonSize = drugInStock.cartonSize || 1;
+                                            const unitsPerLargeCarton = unitsPerCarton * cartonSize;
+                                            const newTotal = (newLarge * unitsPerLargeCarton) + (newSmall * unitsPerCarton) + newUnit;
+                                            if (isBonus) { handleBonusQuantityChange(item.drugId, String(newTotal)); } else { handleQuantityChange(item.drugId, String(newTotal)); }
+                                        };
+
+                                        const pricePerUnit = item.isPriceOverridden ? item.finalPrice : (item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? item.originalPrice : item.finalPrice;
+                                        const history = lastPurchaseHistory.get(item.drugId);
+                                        return (
+                                        <React.Fragment key={item.drugId}>
+                                        <tr className="border-b last:border-0 hover:bg-gray-50">
+                                            <td className="p-2">{item.drugName}</td>
+                                            <td className="p-2">
+                                                <div className="grid grid-cols-3 gap-1">
+                                                    <input type="number" value={deconstructedQty.large || ''} onChange={e => handleCartonBasedChange(false, 'large', e.target.value)} className="w-full text-center border rounded-md py-1" min="0" placeholder="بزرگ" title="کارتن بزرگ" disabled={!drugInStock?.cartonSize} />
+                                                    <input type="number" value={deconstructedQty.small || ''} onChange={e => handleCartonBasedChange(false, 'small', e.target.value)} className="w-full text-center border rounded-md py-1" min="0" placeholder="کوچک" title="کارتن کوچک" disabled={!drugInStock?.unitsPerCarton} />
+                                                    <input type="number" value={deconstructedQty.unit || ''} onChange={e => handleCartonBasedChange(false, 'unit', e.target.value)} className="w-full text-center border rounded-md py-1" min="0" placeholder="عدد" title="عدد" />
+                                                </div>
+                                                {mode === 'sale' &&
+                                                    <div className="grid grid-cols-3 gap-1 mt-1">
+                                                        <input type="number" value={deconstructedBonus.large || ''} onChange={e => handleCartonBasedChange(true, 'large', e.target.value)} className="w-full text-center border rounded-md py-1 bg-yellow-50" min="0" placeholder="بونس" title="بونس کارتن بزرگ" disabled={!drugInStock?.cartonSize} />
+                                                        <input type="number" value={deconstructedBonus.small || ''} onChange={e => handleCartonBasedChange(true, 'small', e.target.value)} className="w-full text-center border rounded-md py-1 bg-yellow-50" min="0" placeholder="بونس" title="بونس کارتن کوچک" disabled={!drugInStock?.unitsPerCarton} />
+                                                        <input type="number" value={deconstructedBonus.unit || ''} onChange={e => handleCartonBasedChange(true, 'unit', e.target.value)} className="w-full text-center border rounded-md py-1 bg-yellow-50" min="0" placeholder="بونس" title="بونس عدد" />
+                                                    </div>
+                                                }
+                                                {mode === 'sale' && item.bonusQuantity > 0 && item.discountPercentage > 0 && (
+                                                    <div className="text-center mt-1">
+                                                        <label className="flex items-center justify-center gap-1.5 cursor-pointer text-xs text-gray-600">
+                                                            <input type="checkbox" checked={!!item.applyDiscountWithBonus} onChange={e => handleApplyDiscountToggle(item.drugId, e.target.checked)} className="form-checkbox h-3.5 w-3.5 text-teal-600" />
+                                                            اعمال تخفیف با بونس
+                                                        </label>
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="p-2 relative">
+                                                <div className="flex items-center justify-center gap-2 group h-full">
+                                                    {(item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (
+                                                        <div className="flex items-center gap-2"><span className="font-bold text-gray-800">{item.originalPrice.toLocaleString()}</span><span className="text-xs font-bold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full" title="چون بونس اعمال شده، تخفیف نادیده گرفته شد">بونس</span></div>
+                                                    ) : item.discountPercentage > 0 ? (
+                                                        <div className="flex items-center gap-2"><span className="text-gray-500 line-through">{item.originalPrice.toLocaleString()}</span><span className="font-bold text-teal-600">{item.finalPrice.toLocaleString(undefined, {maximumFractionDigits: 0})}</span><span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{item.discountPercentage.toFixed(1)}%</span></div>
+                                                    ) : (<span className="font-bold">{item.originalPrice.toLocaleString()}</span>)}
+                                                    {permissions.canGiveManualDiscount && (<div onMouseDown={(e) => handleDragStart(e, item)} className="absolute right-[-10px] top-0 h-full w-5 flex items-center justify-center cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity" title="برای تخفیف، پایین بکشید"><div className="w-1 h-6 bg-gray-300 rounded-full group-active:bg-teal-500"></div></div>)}
+                                                </div>
+                                            </td>
+                                            <td className="p-2 font-semibold">{(item.quantity * pricePerUnit).toLocaleString()}</td>
+                                            <td className="p-2 text-center">{mode === 'sale' && <button type="button" onClick={() => setHistoryVisibleForDrugId(historyVisibleForDrugId === item.drugId ? null : item.drugId)} className={`p-1 rounded-full ${historyVisibleForDrugId === item.drugId ? 'bg-blue-200 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`} title="نمایش سابقه خرید مشتری"><HistoryIcon /></button>}</td>
+                                            <td className="p-2 text-center"><button type="button" onClick={() => handleRemoveItem(item.drugId)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button></td>
+                                        </tr>
+                                        {historyVisibleForDrugId === item.drugId && (
+                                            <tr className="bg-blue-50 transition-all"><td colSpan={6} className="p-3 text-xs">
+                                                {history ? (<div className="flex justify-around items-center"><span className="font-semibold">آخرین خرید در تاریخ {new Date(history.orderDate).toLocaleDateString('fa-IR')}:</span><span><span className="font-semibold">{history.quantity}</span> عدد</span><span>بونس: <span className="font-semibold">{history.bonusQuantity > 0 ? history.bonusQuantity : 'نداشت'}</span></span><span>تخفیف: <span className="font-semibold">{history.discountPercentage > 0 ? `${history.discountPercentage}%` : 'نداشت'}</span></span><span>قیمت نهایی: <span className="font-semibold">{history.finalPrice.toLocaleString()}</span></span></div>) : (<p className="text-center text-gray-600">سابقه خریدی برای این مشتری یافت نشد.</p>)}
+                                            </td></tr>
+                                        )}
+                                        </React.Fragment>
+                                    )})}
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 //=========== MODAL COMPONENTS ===========//
 
@@ -187,13 +507,18 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     const [newCharge, setNewCharge] = useState({ description: '', amount: '' });
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     
-    // --- NEW: States for the product catalog ---
     const [catalogSearchTerm, setCatalogSearchTerm] = useState('');
     const [catalogCategory, setCatalogCategory] = useState('all');
-
     const [historyVisibleForDrugId, setHistoryVisibleForDrugId] = useState<number | null>(null);
-    const [editingPriceForDrugId, setEditingPriceForDrugId] = useState<number | null>(null);
 
+    const [dragState, setDragState] = useState<{
+        itemId: number | null;
+        startY: number;
+        startPrice: number;
+        originalPrice: number;
+    }>({ itemId: null, startY: 0, startPrice: 0, originalPrice: 0 });
+
+    const [viewMode, setViewMode] = usePersistentState<'modern' | 'excel'>('hayat_orderViewMode', 'modern');
 
     const isEditMode = initialData !== null && mode === 'sale';
 
@@ -227,15 +552,12 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         const historyMap = new Map<number, OrderItem & { orderDate: string }>();
         if (!orderInfo.customerName) return historyMap;
 
-        // Find all orders for the current customer, excluding the one being edited, and sort by most recent first.
         const customerOrders = orders
             .filter(o => o.customerName === orderInfo.customerName && o.id !== initialData?.id)
             .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
 
-        // Iterate through sorted orders to find the most recent purchase for each drug
         for (const order of customerOrders) {
             for (const item of order.items) {
-                // If we haven't found a history for this drug yet, this is the most recent one.
                 if (!historyMap.has(item.drugId)) {
                     historyMap.set(item.drugId, { ...item, orderDate: order.orderDate });
                 }
@@ -258,14 +580,72 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                 setItems([]);
                 setExtraCharges([]);
             }
-            // Reset common fields
             setNewCharge({ description: '', amount: '' });
             setCatalogSearchTerm('');
             setCatalogCategory('all');
             setHistoryVisibleForDrugId(null);
-            setEditingPriceForDrugId(null);
         }
     }, [isOpen, initialData, mode]);
+
+    const handleDragStart = (e: React.MouseEvent, item: OrderItem) => {
+        e.preventDefault();
+        if (!permissions.canGiveManualDiscount) return;
+        setDragState({
+            itemId: item.drugId,
+            startY: e.clientY,
+            startPrice: item.finalPrice,
+            originalPrice: item.originalPrice
+        });
+    };
+
+    const handleDragMove = useCallback((e: MouseEvent) => {
+        if (dragState.itemId === null) return;
+
+        const deltaY = e.clientY - dragState.startY;
+        let newFinalPrice = dragState.startPrice - deltaY; 
+
+        if (newFinalPrice > dragState.originalPrice) newFinalPrice = dragState.originalPrice;
+        if (newFinalPrice < 0) newFinalPrice = 0;
+
+        let calculatedDiscount = 0;
+        if (dragState.originalPrice > 0) {
+            calculatedDiscount = ((dragState.originalPrice - newFinalPrice) / dragState.originalPrice) * 100;
+        }
+        
+        if (calculatedDiscount > permissions.maxDiscountPercentage) {
+            newFinalPrice = dragState.originalPrice * (1 - (permissions.maxDiscountPercentage / 100));
+            calculatedDiscount = permissions.maxDiscountPercentage;
+        }
+
+        setItems(currentItems =>
+            currentItems.map(it => {
+                if (it.drugId === dragState.itemId) {
+                    return {
+                        ...it,
+                        finalPrice: newFinalPrice,
+                        discountPercentage: Math.round(calculatedDiscount * 100) / 100,
+                        isPriceOverridden: true,
+                    };
+                }
+                return it;
+            })
+        );
+    }, [dragState, permissions.maxDiscountPercentage, setItems]);
+
+    const handleDragEnd = useCallback(() => {
+        setDragState({ itemId: null, startY: 0, startPrice: 0, originalPrice: 0 });
+    }, []);
+
+    useEffect(() => {
+        if (dragState.itemId !== null) {
+            window.addEventListener('mousemove', handleDragMove);
+            window.addEventListener('mouseup', handleDragEnd);
+            return () => {
+                window.removeEventListener('mousemove', handleDragMove);
+                window.removeEventListener('mouseup', handleDragEnd);
+            };
+        }
+    }, [dragState.itemId, handleDragMove, handleDragEnd]);
 
 
     if (!isOpen) return null;
@@ -279,10 +659,10 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         }
     };
 
-    const addItemToOrder = (drug: Drug, quantity: number) => {
+    const addItemToOrder = (drug: Drug, quantity: number, bonus: number = 0) => {
          const existingItemIndex = items.findIndex(item => item.drugId === drug.id);
          const totalStock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
-         const totalRequired = existingItemIndex > -1 ? items[existingItemIndex].quantity + quantity + (items[existingItemIndex].bonusQuantity || 0) : quantity;
+         const totalRequired = existingItemIndex > -1 ? items[existingItemIndex].quantity + quantity + (items[existingItemIndex].bonusQuantity || 0) + bonus : quantity + bonus;
 
          if (mode === 'sale' && totalRequired > totalStock) {
             addToast(`تعداد درخواستی (${totalRequired}) بیشتر از موجودی انبار (${totalStock}) است.`, 'error');
@@ -300,6 +680,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         if (existingItemIndex > -1) {
             const updatedItems = [...items];
             updatedItems[existingItemIndex].quantity += quantity;
+            updatedItems[existingItemIndex].bonusQuantity += bonus;
             setItems(updatedItems);
         } else {
             const finalPrice = drug.price * (1 - drug.discountPercentage / 100);
@@ -309,7 +690,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                 manufacturer: drug.manufacturer,
                 code: drug.code,
                 quantity: quantity,
-                bonusQuantity: 0,
+                bonusQuantity: bonus,
                 originalPrice: drug.price,
                 discountPercentage: drug.discountPercentage,
                 finalPrice: finalPrice,
@@ -319,6 +700,34 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         }
         return true;
     }
+
+    const handleAddItemFromExcel = (drug: Drug, itemDetails: { quantity: number; bonusQuantity: number; finalPrice: number; discountPercentage: number; }) => {
+        const { quantity, bonusQuantity, finalPrice, discountPercentage } = itemDetails;
+        const existingItemIndex = items.findIndex(item => item.drugId === drug.id);
+        const totalStock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
+        const totalRequired = existingItemIndex > -1 
+            ? items[existingItemIndex].quantity + quantity + (items[existingItemIndex].bonusQuantity || 0) + bonusQuantity 
+            : quantity + bonusQuantity;
+        
+        if (mode === 'sale' && totalRequired > totalStock) {
+            addToast(`تعداد درخواستی (${totalRequired}) بیشتر از موجودی انبار (${totalStock}) است.`, 'error');
+            return false;
+        }
+
+        if (existingItemIndex > -1) {
+             const updatedItems = [...items];
+             updatedItems[existingItemIndex].quantity += quantity;
+             updatedItems[existingItemIndex].bonusQuantity += bonusQuantity;
+             setItems(updatedItems);
+        } else {
+             setItems(prev => [...prev, {
+                drugId: drug.id, drugName: drug.name, manufacturer: drug.manufacturer, code: drug.code,
+                quantity, bonusQuantity, originalPrice: drug.price, discountPercentage, finalPrice,
+                applyDiscountWithBonus: false, isPriceOverridden: drug.price !== finalPrice
+             }]);
+        }
+        return true;
+    };
     
     const handleAddFromCatalog = (drug: Drug) => {
         if (addItemToOrder(drug, 1)) {
@@ -367,7 +776,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     };
     
     const handleBonusQuantityChange = (drugId: number, newBonusQuantityStr: string) => {
-        // Not applicable for returns
         if (mode === 'return') return;
 
         const newBonusQuantity = parseInt(newBonusQuantityStr, 10) || 0;
@@ -386,48 +794,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         );
     };
     
-    const handleManualPriceChange = (drugId: number, newPriceStr: string) => {
-        let newFinalPrice = Number(newPriceStr);
-        const itemToUpdate = items.find(it => it.drugId === drugId);
-    
-        if (!itemToUpdate || isNaN(newFinalPrice)) {
-            setEditingPriceForDrugId(null);
-            return;
-        }
-    
-        const { originalPrice } = itemToUpdate;
-        let finalPrice = newFinalPrice;
-        let discountPercentage = 0;
-    
-        if (finalPrice < 0) finalPrice = 0;
-        
-        // Calculate discount only if the new price is less than original
-        if (originalPrice > 0 && finalPrice < originalPrice) {
-            discountPercentage = ((originalPrice - finalPrice) / originalPrice) * 100;
-        }
-        
-        if (discountPercentage > permissions.maxDiscountPercentage) {
-            addToast(`سقف تخفیف مجاز شما ${permissions.maxDiscountPercentage}% است.`, 'error');
-            discountPercentage = permissions.maxDiscountPercentage;
-            finalPrice = originalPrice * (1 - (permissions.maxDiscountPercentage / 100));
-        }
-
-        setItems(currentItems =>
-            currentItems.map(it => {
-                if (it.drugId === drugId) {
-                    return {
-                        ...it,
-                        finalPrice: finalPrice,
-                        discountPercentage: Math.round(discountPercentage * 100) / 100,
-                        isPriceOverridden: true, 
-                    };
-                }
-                return it;
-            })
-        );
-        setEditingPriceForDrugId(null);
-    };
-
     const handleApplyDiscountToggle = (drugId: number, isChecked: boolean) => {
         setItems(currentItems =>
             currentItems.map(it => it.drugId === drugId ? { ...it, applyDiscountWithBonus: isChecked } : it)
@@ -482,7 +848,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         const finalOrderData: Order = {
             id: isEditMode ? initialData!.id : Date.now(),
             type: mode === 'return' ? 'sale_return' : 'sale',
-            orderNumber: isEditMode ? initialData!.orderNumber : (initialData?.orderNumber || ''), // Will be set in parent
+            orderNumber: isEditMode ? initialData!.orderNumber : (initialData?.orderNumber || ''), 
             orderDate: isEditMode ? initialData!.orderDate : new Date().toISOString().split('T')[0],
             customerName: orderInfo.customerName,
             status: orderInfo.status,
@@ -500,6 +866,10 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     const labelStyles = "block text-gray-700 text-sm font-bold mb-2";
 
     const modalTitle = mode === 'return' ? `ثبت مستردی برای فاکتور ${initialData?.orderNumber}` : isEditMode ? 'ویرایش سفارش' : 'ثبت سفارش جدید';
+    
+    const modernViewProps = { items, drugs, customers, orders, orderInfo, initialData, mode, permissions, handleQuantityChange, handleBonusQuantityChange, handleRemoveItem, handleApplyDiscountToggle, handleDragStart, historyVisibleForDrugId, setHistoryVisibleForDrugId, lastPurchaseHistory, catalogSearchTerm, setCatalogSearchTerm, setIsScannerOpen, catalogCategory, setCatalogCategory, availableDrugsForCatalog, handleAddFromCatalog };
+    const excelViewProps = { items, drugs, handleQuantityChange, handleBonusQuantityChange, handleRemoveItem, handleAddItemFromExcel, addToast, onOpenQuickAddModal, mode, initialData };
+
 
     return (
         <>
@@ -508,233 +878,66 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 <header className="p-6 border-b flex justify-between items-center">
                     <h3 className="text-2xl font-bold text-gray-800">{modalTitle}</h3>
-                     <button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
-                        <CloseIcon />
-                    </button>
+                     <button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-gray-100"><CloseIcon /></button>
                 </header>
-                <main className="flex-1 overflow-hidden flex flex-row">
-                    {/* LEFT PANEL: PRODUCT CATALOG */}
-                    <div className="w-1/3 border-l p-4 flex flex-col bg-gray-50">
-                        <h4 className="font-bold text-lg text-gray-800 mb-4">کاتالوگ محصولات</h4>
-                        <div className="flex gap-2 mb-4">
-                            <input 
-                                type="text"
-                                placeholder="جستجوی نام یا شرکت..."
-                                value={catalogSearchTerm}
-                                onChange={e => setCatalogSearchTerm(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                            />
-                             <button type="button" onClick={() => setIsScannerOpen(true)} title="اسکن با دوربین" className="p-2 border rounded-lg bg-white hover:bg-gray-100">
-                                <BarcodeScannerIcon />
-                            </button>
-                        </div>
-                        <select
-                            value={catalogCategory}
-                            onChange={e => setCatalogCategory(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white mb-4"
-                        >
-                             <option value="all">همه دسته‌بندی‌ها</option>
-                             {drugCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                        </select>
-                        <div className="flex-1 overflow-y-auto -mx-4 px-4">
-                            {availableDrugsForCatalog.map(drug => (
-                                <div key={drug.id} onClick={() => handleAddFromCatalog(drug)} className="p-3 border-b bg-white hover:bg-teal-50 cursor-pointer rounded-md mb-2 shadow-sm">
-                                    <div className="flex justify-between items-center">
-                                        <p className="font-semibold text-gray-800">{drug.name}</p>
-                                        <span className="text-xs font-mono bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">{drug.totalStock}</span>
-                                    </div>
-                                    <p className="text-xs text-gray-500">{drug.manufacturer}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                    {/* RIGHT PANEL: ORDER FORM */}
-                    <div className="w-2/3 overflow-y-auto p-6">
-                        <form id="order-modal-form" onSubmit={handleSubmit} className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label htmlFor="customerName" className={labelStyles}>نام مشتری</label>
-                                    <input list="customer-list" type="text" name="customerName" value={orderInfo.customerName} onChange={handleInfoChange} className={`${inputStyles} bg-gray-100`} required readOnly={mode==='return'} />
-                                    <datalist id="customer-list">
-                                        {customers.map(c => <option key={c.id} value={c.name} />)}
-                                    </datalist>
-                                </div>
-                                <div>
+                <form id="order-modal-form" onSubmit={handleSubmit} className="flex-1 overflow-hidden flex flex-col">
+                    <div className="p-6 space-y-6">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label htmlFor="customerName" className={labelStyles}>نام مشتری</label>
+                                <input list="customer-list" type="text" name="customerName" value={orderInfo.customerName} onChange={handleInfoChange} className={`${inputStyles} bg-gray-100`} required readOnly={mode==='return'} />
+                                <datalist id="customer-list">{customers.map(c => <option key={c.id} value={c.name} />)}</datalist>
+                            </div>
+                            <div>
                                 <label htmlFor="status" className={labelStyles}>وضعیت</label>
-                                    <select name="status" value={orderInfo.status} onChange={handleInfoChange} className={inputStyles} disabled={mode === 'return'}>
-                                        {mode === 'sale' && <>
-                                        <option value="در حال پردازش">در حال پردازش</option>
-                                        <option value="ارسال شده">ارسال شده</option>
-                                        </>}
-                                        <option value="تکمیل شده">تکمیل شده</option>
-                                        <option value="لغو شده">لغو شده</option>
-                                    </select>
-                                </div>
+                                <select name="status" value={orderInfo.status} onChange={handleInfoChange} className={inputStyles} disabled={mode === 'return'}>
+                                    {mode === 'sale' && <><option value="در حال پردازش">در حال پردازش</option><option value="ارسال شده">ارسال شده</option></>}
+                                    <option value="تکمیل شده">تکمیل شده</option><option value="لغو شده">لغو شده</option>
+                                </select>
                             </div>
-                            <div className="space-y-4 rounded-lg border border-gray-200 p-4">
-                                <h4 className="font-bold text-gray-700">{mode === 'return' ? 'اقلام برگشتی' : 'اقلام سفارش'}</h4>
-                                <div className="max-h-48 overflow-y-auto">
-                                    {items.length === 0 ? <p className="text-center text-gray-500 py-4">برای شروع، محصولی را از کاتالوگ اضافه کنید.</p> :
-                                        <table className="w-full text-sm">
-                                            <thead className="text-right">
-                                                <tr className="border-b">
-                                                    <th className="p-2 font-semibold">نام دارو</th>
-                                                    <th className="p-2 font-semibold text-center w-56">{mode === 'return' ? 'تعداد برگشتی' : 'تعداد (فروش / بونس)'}</th>
-                                                    <th className="p-2 font-semibold">قیمت واحد</th>
-                                                    <th className="p-2 font-semibold">مبلغ جزء</th>
-                                                    <th className="p-2 text-center">{mode === 'sale' ? 'سابقه' : ''}</th>
-                                                    <th className="p-2"></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {items.map(item => {
-                                                    const pricePerUnit = item.isPriceOverridden
-                                                        ? item.finalPrice
-                                                        : (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-                                                            ? item.originalPrice
-                                                            : item.finalPrice;
-                                                    const history = lastPurchaseHistory.get(item.drugId);
-                                                    return (
-                                                    <React.Fragment key={item.drugId}>
-                                                    <tr className="border-b last:border-0 hover:bg-gray-50">
-                                                        <td className="p-2">{item.drugName}</td>
-                                                        <td className="p-2">
-                                                            <div className="flex items-center justify-center gap-1">
-                                                                <input type="number" value={item.quantity} onChange={(e) => handleQuantityChange(item.drugId, e.target.value)} className="w-20 text-center border rounded-md py-1" min="0" aria-label={`تعداد فروش برای ${item.drugName}`} />
-                                                                {mode === 'sale' && <>
-                                                                <span className="text-gray-400">/</span>
-                                                                <input type="number" value={item.bonusQuantity} onChange={(e) => handleBonusQuantityChange(item.drugId, e.target.value)} className="w-20 text-center border rounded-md py-1 bg-yellow-50" min="0" placeholder="بونس" aria-label={`تعداد بونس برای ${item.drugName}`} />
-                                                                </>}
-                                                            </div>
-                                                            {mode === 'sale' && item.bonusQuantity > 0 && item.discountPercentage > 0 && (
-                                                                <div className="text-center mt-1">
-                                                                    <label className="flex items-center justify-center gap-1.5 cursor-pointer text-xs text-gray-600">
-                                                                        <input type="checkbox" checked={!!item.applyDiscountWithBonus} onChange={e => handleApplyDiscountToggle(item.drugId, e.target.checked)} className="form-checkbox h-3.5 w-3.5 text-teal-600" />
-                                                                        اعمال تخفیف با بونس
-                                                                    </label>
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td className="p-2">
-                                                            {editingPriceForDrugId === item.drugId ? (
-                                                                <input
-                                                                    type="number"
-                                                                    defaultValue={item.finalPrice}
-                                                                    autoFocus
-                                                                    onBlur={(e) => handleManualPriceChange(item.drugId, e.target.value)}
-                                                                    onKeyDown={(e) => {
-                                                                        if (e.key === 'Enter') { e.preventDefault(); handleManualPriceChange(item.drugId, (e.target as HTMLInputElement).value); } 
-                                                                        else if (e.key === 'Escape') { setEditingPriceForDrugId(null); }
-                                                                    }}
-                                                                    className="w-24 text-center border rounded-md py-1"
-                                                                />
-                                                            ) : (
-                                                                <div className="flex items-center gap-2 group cursor-pointer" onClick={() => permissions.canGiveManualDiscount && setEditingPriceForDrugId(item.drugId)}>
-                                                                    {(item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className="font-bold text-gray-800">{item.originalPrice.toLocaleString()}</span>
-                                                                            <span className="text-xs font-bold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full" title="چون بونس اعمال شده، تخفیف نادیده گرفته شد">بونس</span>
-                                                                        </div>
-                                                                    ) : item.discountPercentage > 0 ? (
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className="text-gray-500 line-through">{item.originalPrice.toLocaleString()}</span>
-                                                                            <span className="font-bold text-teal-600">{item.finalPrice.toLocaleString()}</span>
-                                                                            <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{item.discountPercentage}%</span>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <span className="font-bold">{item.originalPrice.toLocaleString()}</span>
-                                                                    )}
-                                                                    {permissions.canGiveManualDiscount && <button type="button" className="text-gray-400 hover:text-blue-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="ویرایش دستی قیمت">
-                                                                        <EditIcon />
-                                                                    </button>}
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td className="p-2 font-semibold">{(item.quantity * pricePerUnit).toLocaleString()}</td>
-                                                        <td className="p-2 text-center">
-                                                            {mode === 'sale' && <button type="button" onClick={() => setHistoryVisibleForDrugId(historyVisibleForDrugId === item.drugId ? null : item.drugId)} className={`p-1 rounded-full ${historyVisibleForDrugId === item.drugId ? 'bg-blue-200 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`} title="نمایش سابقه خرید مشتری"><HistoryIcon /></button>}
-                                                        </td>
-                                                        <td className="p-2 text-center">
-                                                            <button type="button" onClick={() => handleRemoveItem(item.drugId)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
-                                                        </td>
-                                                    </tr>
-                                                    {historyVisibleForDrugId === item.drugId && (
-                                                        <tr className="bg-blue-50 transition-all">
-                                                            <td colSpan={6} className="p-3 text-xs">
-                                                                {history ? (
-                                                                    <div className="flex justify-around items-center">
-                                                                        <span className="font-semibold">آخرین خرید در تاریخ {new Date(history.orderDate).toLocaleDateString('fa-IR')}:</span>
-                                                                        <span><span className="font-semibold">{history.quantity}</span> عدد</span>
-                                                                        <span>بونس: <span className="font-semibold">{history.bonusQuantity > 0 ? history.bonusQuantity : 'نداشت'}</span></span>
-                                                                        <span>تخفیف: <span className="font-semibold">{history.discountPercentage > 0 ? `${history.discountPercentage}%` : 'نداشت'}</span></span>
-                                                                        <span>قیمت نهایی: <span className="font-semibold">{history.finalPrice.toLocaleString()}</span></span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <p className="text-center text-gray-600">سابقه خریدی برای این مشتری یافت نشد.</p>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                    )}
-                                                    </React.Fragment>
-                                                )})}
-                                            </tbody>
-                                        </table>
-                                    }
-                                </div>
-                            </div>
-                            
-                            {mode === 'sale' && (
-                                <div className="space-y-4 rounded-lg border border-gray-200 p-4">
-                                    <h4 className="font-bold text-gray-700">هزینه‌های اضافی</h4>
-                                    {extraCharges.length > 0 && (
-                                        <div className="max-h-32 overflow-y-auto">
-                                            <ul className="divide-y">
-                                                {extraCharges.map(charge => (
-                                                    <li key={charge.id} className="py-2 flex justify-between items-center text-sm">
-                                                        <div>
-                                                            <p className="font-semibold">{charge.description}</p>
-                                                        </div>
-                                                        <div className="flex items-center gap-4">
-                                                            <p className="text-gray-800 font-semibold">{charge.amount.toLocaleString()} افغانی</p>
-                                                            <button type="button" onClick={() => handleRemoveCharge(charge.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
-                                                        </div>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-                                    <div className="flex gap-2 items-end pt-2 border-t">
-                                        <div className="flex-grow">
-                                            <label className="text-xs font-semibold text-gray-600">شرح هزینه</label>
-                                            <input type="text" value={newCharge.description} onChange={e => setNewCharge(p => ({...p, description: e.target.value}))} className={inputStyles} placeholder="مثلا: کرایه حمل" />
-                                        </div>
-                                        <div className="w-32">
-                                            <label className="text-xs font-semibold text-gray-600">مبلغ</label>
-                                            <input type="number" value={newCharge.amount} onChange={e => setNewCharge(p => ({...p, amount: e.target.value}))} className={inputStyles} placeholder="200" />
-                                        </div>
-                                        <button type="button" onClick={handleAddCharge} className="px-4 h-10 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold">افزودن</button>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
-                                <div>
-                                    <label htmlFor="amountPaid" className={labelStyles}>{mode === 'return' ? 'مبلغ بازپرداخت شده' : 'مبلغ پرداخت شده'} (افغانی)</label>
-                                    <input type="number" name="amountPaid" value={orderInfo.amountPaid} onChange={handleInfoChange} className={inputStyles} min="0" placeholder="مثلا: 5000" />
-                                </div>
-                                <div className="text-right">
-                                    <p className={labelStyles}>{mode === 'return' ? 'مبلغ کل مستردی' : 'مبلغ کل سفارش'}</p>
-                                    <p className={`text-2xl font-bold ${mode === 'return' ? 'text-red-600' : 'text-teal-600'}`}>{totalAmount.toLocaleString()} <span className="text-lg">افغانی</span></p>
-                                </div>
-                            </div>
-                        </form>
+                        </div>
                     </div>
-                </main>
-                <footer className="p-6 flex-shrink-0 border-t border-gray-200 flex justify-end space-x-4 space-x-reverse">
-                    <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold transition-colors">انصراف</button>
-                    <button type="submit" form="order-modal-form" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors shadow-md hover:shadow-lg">
-                       {mode === 'return' ? 'ثبت مستردی' : (isEditMode ? 'ذخیره تغییرات' : 'ذخیره سفارش')}
-                    </button>
+                    <main className="flex-1 overflow-hidden px-6">
+                        {viewMode === 'modern' ? <ModernView {...modernViewProps} /> : <ExcelView {...excelViewProps} />}
+                    </main>
+                    <div className="p-6 space-y-6">
+                         {mode === 'sale' && (
+                            <div className="space-y-4 rounded-lg border border-gray-200 p-4">
+                                <h4 className="font-bold text-gray-700">هزینه‌های اضافی</h4>
+                                {extraCharges.length > 0 && (
+                                    <div className="max-h-32 overflow-y-auto"><ul className="divide-y">{extraCharges.map(charge => (<li key={charge.id} className="py-2 flex justify-between items-center text-sm"><div><p className="font-semibold">{charge.description}</p></div><div className="flex items-center gap-4"><p className="text-gray-800 font-semibold">{charge.amount.toLocaleString()} افغانی</p><button type="button" onClick={() => handleRemoveCharge(charge.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button></div></li>))}</ul></div>
+                                )}
+                                <div className="flex gap-2 items-end pt-2 border-t">
+                                    <div className="flex-grow"><label className="text-xs font-semibold text-gray-600">شرح هزینه</label><input type="text" value={newCharge.description} onChange={e => setNewCharge(p => ({...p, description: e.target.value}))} className={inputStyles} placeholder="مثلا: کرایه حمل" /></div>
+                                    <div className="w-32"><label className="text-xs font-semibold text-gray-600">مبلغ</label><input type="number" value={newCharge.amount} onChange={e => setNewCharge(p => ({...p, amount: e.target.value}))} className={inputStyles} placeholder="200" /></div>
+                                    <button type="button" onClick={handleAddCharge} className="px-4 h-10 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold">افزودن</button>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                            <div>
+                                <label htmlFor="amountPaid" className={labelStyles}>{mode === 'return' ? 'مبلغ بازپرداخت شده' : 'مبلغ پرداخت شده'} (افغانی)</label>
+                                <input type="number" name="amountPaid" value={orderInfo.amountPaid} onChange={handleInfoChange} className={inputStyles} min="0" placeholder="مثلا: 5000" />
+                            </div>
+                            <div className="text-right">
+                                <p className={labelStyles}>{mode === 'return' ? 'مبلغ کل مستردی' : 'مبلغ کل سفارش'}</p>
+                                <p className={`text-2xl font-bold ${mode === 'return' ? 'text-red-600' : 'text-teal-600'}`}>{totalAmount.toLocaleString()} <span className="text-lg">افغانی</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+                <footer className="p-6 flex-shrink-0 border-t border-gray-200 flex justify-between items-center">
+                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input type="checkbox" checked={viewMode === 'excel'} onChange={e => setViewMode(e.target.checked ? 'excel' : 'modern')} className="form-checkbox h-4 w-4 text-teal-600 rounded focus:ring-teal-500" />
+                        حالت اکسلی
+                    </label>
+                    <div className="flex space-x-4 space-x-reverse">
+                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold transition-colors">انصراف</button>
+                        <button type="submit" form="order-modal-form" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors shadow-md hover:shadow-lg">
+                           {mode === 'return' ? 'ثبت مستردی' : (isEditMode ? 'ذخیره تغییرات' : 'ذخیره سفارش')}
+                        </button>
+                    </div>
                 </footer>
             </div>
         </div>
@@ -750,16 +953,16 @@ type PrintPreviewModalProps = {
     companyInfo: CompanyInfo;
     documentSettings: DocumentSettings;
     previousBalance: number;
+    drugs: Drug[];
 };
 
-const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, order, customer, companyInfo, documentSettings, previousBalance }) => {
+const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, order, customer, companyInfo, documentSettings, previousBalance, drugs }) => {
     const [selectedTemplate, setSelectedTemplate] = useState('modern');
     const [notes, setNotes] = useState('');
     const [showBonusInPrint, setShowBonusInPrint] = useState(false);
 
     useEffect(() => {
         if (!isOpen) {
-            // Reset state when modal closes
             setShowBonusInPrint(false);
             setNotes('');
         }
@@ -783,7 +986,6 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
     const totalItemsDiscount = itemsSubtotal - itemsTotalAfterDiscount;
     const extraCharges = order.extraCharges || [];
     
-    // FIX: Correctly calculate the final balance by also subtracting the amount paid for the current invoice.
     const finalBalance = Number(previousBalance) + Number(order.totalAmount) - Number(order.amountPaid);
 
     return (
@@ -834,6 +1036,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                         </thead>
                         <tbody className="divide-y">
                             {order.items.map((item, index) => {
+                                const drugInfo = drugs.find(d => d.id === item.drugId);
                                 const finalPrice = item.isPriceOverridden ? item.finalPrice : (item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? item.originalPrice : item.finalPrice;
                                 return (
                                 <tr key={item.drugId}>
@@ -846,8 +1049,8 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                                             </div>
                                         )}
                                     </td>
-                                    <td className="p-3">{item.quantity.toLocaleString()}</td>
-                                    {showBonusInPrint && <td className="p-3">{item.bonusQuantity > 0 ? item.bonusQuantity.toLocaleString() : '-'}</td>}
+                                    <td className="p-3">{formatQuantity(item.quantity, drugInfo?.unitsPerCarton, drugInfo?.cartonSize)}</td>
+                                    {showBonusInPrint && <td className="p-3">{item.bonusQuantity > 0 ? formatQuantity(item.bonusQuantity, drugInfo?.unitsPerCarton, drugInfo?.cartonSize) : '-'}</td>}
                                     <td className="p-3">{item.originalPrice.toLocaleString()}</td>
                                     <td className="p-3">{item.discountPercentage > 0 ? `${item.discountPercentage.toFixed(2)}%` : '-'}</td>
                                     <td className="p-3 font-semibold">{(finalPrice * item.quantity).toLocaleString()}</td>
@@ -1016,6 +1219,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                 companyInfo={companyInfo}
                 documentSettings={documentSettings}
                 previousBalance={(customerBalances.get(orderToPrint?.customerName || '') || 0) - ((orderToPrint?.totalAmount || 0) - (orderToPrint?.amountPaid || 0))}
+                drugs={drugs}
             />
 
             <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
@@ -1071,7 +1275,6 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                                     return sum + (item.quantity * pricePerUnit);
                                 }, 0);
                                 const cogs = order.items.reduce((sum, item) => sum + (item.batchAllocations || []).reduce((cogsSum, alloc) => cogsSum + (alloc.quantity * alloc.purchasePrice), 0), 0);
-                                // FIX: Correctly calculate profit for sale returns as a negative value.
                                 const profit = order.type === 'sale_return' ? -(itemsRevenue - cogs) : (itemsRevenue - cogs);
                                 return (
                                 <tr key={order.id} className={order.type === 'sale_return' ? 'bg-orange-50 hover:bg-orange-100' : 'hover:bg-gray-50'}>

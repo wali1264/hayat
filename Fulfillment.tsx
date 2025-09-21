@@ -70,10 +70,10 @@ const FulfillmentDetailModal: React.FC<FulfillmentDetailModalProps> = ({ isOpen,
                                     <tr key={item.drugId}>
                                         <td className="p-3 text-gray-800">{item.drugName}</td>
                                         <td className="p-3 text-gray-800 font-semibold">
-                                            {formatQuantity(item.quantity, drugInfo?.unitsPerCarton)}
+                                            {formatQuantity(item.quantity, drugInfo?.unitsPerCarton, drugInfo?.cartonSize)}
                                         </td>
                                         <td className="p-3 text-gray-800 font-semibold bg-yellow-50">
-                                            {item.bonusQuantity > 0 ? formatQuantity(item.bonusQuantity, drugInfo?.unitsPerCarton) : '-'}
+                                            {item.bonusQuantity > 0 ? formatQuantity(item.bonusQuantity, drugInfo?.unitsPerCarton, drugInfo?.cartonSize) : '-'}
                                         </td>
                                     </tr>
                                 )

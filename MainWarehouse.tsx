@@ -90,8 +90,8 @@ const FulfillmentModal: React.FC<FulfillmentModalProps> = ({ isOpen, onClose, re
                                 return (
                                     <tr key={item.drugId} className="hover:bg-gray-50">
                                         <td className="p-3 font-semibold">{item.drugName}</td>
-                                        <td className="p-3">{item.quantityRequested}</td>
-                                        <td className="p-3">{formatQuantity(maxQuantity, drugInStock?.unitsPerCarton)}</td>
+                                        <td className="p-3">{formatQuantity(item.quantityRequested, drugInStock?.unitsPerCarton, drugInStock?.cartonSize)}</td>
+                                        <td className="p-3">{formatQuantity(maxQuantity, drugInStock?.unitsPerCarton, drugInStock?.cartonSize)}</td>
                                         <td className="p-3">
                                             <input 
                                                 type="number" 
@@ -302,7 +302,7 @@ const MainWarehouse: React.FC<MainWarehouseProps> = ({ mainWarehouseDrugs, stock
                                         </button>
                                     </div>
                                     <ul className="mt-3 list-disc list-inside text-sm space-y-1">
-                                        {req.items.map(item => <li key={item.drugId}>{item.drugName}: <span className="font-semibold">{item.quantityRequested} عدد</span></li>)}
+                                        {req.items.map(item => <li key={item.drugId}>{item.drugName}: <span className="font-semibold">{formatQuantity(item.quantityRequested, mainWarehouseDrugs.find(d => d.id === item.drugId)?.unitsPerCarton, mainWarehouseDrugs.find(d => d.id === item.drugId)?.cartonSize)}</span></li>)}
                                     </ul>
                                 </div>
                             ))}
@@ -371,7 +371,7 @@ const MainWarehouse: React.FC<MainWarehouseProps> = ({ mainWarehouseDrugs, stock
                                         <td className="p-4 text-gray-800 font-medium">{drug.name}</td>
                                         <td className="p-4 text-gray-500">{drug.manufacturer}</td>
                                         <td className="p-4 text-gray-800 font-semibold">
-                                            {formatQuantity(totalQuantity, drug.unitsPerCarton)}
+                                            {formatQuantity(totalQuantity, drug.unitsPerCarton, drug.cartonSize)}
                                         </td>
                                         <td className="p-4 text-gray-500">{earliestExpiry ? new Date(earliestExpiry).toLocaleDateString('fa-IR') : '-'}</td>
                                     </tr>

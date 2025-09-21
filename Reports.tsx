@@ -27,10 +27,18 @@ const ExportIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a4 4 0 01-4-
 const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0 00-2 2v4a2 2 0 002 2h2m8 0v4H9v-4m4 0h-2" className="w-5 h-5"/>;
 const ExcelIcon = () => <Icon path="M4 6h16v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 13h1m3 0h1" className="w-5 h-5"/>;
 const TraceIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 4H4v6M14 20h6v-6" />;
+const BuilderIcon = () => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0 3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />;
 
 
 //=========== TYPES ===========//
-type ReportTab = 'profitability' | 'sales' | 'purchases' | 'inventory' | 'bonuses' | 'wasted_stock' | 'batch_traceability';
+type ReportTab = 'report_builder' | 'profitability' | 'sales' | 'purchases' | 'inventory' | 'bonuses' | 'wasted_stock' | 'batch_traceability';
+type GeneratedReport = {
+    title: string;
+    headers: string[];
+    rows: (string | number)[][];
+    summary?: { label: string; value: string | number }[];
+    isNumeric?: boolean[];
+};
 
 //=========== SUB-COMPONENTS ===========//
 
@@ -504,7 +512,9 @@ const BatchTraceabilityView = ({ orders, purchaseBills, drugs, mainWarehouseDrug
                                 <li>تاریخ خرید: <strong>{new Date(result.purchaseInfo.bill.purchaseDate).toLocaleDateString('fa-IR')}</strong></li>
                                 <li>شماره فاکتور: <strong>{result.purchaseInfo.bill.billNumber}</strong></li>
                                 <li>تعداد خریداری شده: <strong>{result.purchaseInfo.quantity}</strong></li>
-                                <li>قیمت خرید: <strong>{result.purchaseInfo.purchasePrice.toLocaleString()}</strong></li>
+                                {(result.purchaseInfo.bonusQuantity > 0) && <li>تعداد بونس: <strong>{result.purchaseInfo.bonusQuantity}</strong></li>}
+                                <li>قیمت خرید (قبل از تخفیف): <strong>{result.purchaseInfo.purchasePrice.toLocaleString()}</strong></li>
+                                {(result.purchaseInfo.discountPercentage > 0) && <li>تخفیف: <strong>{result.purchaseInfo.discountPercentage}%</strong></li>}
                             </ul>
                         ) : <p>اطلاعات خریدی برای این لات یافت نشد.</p>}
                     </div>
@@ -582,7 +592,7 @@ const PrintPreviewModal = ({ isOpen, onClose, children, documentSettings }: { is
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start p-4 overflow-y-auto" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl mt-8 mb-8 w-full max-w-4xl" onClick={e => e.stopPropagation()}>
-                <div className="p-4 bg-gray-50 rounded-t-xl border-b print:hidden flex justify-between items-center">
+                <div className="p-4 bg-gray-50 rounded-b-xl border-t print:hidden flex justify-between items-center">
                     <div>
                         <label className="text-sm font-semibold mr-2">قالب:</label>
                         <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="bg-white border border-gray-300 rounded-md px-2 py-1">
@@ -608,6 +618,331 @@ const PrintPreviewModal = ({ isOpen, onClose, children, documentSettings }: { is
     );
 };
 
+//=========== ADVANCED REPORT BUILDER COMPONENT ===========//
+const AdvancedReportBuilder = ({ orders, drugs, mainWarehouseDrugs, customers, suppliers, purchaseBills, inventoryWriteOffs, dateFilters, onGenerated }) => {
+    const reportOptions = {
+        'فروش': ['فروش بر اساس محصول', 'فروش بر اساس مشتری'],
+        'خرید': ['خرید بر اساس محصول', 'خرید بر اساس شرکت'],
+        'انبار': ['چرخه کامل انبار محصول', 'خلاصه موجودی انبار'],
+    };
+
+    const [filters, setFilters] = useState({
+        section: 'فروش',
+        basedOn: 'فروش بر اساس محصول',
+        searchTerm: '',
+        selectedItem: null as { id: any; name: string } | null,
+        reportType: 'aggregated' as 'detailed' | 'aggregated',
+        allItems: true,
+    });
+    const [suggestions, setSuggestions] = useState<{ id: any; name: string }[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const searchRef = useRef<HTMLDivElement>(null);
+
+    const allDrugs = useMemo(() => {
+        const drugMap = new Map<number, Drug>();
+        [...drugs, ...mainWarehouseDrugs].forEach(d => {
+            if (!drugMap.has(d.id)) {
+                const { batches, ...drugInfo } = d;
+                drugMap.set(d.id, { ...drugInfo, batches: [] });
+            }
+        });
+        return Array.from(drugMap.values());
+    }, [drugs, mainWarehouseDrugs]);
+
+    const handleFilterChange = (field: string, value: any) => {
+        setFilters(prev => {
+            const newFilters = { ...prev, [field]: value };
+            if (field === 'section') {
+                newFilters.basedOn = reportOptions[value][0];
+                newFilters.searchTerm = '';
+                newFilters.selectedItem = null;
+                newFilters.allItems = true;
+            }
+            if (field === 'basedOn') {
+                 newFilters.searchTerm = '';
+                 newFilters.selectedItem = null;
+                 newFilters.allItems = true;
+            }
+            if (field === 'allItems' && value === true) {
+                 newFilters.searchTerm = '';
+                 newFilters.selectedItem = null;
+            }
+            return newFilters;
+        });
+        onGenerated(null);
+    };
+
+    const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const term = e.target.value;
+        handleFilterChange('searchTerm', term);
+        if (!term) {
+            setSuggestions([]);
+            return;
+        }
+
+        let source: { id: any; name: string }[] = [];
+        switch (filters.basedOn) {
+            case 'فروش بر اساس محصول':
+            case 'خرید بر اساس محصول':
+            case 'چرخه کامل انبار محصول':
+            case 'خلاصه موجودی انبار':
+                source = allDrugs; break;
+            case 'فروش بر اساس مشتری':
+                source = customers; break;
+            case 'خرید بر اساس شرکت':
+                source = suppliers; break;
+        }
+        setSuggestions(source.filter(s => s.name.toLowerCase().includes(term.toLowerCase())).slice(0, 10));
+    };
+
+    const handleSelectSuggestion = (item: { id: any; name: string }) => {
+        setFilters(prev => ({ ...prev, selectedItem: item, searchTerm: item.name }));
+        setSuggestions([]);
+    };
+
+    const handleGenerateReport = () => {
+        setIsLoading(true);
+        onGenerated(null);
+
+        const { section, basedOn, selectedItem, reportType, allItems } = filters;
+        
+        if (reportType === 'detailed' && allItems) {
+            alert("برای گزارش تفصیلی، لطفاً تیک «انتخاب همه موارد» را برداشته و یک آیتم خاص را انتخاب کنید.");
+            setIsLoading(false);
+            return;
+        }
+        if (!allItems && !selectedItem) {
+             alert("لطفاً یک آیتم را برای گزارش‌گیری انتخاب کنید.");
+             setIsLoading(false);
+             return;
+        }
+
+        const start = new Date(dateFilters.startDate);
+        const end = new Date(dateFilters.endDate);
+        end.setHours(23, 59, 59, 999);
+        
+        const filterByDate = (items, dateKey) => items.filter(item => {
+            const itemDate = new Date(item[dateKey]);
+            return itemDate >= start && itemDate <= end;
+        });
+
+        setTimeout(() => {
+            let report: GeneratedReport | null = null;
+            
+            // --- SALES REPORTS ---
+            if (section === 'فروش') {
+                const relevantOrders = filterByDate(orders, 'orderDate').filter(o => o.type === 'sale');
+                
+                if (basedOn === 'فروش بر اساس محصول') {
+                    if (reportType === 'aggregated') {
+                        const productSales = new Map<number, { name: string; qty: number; bonus: number; revenue: number; profit: number }>();
+                        relevantOrders.forEach(order => order.items.forEach(item => {
+                            if (!allItems && selectedItem?.id !== item.drugId) return;
+                            const existing = productSales.get(item.drugId) || { name: item.drugName, qty: 0, bonus: 0, revenue: 0, profit: 0 };
+                            const itemRevenue = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (item.originalPrice * item.quantity) : (item.finalPrice * item.quantity);
+                            const itemCogs = (item.batchAllocations || []).reduce((sum, alloc) => sum + (alloc.quantity * alloc.purchasePrice), 0);
+                            existing.qty += item.quantity;
+                            existing.bonus += item.bonusQuantity || 0;
+                            existing.revenue += itemRevenue;
+                            existing.profit += (itemRevenue - itemCogs);
+                            productSales.set(item.drugId, existing);
+                        }));
+                        report = {
+                            title: `گزارش تجمعی فروش بر اساس محصول`,
+                            headers: ['نام محصول', 'تعداد فروش', 'تعداد بونس', 'مبلغ فروش', 'سود ناخالص'],
+                            rows: Array.from(productSales.values()).map(p => [p.name, p.qty, p.bonus, p.revenue, p.profit]),
+                            isNumeric: [false, true, true, true, true]
+                        };
+                    } else { // detailed
+                        const rows = relevantOrders.flatMap(order => order.items.filter(item => item.drugId === selectedItem!.id).map(item => [new Date(order.orderDate).toLocaleDateString('fa-IR'), order.orderNumber, order.customerName, item.quantity, item.bonusQuantity || 0, item.finalPrice, item.finalPrice * item.quantity]));
+                        report = {
+                            title: `گزارش تفصیلی فروش محصول: ${selectedItem!.name}`,
+                            headers: ['تاریخ', 'شماره فاکتور', 'مشتری', 'تعداد', 'بونس', 'قیمت واحد', 'مبلغ کل'],
+                            rows,
+                            isNumeric: [false, false, false, true, true, true, true]
+                        };
+                    }
+                } else if (basedOn === 'فروش بر اساس مشتری') {
+                    if (reportType === 'aggregated') {
+                        const customerSales = new Map<string, { invoices: number; sales: number; profit: number }>();
+                         relevantOrders.forEach(order => {
+                            if (!allItems && selectedItem?.name !== order.customerName) return;
+                            const existing = customerSales.get(order.customerName) || { invoices: 0, sales: 0, profit: 0 };
+                            const orderRevenue = order.items.reduce((sum, item) => sum + ((item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (item.originalPrice * item.quantity) : (item.finalPrice * item.quantity)), 0);
+                            const orderCogs = order.items.reduce((sum, item) => sum + (item.batchAllocations || []).reduce((s, a) => s + a.quantity * a.purchasePrice, 0), 0);
+                            existing.invoices += 1;
+                            existing.sales += orderRevenue + order.extraCharges.reduce((s, c) => s + c.amount, 0);
+                            existing.profit += (orderRevenue - orderCogs);
+                            customerSales.set(order.customerName, existing);
+                        });
+                        report = {
+                            title: `گزارش تجمعی فروش بر اساس مشتری`,
+                            headers: ['نام مشتری', 'تعداد فاکتور', 'مجموع فروش', 'سود ناخالص'],
+                            rows: Array.from(customerSales.entries()).map(([name, data]) => [name, data.invoices, data.sales, data.profit]),
+                            isNumeric: [false, true, true, true]
+                        };
+                    } else { // detailed
+                        const rows = relevantOrders.filter(order => order.customerName === selectedItem!.name).map(order => [new Date(order.orderDate).toLocaleDateString('fa-IR'), order.orderNumber, order.totalAmount, order.amountPaid, order.totalAmount - order.amountPaid]);
+                        report = {
+                            title: `گزارش تفصیلی فروش برای مشتری: ${selectedItem!.name}`,
+                            headers: ['تاریخ', 'شماره فاکتور', 'مبلغ کل', 'پرداختی', 'مانده'],
+                            rows,
+                            isNumeric: [false, false, true, true, true]
+                        };
+                    }
+                }
+            }
+            // --- PURCHASE REPORTS ---
+            else if (section === 'خرید') {
+                 const relevantPurchases = filterByDate(purchaseBills, 'purchaseDate');
+                if (basedOn === 'خرید بر اساس محصول') {
+                     if (reportType === 'aggregated') {
+                         const productPurchases = new Map<number, { name: string; qty: number; bonus: number; value: number }>();
+                         relevantPurchases.forEach(bill => bill.items.forEach(item => {
+                            if (!allItems && selectedItem?.id !== item.drugId) return;
+                            const existing = productPurchases.get(item.drugId) || { name: item.drugName, qty: 0, bonus: 0, value: 0 };
+                            existing.qty += item.quantity;
+                            existing.bonus += item.bonusQuantity || 0;
+                            existing.value += item.quantity * item.purchasePrice * (1 - (item.discountPercentage || 0) / 100);
+                            productPurchases.set(item.drugId, existing);
+                         }));
+                         report = {
+                            title: `گزارش تجمعی خرید بر اساس محصول`,
+                            headers: ['نام محصول', 'تعداد خرید', 'تعداد بونس', 'مبلغ خرید'],
+                            rows: Array.from(productPurchases.values()).map(p => [p.name, p.qty, p.bonus, p.value]),
+                            isNumeric: [false, true, true, true]
+                        };
+                     } else { // detailed
+                        const rows = relevantPurchases.flatMap(bill => bill.items.filter(item => item.drugId === selectedItem!.id).map(item => [new Date(bill.purchaseDate).toLocaleDateString('fa-IR'), bill.billNumber, bill.supplierName, item.quantity, item.bonusQuantity || 0, item.purchasePrice, item.purchasePrice * item.quantity]));
+                        report = {
+                            title: `گزارش تفصیلی خرید محصول: ${selectedItem!.name}`,
+                            headers: ['تاریخ', 'شماره فاکتور', 'شرکت', 'تعداد', 'بونس', 'قیمت واحد', 'مبلغ کل'],
+                            rows,
+                            isNumeric: [false, false, false, true, true, true, true]
+                        };
+                     }
+                } else if (basedOn === 'خرید بر اساس شرکت') {
+                    if (reportType === 'aggregated') {
+                        const supplierPurchases = new Map<string, { bills: number; value: number }>();
+                        relevantPurchases.forEach(bill => {
+                             if (!allItems && selectedItem?.name !== bill.supplierName) return;
+                             const existing = supplierPurchases.get(bill.supplierName) || { bills: 0, value: 0 };
+                             existing.bills += 1;
+                             existing.value += bill.totalAmount;
+                             supplierPurchases.set(bill.supplierName, existing);
+                        });
+                        report = {
+                             title: `گزارش تجمعی خرید بر اساس شرکت`,
+                             headers: ['نام شرکت', 'تعداد فاکتور', 'مجموع خرید'],
+                             rows: Array.from(supplierPurchases.entries()).map(([name, data]) => [name, data.bills, data.value]),
+                             isNumeric: [false, true, true]
+                        };
+                    } else { // detailed
+                        const rows = relevantPurchases.filter(bill => bill.supplierName === selectedItem!.name).map(bill => [new Date(bill.purchaseDate).toLocaleDateString('fa-IR'), bill.billNumber, bill.totalAmount, bill.amountPaid, bill.totalAmount - bill.amountPaid]);
+                        report = {
+                            title: `گزارش تفصیلی خرید از شرکت: ${selectedItem!.name}`,
+                            headers: ['تاریخ', 'شماره فاکتور', 'مبلغ کل', 'پرداختی', 'مانده'],
+                            rows,
+                            isNumeric: [false, false, true, true, true]
+                        };
+                    }
+                }
+            }
+            // --- INVENTORY REPORTS ---
+            else if (section === 'انبار') {
+                if (basedOn === 'چرخه کامل انبار محصول' && selectedItem) {
+                    const productId = selectedItem.id;
+                    let transactions: any[] = [];
+                    let balance = 0;
+                    filterByDate(purchaseBills, 'purchaseDate').forEach(bill => bill.items.forEach(item => { if (item.drugId === productId) transactions.push({ date: bill.purchaseDate, type: 'خرید', doc: bill.billNumber, qty: item.quantity + (item.bonusQuantity || 0) }); }));
+                    filterByDate(orders, 'orderDate').forEach(order => order.items.forEach(item => { if (item.drugId === productId) transactions.push({ date: order.orderDate, type: `فروش (${order.type})`, doc: order.orderNumber, qty: -(item.quantity + (item.bonusQuantity || 0)) }); }));
+                    filterByDate(inventoryWriteOffs, 'date').forEach(wo => { if (wo.drugId === productId) transactions.push({ date: wo.date, type: `ضایعات (${wo.reason})`, doc: wo.id, qty: -wo.quantity }); });
+                    transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                    const rows = transactions.map(t => { balance += t.qty; return [new Date(t.date).toLocaleDateString('fa-IR'), t.type, t.doc, t.qty > 0 ? `+${t.qty}` : t.qty, balance]; });
+                    report = { title: `گزارش چرخه کامل انبار برای محصول: ${selectedItem.name}`, headers: ['تاریخ', 'نوع تراکنش', 'سند', 'تغییر', 'مانده'], rows, isNumeric: [false, false, false, true, true] };
+                } else if (basedOn === 'خلاصه موجودی انبار') {
+                    const inventoryMap = new Map<number, { name: string; main: number; sales: number; total: number; value: number }>();
+                    const processDrugs = (drugList: Drug[], location: 'main' | 'sales') => {
+                        drugList.forEach(drug => {
+                            if (!allItems && selectedItem?.id !== drug.id) return;
+                            const existing = inventoryMap.get(drug.id) || { name: drug.name, main: 0, sales: 0, total: 0, value: 0 };
+                            const qty = drug.batches.reduce((s, b) => s + b.quantity, 0);
+                            const val = drug.batches.reduce((s, b) => s + b.quantity * b.purchasePrice, 0);
+                            if (location === 'main') existing.main += qty; else existing.sales += qty;
+                            existing.total += qty;
+                            existing.value += val;
+                            inventoryMap.set(drug.id, existing);
+                        });
+                    };
+                    processDrugs(mainWarehouseDrugs, 'main');
+                    processDrugs(drugs, 'sales');
+                    report = {
+                        title: 'گزارش خلاصه موجودی انبار',
+                        headers: ['نام محصول', 'موجودی انبار اصلی', 'موجودی انبار فروش', 'موجودی کل', 'ارزش کل (خرید)'],
+                        rows: Array.from(inventoryMap.values()).map(d => [d.name, d.main, d.sales, d.total, d.value]),
+                        isNumeric: [false, true, true, true, true]
+                    };
+                }
+            }
+
+            onGenerated(report);
+            setIsLoading(false);
+        }, 500);
+    };
+    
+    useEffect(() => {
+        const handleClickOutside = (event) => { if (searchRef.current && !searchRef.current.contains(event.target)) setSuggestions([]); };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                <div>
+                    <label className="block text-sm font-bold mb-1">گزارش از بخش</label>
+                    <select value={filters.section} onChange={(e) => handleFilterChange('section', e.target.value)} className="w-full p-2 border rounded-lg bg-white">
+                        {Object.keys(reportOptions).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                </div>
+                 <div>
+                    <label className="block text-sm font-bold mb-1">بر اساس</label>
+                    <select value={filters.basedOn} onChange={(e) => handleFilterChange('basedOn', e.target.value)} className="w-full p-2 border rounded-lg bg-white" disabled={!filters.section}>
+                        {(reportOptions[filters.section] || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                </div>
+                 <div className="relative" ref={searchRef}>
+                    <label className="block text-sm font-bold mb-1">انتخاب آیتم</label>
+                    <input type="text" value={filters.searchTerm} onChange={handleSearch} className="w-full p-2 border rounded-lg" disabled={filters.allItems} placeholder={filters.allItems ? 'همه موارد انتخاب شده' : 'برای جستجو تایپ کنید...'} />
+                    <div className="flex items-center gap-2 mt-2 text-sm">
+                        <input type="checkbox" id="all-items-checkbox" checked={filters.allItems} onChange={e => handleFilterChange('allItems', e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"/>
+                        <label htmlFor="all-items-checkbox" className="text-gray-700">انتخاب همه موارد</label>
+                    </div>
+                    {suggestions.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 z-10 bg-white border shadow-lg mt-1 max-h-48 overflow-y-auto">
+                            {suggestions.map(item => (
+                                <div key={item.id} onClick={() => handleSelectSuggestion(item)} className="p-2 hover:bg-teal-50 cursor-pointer">{item.name}</div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+             <div className="flex justify-between items-center pt-2">
+                <div>
+                    <label className="block text-sm font-bold mb-2">نوع گزارش</label>
+                    <div className="flex gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer"><input type="radio" name="reportType" value="aggregated" checked={filters.reportType === 'aggregated'} onChange={e => handleFilterChange('reportType', e.target.value)} /> تجمعی (خلاصه)</label>
+                        <label className="flex items-center gap-2 cursor-pointer"><input type="radio" name="reportType" value="detailed" checked={filters.reportType === 'detailed'} onChange={e => handleFilterChange('reportType', e.target.value)} /> تفصیلی (ریز تراکنش‌ها)</label>
+                    </div>
+                </div>
+                <button onClick={handleGenerateReport} disabled={isLoading} className="px-8 py-3 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 shadow-md disabled:bg-teal-300 disabled:cursor-not-allowed">
+                    {isLoading ? 'در حال ایجاد...' : 'ایجاد گزارش'}
+                </button>
+            </div>
+        </div>
+    );
+};
+
 
 //=========== MAIN COMPONENT ===========//
 type ReportsProps = {
@@ -628,7 +963,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
 
-    const [activeTab, setActiveTab] = useState<ReportTab>('profitability');
+    const [activeTab, setActiveTab] = useState<ReportTab>('report_builder');
     const [filters, setFilters] = useState({
         startDate: thirtyDaysAgo.toISOString().split('T')[0],
         endDate: today.toISOString().split('T')[0],
@@ -637,12 +972,19 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
     const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
     const [printData, setPrintData] = useState<any>(null); // For generic print data
     const exportMenuRef = useRef<HTMLDivElement>(null);
+    const [generatedReport, setGeneratedReport] = useState<GeneratedReport | null>(null);
     
     useEffect(() => {
         if(lotNumberToTrace) {
             setActiveTab('batch_traceability');
         }
     }, [lotNumberToTrace]);
+
+     useEffect(() => {
+        if (activeTab !== 'report_builder') {
+            setGeneratedReport(null);
+        }
+    }, [activeTab]);
 
 
     const filteredData = useMemo(() => {
@@ -679,6 +1021,13 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
     }, [exportMenuRef]);
 
     const getReportDataForExport = (tab: ReportTab) => {
+        if (tab === 'report_builder' && generatedReport) {
+            return {
+                ...generatedReport,
+                dateRange: `از ${new Date(filters.startDate).toLocaleDateString('fa-IR')} تا ${new Date(filters.endDate).toLocaleDateString('fa-IR')}`
+            };
+        }
+        
         const { sales, purchases } = filteredData;
         const dateRange = `از ${new Date(filters.startDate).toLocaleDateString('fa-IR')} تا ${new Date(filters.endDate).toLocaleDateString('fa-IR')}`;
         
@@ -745,7 +1094,13 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
     };
     
     const handleExcelExport = () => {
-        const { title, headers, rows } = getReportDataForExport(activeTab);
+        const reportData = getReportDataForExport(activeTab);
+        if (!reportData || !reportData.rows || reportData.rows.length === 0) {
+            alert("داده‌ای برای خروجی گرفتن وجود ندارد.");
+            return;
+        }
+        const { title, headers, rows } = reportData;
+
         const dataToExport = rows.map(row => {
             let obj = {};
             headers.forEach((header, index) => {
@@ -762,6 +1117,10 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
 
     const handlePrintRequest = () => {
         const data = getReportDataForExport(activeTab);
+         if (!data || !data.rows || data.rows.length === 0) {
+            alert("داده‌ای برای چاپ وجود ندارد.");
+            return;
+        }
         setPrintData(data);
         setIsPrintPreviewOpen(true);
         setIsExportMenuOpen(false);
@@ -810,7 +1169,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
     
     const renderPrintContent = () => {
         if (!printData) return null;
-        if (activeTab === 'batch_traceability') {
+        if (activeTab === 'batch_traceability' || printData.lotNumber) { // Check for traceability print
             const {lotNumber, result} = printData;
              return (
                 <ReportPrintView title={`گزارش ردیابی لات: ${lotNumber}`} companyInfo={companyInfo} documentSettings={documentSettings}>
@@ -857,7 +1216,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
 
             <div>
                 <h2 className="text-3xl font-bold text-gray-800">مرکز گزارشات</h2>
-                <p className="text-gray-500 mt-1">تحلیل عملکرد کسب‌وکار با داشبوردهای هوشمند</p>
+                <p className="text-gray-500 mt-1">تحلیل عملکرد کسب‌وکار با داشبوردهای هوشمند و گزارش‌ساز پیشرفته</p>
             </div>
 
             <div className="bg-white rounded-xl shadow-md p-4 flex flex-col md:flex-row gap-4 justify-between items-center">
@@ -880,7 +1239,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                      </div>
                 </div>
                  <div className="relative" ref={exportMenuRef}>
-                    <button onClick={() => setIsExportMenuOpen(prev => !prev)} className="flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors text-sm bg-gray-600 text-white hover:bg-gray-700 shadow" disabled={activeTab === 'batch_traceability' || activeTab === 'inventory'}>
+                    <button onClick={() => setIsExportMenuOpen(prev => !prev)} className="flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors text-sm bg-gray-600 text-white hover:bg-gray-700 shadow" disabled={activeTab === 'batch_traceability' || activeTab === 'inventory' || (activeTab === 'report_builder' && !generatedReport)}>
                         <ExportIcon />
                         چاپ / خروجی
                     </button>
@@ -894,6 +1253,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
             </div>
             
              <div className="flex items-center gap-2 flex-wrap justify-center bg-white rounded-xl shadow-md p-2">
+                <ReportTabButton tabId="report_builder" icon={<BuilderIcon />}>گزارش‌ساز پیشرفته</ReportTabButton>
                 <ReportTabButton tabId="profitability" icon={<ProfitIcon />}>سودآوری</ReportTabButton>
                 <ReportTabButton tabId="batch_traceability" icon={<TraceIcon />}>ردیابی بچ</ReportTabButton>
                 <ReportTabButton tabId="inventory" icon={<InventoryIcon />}>گزارش انبارها</ReportTabButton>
@@ -911,6 +1271,37 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 {activeTab === 'bonuses' && <BonusSummaryView filteredSales={filteredData.sales} drugs={drugs} />}
                 {activeTab === 'wasted_stock' && <WastedStockView filteredWastedStock={filteredData.wastedStock} />}
                 {activeTab === 'batch_traceability' && <BatchTraceabilityView orders={orders} purchaseBills={purchaseBills} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} onPrint={handleTraceabilityPrint} lotNumberToTrace={lotNumberToTrace} />}
+                {activeTab === 'report_builder' && (
+                     <div className="space-y-4">
+                        <AdvancedReportBuilder 
+                            orders={orders}
+                            drugs={drugs}
+                            mainWarehouseDrugs={mainWarehouseDrugs}
+                            customers={customers}
+                            suppliers={suppliers}
+                            purchaseBills={purchaseBills}
+                            inventoryWriteOffs={inventoryWriteOffs}
+                            dateFilters={filters}
+                            onGenerated={setGeneratedReport}
+                        />
+                        {generatedReport && (
+                             <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
+                                <h3 className="text-xl font-bold text-gray-800">{generatedReport.title}</h3>
+                                {generatedReport.summary && (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        {generatedReport.summary.map(item => (
+                                            <div key={item.label} className="bg-gray-100 p-3 rounded-lg">
+                                                <p className="text-sm text-gray-600">{item.label}</p>
+                                                <p className="text-lg font-bold">{typeof item.value === 'number' ? item.value.toLocaleString() : item.value}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <DataTable headers={generatedReport.headers} rows={generatedReport.rows} isNumeric={generatedReport.isNumeric} />
+                             </div>
+                        )}
+                     </div>
+                )}
             </div>
         </div>
     );

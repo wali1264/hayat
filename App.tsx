@@ -286,120 +286,25 @@ export type StockRequisition = {
 
 
 //=========== MOCK DATA FOR DEMO ===========//
-const initialMockSuppliers: Supplier[] = [
-    { id: 1, name: 'کابل فارما', representative: 'احمد ولی', phone: '0788112233', email: 'info@kabulpharma.af', address: 'پارک صنعتی، کابل', status: 'فعال' },
-    { id: 2, name: 'پخش البرز', representative: 'سارا محمدی', phone: '0799445566', email: 'sales@alborz.af', address: 'شهرنو، کابل', status: 'فعال' },
-    { id: 3, name: 'طب گستر شرق', representative: 'هارون پوپل', phone: '0777889900', email: 'support@tebgostar.af', address: 'منطقه صنعتی، هرات', status: 'فعال' },
-];
+// --- Sales Warehouse ---
+const initialMockDrugs: Drug[] = [];
 
-const initialMockCustomers: Customer[] = [
-    { id: 1, name: 'داروخانه شفا', manager: 'دکتر نجیب', phone: '0700123456', address: 'کارته سه، کابل', registrationDate: '2023-01-15T10:00:00Z', status: 'فعال' },
-    { id: 2, name: 'شفاخانه مرکزی آریانا', manager: 'خانم رحیمی', phone: '0729123456', address: 'وزیر اکبر خان، کابل', registrationDate: '2023-02-20T10:00:00Z', status: 'فعال' },
-    { id: 3, name: 'کلینیک صحت', manager: 'دکتر احمدزی', phone: '0786987654', address: 'خیرخانه، کابل', registrationDate: '2023-03-10T10:00:00Z', status: 'فعال' },
-    { id: 4, name: 'داروخانه پامیر', manager: 'آقای نظری', phone: '0772123123', address: 'تایمنی، کابل', registrationDate: '2023-04-05T10:00:00Z', status: 'فعال' },
-    { id: 5, name: 'شفاخانه امید', manager: 'مدیریت عمومی', phone: '0799555444', address: 'کارته چهار، کابل', registrationDate: '2023-05-12T10:00:00Z', status: 'فعال' },
-];
+// --- Main Warehouse ---
+const initialMockMainWarehouseDrugs: Drug[] = [];
 
-const initialMockPurchaseBills: PurchaseBill[] = [
-    { id: 1, type: 'purchase', billNumber: 'KP-2024-001', supplierName: 'کابل فارما', purchaseDate: '2024-05-10T10:00:00Z', totalAmount: 110000, amountPaid: 110000, status: 'دریافت شده', currency: 'AFN', exchangeRate: 1, items: [
-        { drugId: 1, drugName: 'Amoxicillin 500mg', quantity: 1000, purchasePrice: 50, lotNumber: 'A001', expiryDate: '2026-12-31' },
-        { drugId: 2, drugName: 'Paracetamol 500mg', quantity: 2000, purchasePrice: 10, lotNumber: 'P001', expiryDate: '2027-06-30' },
-        { drugId: 3, drugName: 'Vitamin C 1000mg', quantity: 500, purchasePrice: 25, lotNumber: 'V001', expiryDate: '2025-10-31' },
-        { drugId: 10, drugName: 'Ciprofloxacin 500mg', quantity: 600, purchasePrice: 80, lotNumber: 'C001', expiryDate: '2025-09-30' },
-    ]},
-    { id: 2, type: 'purchase', billNumber: 'AB-2024-005', supplierName: 'پخش البرز', purchaseDate: '2024-05-15T10:00:00Z', totalAmount: 43500, amountPaid: 43500, status: 'دریافت شده', currency: 'AFN', exchangeRate: 1, items: [
-        { drugId: 4, drugName: 'Loratadine 10mg', quantity: 800, purchasePrice: 30, lotNumber: 'L001', expiryDate: '2026-08-31' },
-        { drugId: 6, drugName: 'Salbutamol Inhaler', quantity: 100, purchasePrice: 195, lotNumber: 'S001', expiryDate: '2025-11-30' },
-    ]},
-    { id: 3, type: 'purchase', billNumber: 'KP-2024-008', supplierName: 'کابل فارما', purchaseDate: '2024-05-20T10:00:00Z', totalAmount: 44000, amountPaid: 40000, status: 'دریافت شده', currency: 'AFN', exchangeRate: 1, items: [
-        { drugId: 1, drugName: 'Amoxicillin 500mg', quantity: 500, purchasePrice: 52, lotNumber: 'A002', expiryDate: '2027-03-31' },
-        { drugId: 9, drugName: 'Ibuprofen 400mg', quantity: 1000, purchasePrice: 18, lotNumber: 'I001', expiryDate: '2026-05-31' },
-    ]},
-];
 
-const initialMockMainWarehouseDrugs: Drug[] = [
-    { id: 1, name: 'Amoxicillin 500mg', code: 'AMX500', manufacturer: 'Kabul Pharma', unitsPerCarton: 100, price: 70, discountPercentage: 5, category: 'آنتی‌بیوتیک', batches: [ { lotNumber: 'A001', quantity: 600, expiryDate: '2026-12-31', purchasePrice: 50 }, { lotNumber: 'A002', quantity: 300, expiryDate: '2027-03-31', purchasePrice: 52 } ] },
-    { id: 2, name: 'Paracetamol 500mg', code: 'PAR500', manufacturer: 'Generic Co', unitsPerCarton: 200, price: 15, discountPercentage: 0, category: 'مسکن', batches: [ { lotNumber: 'P001', quantity: 1200, expiryDate: '2027-06-30', purchasePrice: 10 } ] },
-    { id: 3, name: 'Vitamin C 1000mg', code: 'VITC1K', manufacturer: 'HealthPlus', unitsPerCarton: 50, price: 40, discountPercentage: 10, category: 'ویتامین و مکمل', batches: [ { lotNumber: 'V001', quantity: 300, expiryDate: '2025-10-31', purchasePrice: 25 } ] },
-    { id: 4, name: 'Loratadine 10mg', code: 'LOR10', manufacturer: 'Alborz', unitsPerCarton: 30, price: 45, discountPercentage: 0, category: 'ضد حساسیت', batches: [ { lotNumber: 'L001', quantity: 500, expiryDate: '2026-08-31', purchasePrice: 30 } ] },
-    { id: 6, name: 'Salbutamol Inhaler', code: 'SALB-INH', manufacturer: 'Respira', unitsPerCarton: 1, price: 250, discountPercentage: 0, category: 'تنفسی', batches: [ { lotNumber: 'S001', quantity: 100, expiryDate: '2025-11-30', purchasePrice: 195 } ] },
-    { id: 9, name: 'Ibuprofen 400mg', code: 'IBU400', manufacturer: 'Generic Co', unitsPerCarton: 100, price: 25, discountPercentage: 0, category: 'مسکن', batches: [ { lotNumber: 'I001', quantity: 600, expiryDate: '2026-05-31', purchasePrice: 18 } ] },
-    { id: 10, name: 'Ciprofloxacin 500mg', code: 'CIP500', manufacturer: 'Kabul Pharma', unitsPerCarton: 50, price: 100, discountPercentage: 0, category: 'آنتی‌بیوتیک', batches: [ { lotNumber: 'C001', quantity: 600, expiryDate: '2025-09-30', purchasePrice: 80 } ] },
-    { id: 5, name: 'Metformin 500mg', code: 'MET500', manufacturer: 'DiaCare', unitsPerCarton: 60, price: 22, discountPercentage: 0, category: 'دیابت', batches: [] },
-    { id: 7, name: 'Omeprazole 20mg', code: 'OME20', manufacturer: 'GastroWell', unitsPerCarton: 14, price: 90, discountPercentage: 0, category: 'گوارشی', batches: [] },
-    { id: 8, name: 'Aspirin 81mg', code: 'ASP81', manufacturer: 'CardioSafe', unitsPerCarton: 100, price: 35, discountPercentage: 0, category: 'بیماری‌های قلبی', batches: [] },
-];
+const initialMockCustomers: Customer[] = [];
 
-const initialMockDrugs: Drug[] = [
-    { id: 1, name: 'Amoxicillin 500mg', code: 'AMX500', manufacturer: 'Kabul Pharma', unitsPerCarton: 100, price: 70, discountPercentage: 5, category: 'آنتی‌بیوتیک', batches: [ { lotNumber: 'A001', quantity: 250, expiryDate: '2026-12-31', purchasePrice: 50 } ] },
-    { id: 2, name: 'Paracetamol 500mg', code: 'PAR500', manufacturer: 'Generic Co', unitsPerCarton: 200, price: 15, discountPercentage: 0, category: 'مسکن', batches: [ { lotNumber: 'P001', quantity: 490, expiryDate: '2027-06-30', purchasePrice: 10 } ] },
-    { id: 3, name: 'Vitamin C 1000mg', code: 'VITC1K', manufacturer: 'HealthPlus', unitsPerCarton: 50, price: 40, discountPercentage: 10, category: 'ویتامین و مکمل', batches: [ { lotNumber: 'V001', quantity: 160, expiryDate: '2025-10-31', purchasePrice: 25 } ] },
-    { id: 4, name: 'Loratadine 10mg', code: 'LOR10', manufacturer: 'Alborz', unitsPerCarton: 30, price: 45, discountPercentage: 0, category: 'ضد حساسیت', batches: [ { lotNumber: 'L001', quantity: 275, expiryDate: '2026-08-31', purchasePrice: 30 } ] },
-    { id: 9, name: 'Ibuprofen 400mg', code: 'IBU400', manufacturer: 'Generic Co', unitsPerCarton: 100, price: 25, discountPercentage: 0, category: 'مسکن', batches: [ { lotNumber: 'I001', quantity: 340, expiryDate: '2026-05-31', purchasePrice: 18 } ] },
-    { id: 5, name: 'Metformin 500mg', code: 'MET500', manufacturer: 'DiaCare', unitsPerCarton: 60, price: 22, discountPercentage: 0, category: 'دیابت', batches: [] },
-    { id: 7, name: 'Omeprazole 20mg', code: 'OME20', manufacturer: 'GastroWell', unitsPerCarton: 14, price: 90, discountPercentage: 0, category: 'گوارشی', batches: [] },
-    { id: 8, name: 'Aspirin 81mg', code: 'ASP81', manufacturer: 'CardioSafe', unitsPerCarton: 100, price: 35, discountPercentage: 0, category: 'بیماری‌های قلبی', batches: [] },
-    { id: 6, name: 'Salbutamol Inhaler', code: 'SALB-INH', manufacturer: 'Respira', unitsPerCarton: 1, price: 250, discountPercentage: 0, category: 'تنفسی', batches: [] },
-    { id: 10, name: 'Ciprofloxacin 500mg', code: 'CIP500', manufacturer: 'Kabul Pharma', unitsPerCarton: 50, price: 100, discountPercentage: 0, category: 'آنتی‌بیوتیک', batches: [] },
-];
+const initialMockOrders: Order[] = [];
 
-const initialMockOrders: Order[] = [
-    { id: 1, type: 'sale', orderNumber: 'SO-2024-0001', customerName: 'داروخانه شفا', orderDate: '2024-06-01', totalAmount: 4825, amountPaid: 4825, status: 'تکمیل شده', paymentStatus: 'پرداخت شده', items: [
-        { drugId: 1, drugName: 'Amoxicillin 500mg', quantity: 50, bonusQuantity: 0, originalPrice: 70, discountPercentage: 5, finalPrice: 66.5, batchAllocations: [{ lotNumber: 'A001', quantity: 50, purchasePrice: 50, expiryDate: '2026-12-31' }] },
-        { drugId: 2, drugName: 'Paracetamol 500mg', quantity: 100, bonusQuantity: 0, originalPrice: 15, discountPercentage: 0, finalPrice: 15, batchAllocations: [{ lotNumber: 'P001', quantity: 100, purchasePrice: 10, expiryDate: '2027-06-30' }] },
-    ], extraCharges: [] },
-    { id: 2, type: 'sale', orderNumber: 'SO-2024-0002', customerName: 'شفاخانه مرکزی آریانا', orderDate: '2024-06-02', totalAmount: 4050, amountPaid: 2000, status: 'تکمیل شده', paymentStatus: 'قسمتی پرداخت شده', items: [
-        { drugId: 4, drugName: 'Loratadine 10mg', quantity: 30, bonusQuantity: 0, originalPrice: 45, discountPercentage: 0, finalPrice: 45, batchAllocations: [{ lotNumber: 'L001', quantity: 30, purchasePrice: 30, expiryDate: '2026-08-31' }] },
-        { drugId: 9, drugName: 'Ibuprofen 400mg', quantity: 60, bonusQuantity: 0, originalPrice: 25, discountPercentage: 0, finalPrice: 25, batchAllocations: [{ lotNumber: 'I001', quantity: 60, purchasePrice: 18, expiryDate: '2026-05-31' }] },
-    ], extraCharges: [{ id: 1, description: 'کرایه حمل', amount: 1200 }] },
-    { id: 3, type: 'sale', orderNumber: 'SO-2024-0003', customerName: 'داروخانه پامیر', orderDate: '2024-06-03', totalAmount: 6000, amountPaid: 0, status: 'ارسال شده', paymentStatus: 'پرداخت نشده', items: [
-        { drugId: 2, drugName: 'Paracetamol 500mg', quantity: 200, bonusQuantity: 0, originalPrice: 15, discountPercentage: 0, finalPrice: 15, batchAllocations: [{ lotNumber: 'P001', quantity: 200, purchasePrice: 10, expiryDate: '2027-06-30' }] },
-    ], extraCharges: [{ id: 1, description: 'کرایه حمل', amount: 3000 }] },
-    { id: 4, type: 'sale', orderNumber: 'SO-2024-0004', customerName: 'داروخانه شفا', orderDate: '2024-06-04', totalAmount: 7990, amountPaid: 7990, status: 'تکمیل شده', paymentStatus: 'پرداخت شده', items: [
-        { drugId: 3, drugName: 'Vitamin C 1000mg', quantity: 40, bonusQuantity: 0, originalPrice: 40, discountPercentage: 10, finalPrice: 36, batchAllocations: [{ lotNumber: 'V001', quantity: 40, purchasePrice: 25, expiryDate: '2025-10-31' }] },
-        { drugId: 1, drugName: 'Amoxicillin 500mg', quantity: 100, bonusQuantity: 0, originalPrice: 70, discountPercentage: 5, finalPrice: 66.5, batchAllocations: [{ lotNumber: 'A001', quantity: 100, purchasePrice: 50, expiryDate: '2026-12-31' }] },
-    ], extraCharges: [] },
-    { id: 5, type: 'sale_return', orderNumber: 'SR-2024-0001', customerName: 'شفاخانه مرکزی آریانا', orderDate: '2024-06-05', totalAmount: -225, amountPaid: -225, status: 'تکمیل شده', paymentStatus: 'پرداخت شده', items: [
-        { drugId: 4, drugName: 'Loratadine 10mg', quantity: 5, bonusQuantity: 0, originalPrice: 45, discountPercentage: 0, finalPrice: 45, batchAllocations: [{ lotNumber: 'L001', quantity: 5, purchasePrice: 30, expiryDate: '2026-08-31' }] },
-    ], extraCharges: [] },
-];
+const initialMockExpenses: Expense[] = [];
 
-const initialMockStockRequisitions: StockRequisition[] = [
-    { id: 1, date: '2024-05-25T10:00:00Z', requestedBy: 'sales_user', fulfilledBy: 'warehouse_user', status: 'تکمیل شده', items: [
-        { drugId: 1, drugName: 'Amoxicillin 500mg', quantityRequested: 400, quantityFulfilled: 400 },
-        { drugId: 2, drugName: 'Paracetamol 500mg', quantityRequested: 800, quantityFulfilled: 800 },
-        { drugId: 3, drugName: 'Vitamin C 1000mg', quantityRequested: 200, quantityFulfilled: 200 },
-    ], notes: 'برای کمپاین فروش' },
-    { id: 2, date: '2024-05-28T10:00:00Z', requestedBy: 'sales_user', fulfilledBy: 'warehouse_user', status: 'تکمیل شده', items: [
-        { drugId: 4, drugName: 'Loratadine 10mg', quantityRequested: 300, quantityFulfilled: 300 },
-        { drugId: 9, drugName: 'Ibuprofen 400mg', quantityRequested: 400, quantityFulfilled: 400 },
-    ]},
-    { id: 3, date: '2024-06-02T10:00:00Z', requestedBy: 'sales_user', status: 'در انتظار', items: [
-        { drugId: 6, drugName: 'Salbutamol Inhaler', quantityRequested: 50, quantityFulfilled: 0 },
-        { drugId: 1, drugName: 'Amoxicillin 500mg', quantityRequested: 200, quantityFulfilled: 0 },
-    ], notes: 'نیاز فوری' },
-];
+const initialMockSuppliers: Supplier[] = [];
 
-const initialMockInventoryWriteOffs: InventoryWriteOff[] = [
-    { id: 1, drugId: 2, drugName: 'Paracetamol 500mg', lotNumber: 'P001', quantity: 10, reason: 'آسیب دیده', date: '2024-06-03T10:00:00Z', adjustedBy: 'warehouse_user', costAtTime: 10, totalLossValue: 100, notes: 'آب خوردگی در کارتن' },
-];
+const initialMockPurchaseBills: PurchaseBill[] = [];
 
-const initialMockExpenses: Expense[] = [
-    { id: 1, description: 'حقوق ماه جوزا کارمندان', amount: 150000, date: '2024-05-31', category: 'حقوق' },
-    { id: 2, description: 'کرایه دفتر ماه جوزا', amount: 40000, date: '2024-05-30', category: 'کرایه' },
-    { id: 3, description: 'مصرف دیزل موتر پخش', amount: 8500, date: '2024-05-28', category: 'حمل و نقل' },
-    { id: 4, description: 'مصارف پذیرایی از مهمانان', amount: 3200, date: '2024-05-25', category: 'سایر' },
-];
-
-const initialMockChecknehInvoices: ChecknehInvoice[] = [
-    { id: 1, invoiceNumber: 'CHK-2406-001', customerName: 'داروخانه امید', supplierName: 'فروش متفرقه', invoiceDate: '2024-06-01', totalAmount: 2400, items: [
-        { id: 1, drugName: 'Aspirin 81mg', quantity: 20, purchasePrice: 20, sellingPrice: 30, discountPercentage: 0 },
-        { id: 2, drugName: 'Metformin 500mg', quantity: 50, purchasePrice: 15, sellingPrice: 20, discountPercentage: 0 },
-    ]},
-    { id: 2, invoiceNumber: 'CHK-2406-002', customerName: 'کلینیک صحت', supplierName: 'فروش متفرقه', invoiceDate: '2024-06-03', totalAmount: 9000, items: [
-        { id: 1, drugName: 'Omeprazole 20mg', quantity: 100, purchasePrice: 70, sellingPrice: 90, discountPercentage: 0 },
-    ]},
-];
+// --- Checkneh Mock Data (Will be managed by its own hook) ---
+const initialMockChecknehInvoices: ChecknehInvoice[] = [];
 
 // --- Internal Transfers Mock Data ---
 export type InternalTransfer = { 
@@ -796,8 +701,8 @@ const App: React.FC = () => {
     const [expenses, setExpenses] = usePersistentState<Expense[]>('hayat_expenses', initialMockExpenses);
     const [suppliers, setSuppliers] = usePersistentState<Supplier[]>('hayat_suppliers', initialMockSuppliers);
     const [purchaseBills, setPurchaseBills] = usePersistentState<PurchaseBill[]>('hayat_purchaseBills', initialMockPurchaseBills);
-    const [stockRequisitions, setStockRequisitions] = usePersistentState<StockRequisition[]>('hayat_stockRequisitions', initialMockStockRequisitions);
-    const [inventoryWriteOffs, setInventoryWriteOffs] = usePersistentState<InventoryWriteOff[]>('hayat_inventoryWriteOffs', initialMockInventoryWriteOffs);
+    const [stockRequisitions, setStockRequisitions] = usePersistentState<StockRequisition[]>('hayat_stockRequisitions', []);
+    const [inventoryWriteOffs, setInventoryWriteOffs] = usePersistentState<InventoryWriteOff[]>('hayat_inventoryWriteOffs', []);
     const [trash, setTrash] = usePersistentState<TrashItem[]>('hayat_trash', []);
     const [checknehInvoices, setChecknehInvoices] = usePersistentState<ChecknehInvoice[]>('hayat_checkneh_invoices', initialMockChecknehInvoices);
 
@@ -1353,28 +1258,35 @@ const App: React.FC = () => {
                 for (const item of bill.items) {
                     let drug = updatedWarehouse.find(d => d.id === item.drugId);
                     
-                    // **FIX: Convert purchase price to base currency (AFN) before storing.**
-                    const priceInBaseCurrency = item.purchasePrice * (bill.exchangeRate || 1);
+                    const bonusQty = item.bonusQuantity || 0;
+                    const discountPct = item.discountPercentage || 0;
+                    const totalUnits = item.quantity + bonusQty;
+
+                    if (totalUnits <= 0) continue;
+
+                    const costOfGoodsInBillCurrency = (item.quantity * item.purchasePrice) * (1 - discountPct / 100);
+                    const costOfGoodsInBaseCurrency = costOfGoodsInBillCurrency * (bill.exchangeRate || 1);
 
                     if (drug) {
                         let batch = drug.batches.find(b => b.lotNumber === item.lotNumber);
                         if (batch) {
                             addToast(`هشدار: لات ${item.lotNumber} برای محصول ${item.drugName} از قبل موجود بود. قیمت خرید میانگین‌گیری و تعداد اضافه شد.`, 'info');
                             const oldQty = batch.quantity;
-                            const oldPrice = batch.purchasePrice; // Already in AFN
-                            const newQty = item.quantity;
-                            const newPrice = priceInBaseCurrency; // Use converted price
+                            const oldTotalValue = oldQty * batch.purchasePrice; // Already in AFN
                             
-                            const totalQty = oldQty + newQty;
-                            batch.purchasePrice = ((oldQty * oldPrice) + (newQty * newPrice)) / totalQty;
-                            batch.quantity = totalQty;
+                            const newTotalQty = oldQty + totalUnits;
+                            const newTotalValue = oldTotalValue + costOfGoodsInBaseCurrency;
+                            
+                            batch.purchasePrice = newTotalValue / newTotalQty;
+                            batch.quantity = newTotalQty;
                         } else {
+                            const costPerUnitInBaseCurrency = costOfGoodsInBaseCurrency / totalUnits;
                             drug.batches.push({
                                 lotNumber: item.lotNumber,
-                                quantity: item.quantity,
+                                quantity: totalUnits,
                                 expiryDate: item.expiryDate,
                                 productionDate: item.productionDate,
-                                purchasePrice: priceInBaseCurrency, // Use converted price
+                                purchasePrice: costPerUnitInBaseCurrency,
                             });
                         }
                     } else {
@@ -1382,14 +1294,15 @@ const App: React.FC = () => {
                         if (drugInfo) {
                             const baseDrugInfo = JSON.parse(JSON.stringify(drugInfo));
                             delete baseDrugInfo.batches;
+                            const costPerUnitInBaseCurrency = costOfGoodsInBaseCurrency / totalUnits;
                             updatedWarehouse.push({
                                 ...baseDrugInfo,
                                 batches: [{
                                     lotNumber: item.lotNumber,
-                                    quantity: item.quantity,
+                                    quantity: totalUnits,
                                     expiryDate: item.expiryDate,
                                     productionDate: item.productionDate,
-                                    purchasePrice: priceInBaseCurrency, // Use converted price
+                                    purchasePrice: costPerUnitInBaseCurrency,
                                 }]
                             });
                         } else {
