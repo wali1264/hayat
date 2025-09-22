@@ -1183,10 +1183,30 @@ const App: React.FC = () => {
     };
     
     const handleDeletePurchaseBill = (id: number) => {
-        const bill = purchaseBills.find(b => b.id === id);
-        if (!bill) return;
-        // Logic to revert stock from main warehouse can be added here if needed
-        handleSoftDelete('purchaseBill', bill);
+        const billToDelete = purchaseBills.find(b => b.id === id);
+        if (!billToDelete) return;
+
+        // Revert stock changes before soft deleting
+        if (billToDelete.status === 'دریافت شده') {
+            setMainWarehouseDrugs(currentWarehouse => {
+                let updatedWarehouse = JSON.parse(JSON.stringify(currentWarehouse));
+                for (const item of billToDelete.items) {
+                    const drug = updatedWarehouse.find(d => d.id === item.drugId);
+                    if (!drug) continue;
+                    const batch = drug.batches.find(b => b.lotNumber === item.lotNumber);
+                    if (!batch) continue;
+
+                    const totalUnits = item.quantity + (item.bonusQuantity || 0);
+                    if (billToDelete.type === 'purchase') {
+                        batch.quantity -= totalUnits; // Revert purchase: decrease stock
+                    } else { // purchase_return
+                        batch.quantity += totalUnits; // Revert return: increase stock
+                    }
+                }
+                return updatedWarehouse;
+            });
+        }
+        handleSoftDelete('purchaseBill', billToDelete);
     };
 
     const handleDeleteExpense = (id: number) => {
@@ -1210,14 +1230,10 @@ const App: React.FC = () => {
     };
     
     const handleRestoreItem = (item: TrashItem) => {
-        let tempDrugs = JSON.parse(JSON.stringify(drugs));
-        
         if (item.itemType === 'order') {
             const orderToRestore = item.data as Order;
-            // Reverse the logic of handleDeleteOrder:
-            // If it's a sale, deduct stock. If it's a return, add stock.
             const multiplier = orderToRestore.type === 'sale' ? -1 : 1;
-
+            let tempDrugs = JSON.parse(JSON.stringify(drugs));
             for (const orderItem of (orderToRestore.items || [])) {
                 if (!orderItem.batchAllocations) continue;
                 const drugToUpdate = tempDrugs.find(d => d.id === orderItem.drugId);
@@ -1226,24 +1242,64 @@ const App: React.FC = () => {
                         const batchToUpdate = drugToUpdate.batches.find(b => b.lotNumber === allocation.lotNumber);
                         if (batchToUpdate) {
                             batchToUpdate.quantity += (allocation.quantity * multiplier);
-                        } else if (multiplier === 1) { // Only re-create batch if adding stock
-                            drugToUpdate.batches.push({
-                                lotNumber: allocation.lotNumber,
-                                quantity: allocation.quantity,
-                                expiryDate: allocation.expiryDate,
-                                purchasePrice: allocation.purchasePrice,
-                            });
+                        } else if (multiplier === 1) {
+                            drugToUpdate.batches.push({ ...allocation });
                         }
                     }
                 }
             }
-             setDrugs(tempDrugs);
-             setOrders(prev => [...prev, orderToRestore].sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()));
+            setDrugs(tempDrugs);
+            setOrders(prev => [...prev, orderToRestore].sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()));
         } else {
              switch (item.itemType) {
                 case 'customer': setCustomers(prev => [...prev, item.data as Customer].sort((a,b) => b.id - a.id)); break;
                 case 'supplier': setSuppliers(prev => [...prev, item.data as Supplier].sort((a,b) => b.id - a.id)); break;
-                case 'purchaseBill': setPurchaseBills(prev => [...prev, item.data as PurchaseBill].sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())); break;
+                case 'purchaseBill':
+                    const billToRestore = item.data as PurchaseBill;
+                    if (billToRestore.status === 'دریافت شده') {
+                        setMainWarehouseDrugs(currentWarehouse => {
+                            let updatedWarehouse = JSON.parse(JSON.stringify(currentWarehouse));
+                            if (billToRestore.type === 'purchase') {
+                                billToRestore.items.forEach(billItem => {
+                                    let drug = updatedWarehouse.find(d => d.id === billItem.drugId);
+                                    const totalUnits = billItem.quantity + (billItem.bonusQuantity || 0);
+                                    if (totalUnits <= 0) return;
+
+                                    const costOfGoods = (billItem.quantity * billItem.purchasePrice) * (1 - (billItem.discountPercentage || 0) / 100) * (billToRestore.exchangeRate || 1);
+
+                                    if (drug) {
+                                        let batch = drug.batches.find(b => b.lotNumber === billItem.lotNumber);
+                                        if (batch) {
+                                            const oldTotalValue = batch.quantity * batch.purchasePrice;
+                                            batch.quantity += totalUnits;
+                                            batch.purchasePrice = (oldTotalValue + costOfGoods) / batch.quantity;
+                                        } else {
+                                            drug.batches.push({ lotNumber: billItem.lotNumber, quantity: totalUnits, expiryDate: billItem.expiryDate, productionDate: billItem.productionDate, purchasePrice: costOfGoods / totalUnits });
+                                        }
+                                    } else {
+                                        const drugInfo = [...drugs, ...mainWarehouseDrugs].find(d => d.id === billItem.drugId);
+                                        if (drugInfo) {
+                                            const { batches, ...baseDrugInfo } = drugInfo;
+                                            updatedWarehouse.push({ ...baseDrugInfo, batches: [{ lotNumber: billItem.lotNumber, quantity: totalUnits, expiryDate: billItem.expiryDate, productionDate: billItem.productionDate, purchasePrice: costOfGoods / totalUnits }]});
+                                        }
+                                    }
+                                });
+                            } else { // purchase_return
+                                billToRestore.items.forEach(billItem => {
+                                    let drug = updatedWarehouse.find(d => d.id === billItem.drugId);
+                                    if (drug) {
+                                        let batch = drug.batches.find(b => b.lotNumber === billItem.lotNumber);
+                                        if (batch) {
+                                            batch.quantity -= billItem.quantity;
+                                        }
+                                    }
+                                });
+                            }
+                            return updatedWarehouse;
+                        });
+                    }
+                    setPurchaseBills(prev => [...prev, billToRestore].sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()));
+                    break;
                 case 'drug': 
                     setDrugs(prev => [...prev, item.data as Drug]);
                     setMainWarehouseDrugs(prev => [...prev, item.data as Drug]);
@@ -1317,104 +1373,85 @@ const App: React.FC = () => {
     };
 
     const handleSavePurchaseBill = (bill: PurchaseBill) => {
+        const originalBill = purchaseBills.find(b => b.id === bill.id);
+    
+        setMainWarehouseDrugs(currentWarehouse => {
+            let updatedWarehouse = JSON.parse(JSON.stringify(currentWarehouse));
+    
+            // 1. REVERT: If it's an edit of a previously received bill, undo its effect.
+            if (originalBill && originalBill.status === 'دریافت شده') {
+                for (const item of originalBill.items) {
+                    const drug = updatedWarehouse.find(d => d.id === item.drugId);
+                    if (!drug) continue;
+                    const batch = drug.batches.find(b => b.lotNumber === item.lotNumber);
+                    if (!batch) continue;
+    
+                    const totalUnits = item.quantity + (item.bonusQuantity || 0);
+                    
+                    if (originalBill.type === 'purchase') {
+                        batch.quantity -= totalUnits; // Revert purchase: decrease stock
+                    } else { // purchase_return
+                        batch.quantity += totalUnits; // Revert return: increase stock
+                    }
+                }
+            }
+    
+            // 2. APPLY: Apply the effect of the new bill if it's marked as received.
+            if (bill.status === 'دریافت شده') {
+                 if (bill.type === 'purchase') {
+                    for (const item of bill.items) {
+                        let drug = updatedWarehouse.find(d => d.id === item.drugId);
+                        const totalUnits = item.quantity + (item.bonusQuantity || 0);
+                        if (totalUnits <= 0) continue;
+    
+                        const costOfGoodsInBillCurrency = (item.quantity * item.purchasePrice) * (1 - (item.discountPercentage || 0) / 100);
+                        const costOfGoodsInBaseCurrency = costOfGoodsInBillCurrency * (bill.exchangeRate || 1);
+    
+                        if (drug) {
+                            let batch = drug.batches.find(b => b.lotNumber === item.lotNumber);
+                            if (batch) {
+                                const oldQty = batch.quantity;
+                                const oldTotalValue = oldQty * batch.purchasePrice;
+                                const newTotalQty = oldQty + totalUnits;
+                                const newTotalValue = oldTotalValue + costOfGoodsInBaseCurrency;
+                                batch.purchasePrice = newTotalQty > 0 ? newTotalValue / newTotalQty : 0;
+                                batch.quantity = newTotalQty;
+                            } else {
+                                const costPerUnitInBaseCurrency = costOfGoodsInBaseCurrency / totalUnits;
+                                drug.batches.push({ lotNumber: item.lotNumber, quantity: totalUnits, expiryDate: item.expiryDate, productionDate: item.productionDate, purchasePrice: costPerUnitInBaseCurrency });
+                            }
+                        } else {
+                            const drugInfo = [...drugs, ...mainWarehouseDrugs].find(d => d.id === item.drugId);
+                            if (drugInfo) {
+                                const { batches, ...baseDrugInfo } = drugInfo;
+                                const costPerUnitInBaseCurrency = costOfGoodsInBaseCurrency / totalUnits;
+                                updatedWarehouse.push({ ...baseDrugInfo, batches: [{ lotNumber: item.lotNumber, quantity: totalUnits, expiryDate: item.expiryDate, productionDate: item.productionDate, purchasePrice: costPerUnitInBaseCurrency }]});
+                            }
+                        }
+                    }
+                 } else { // purchase_return
+                    for (const item of bill.items) {
+                        const drug = updatedWarehouse.find(d => d.id === item.drugId);
+                        if (!drug) continue;
+                        const batch = drug.batches.find(b => b.lotNumber === item.lotNumber);
+                        if (batch) {
+                            batch.quantity -= item.quantity;
+                        }
+                    }
+                 }
+            }
+    
+            return updatedWarehouse;
+        });
+    
         setPurchaseBills(prev => {
             const exists = prev.some(b => b.id === bill.id);
             if (exists) {
-                return prev.map(b => b.id === bill.id ? bill : b);
+                return prev.map(b => (b.id === bill.id ? bill : b));
             }
             return [bill, ...prev];
         });
-    
-        if (bill.status === 'دریافت شده' && bill.type === 'purchase') {
-            setMainWarehouseDrugs(currentWarehouse => {
-                const updatedWarehouse = JSON.parse(JSON.stringify(currentWarehouse)); 
-    
-                for (const item of bill.items) {
-                    let drug = updatedWarehouse.find(d => d.id === item.drugId);
-                    
-                    const bonusQty = item.bonusQuantity || 0;
-                    const discountPct = item.discountPercentage || 0;
-                    const totalUnits = item.quantity + bonusQty;
-
-                    if (totalUnits <= 0) continue;
-
-                    const costOfGoodsInBillCurrency = (item.quantity * item.purchasePrice) * (1 - discountPct / 100);
-                    const costOfGoodsInBaseCurrency = costOfGoodsInBillCurrency * (bill.exchangeRate || 1);
-
-                    if (drug) {
-                        let batch = drug.batches.find(b => b.lotNumber === item.lotNumber);
-                        if (batch) {
-                            addToast(`هشدار: لات ${item.lotNumber} برای محصول ${item.drugName} از قبل موجود بود. قیمت خرید میانگین‌گیری و تعداد اضافه شد.`, 'info');
-                            const oldQty = batch.quantity;
-                            const oldTotalValue = oldQty * batch.purchasePrice; // Already in AFN
-                            
-                            const newTotalQty = oldQty + totalUnits;
-                            const newTotalValue = oldTotalValue + costOfGoodsInBaseCurrency;
-                            
-                            batch.purchasePrice = newTotalValue / newTotalQty;
-                            batch.quantity = newTotalQty;
-                        } else {
-                            const costPerUnitInBaseCurrency = costOfGoodsInBaseCurrency / totalUnits;
-                            drug.batches.push({
-                                lotNumber: item.lotNumber,
-                                quantity: totalUnits,
-                                expiryDate: item.expiryDate,
-                                productionDate: item.productionDate,
-                                purchasePrice: costPerUnitInBaseCurrency,
-                            });
-                        }
-                    } else {
-                        const drugInfo = [...drugs, ...mainWarehouseDrugs].find(d => d.id === item.drugId);
-                        if (drugInfo) {
-                            const baseDrugInfo = JSON.parse(JSON.stringify(drugInfo));
-                            delete baseDrugInfo.batches;
-                            const costPerUnitInBaseCurrency = costOfGoodsInBaseCurrency / totalUnits;
-                            updatedWarehouse.push({
-                                ...baseDrugInfo,
-                                batches: [{
-                                    lotNumber: item.lotNumber,
-                                    quantity: totalUnits,
-                                    expiryDate: item.expiryDate,
-                                    productionDate: item.productionDate,
-                                    purchasePrice: costPerUnitInBaseCurrency,
-                                }]
-                            });
-                        } else {
-                             addToast(`خطای سیستمی: محصول با کد ${item.drugId} یافت نشد.`, 'error');
-                        }
-                    }
-                }
-                return updatedWarehouse;
-            });
-            addToast('موجودی انبار اصلی با موفقیت به‌روزرسانی شد.', 'success');
-        } else if (bill.type === 'purchase_return' && bill.status === 'دریافت شده') {
-            // **FIX**: Deduct stock for purchase returns
-            let stockSufficient = true;
-            const tempMainWarehouse = JSON.parse(JSON.stringify(mainWarehouseDrugs));
-
-            for (const item of bill.items) {
-                const drug = tempMainWarehouse.find(d => d.id === item.drugId);
-                if (!drug) {
-                    addToast(`محصول ${item.drugName} در انبار اصلی یافت نشد.`, 'error');
-                    stockSufficient = false;
-                    break;
-                }
-                const batch = drug.batches.find(b => b.lotNumber === item.lotNumber);
-                if (!batch || batch.quantity < item.quantity) {
-                    addToast(`موجودی لات ${item.lotNumber} برای محصول ${item.drugName} در انبار اصلی (${batch?.quantity || 0}) برای مرجوعی (${item.quantity}) کافی نیست.`, 'error');
-                    stockSufficient = false;
-                    break;
-                }
-                batch.quantity -= item.quantity;
-            }
-
-            if (stockSufficient) {
-                setMainWarehouseDrugs(tempMainWarehouse);
-                addToast('موجودی انبار اصلی برای مستردی خرید با موفقیت به‌روزرسانی شد.', 'success');
-            } else {
-                addToast('به دلیل خطای موجودی، فاکتور ذخیره شد اما موجودی انبار تغییر نکرد.', 'error');
-            }
-        }
+        addToast(`فاکتور ${bill.billNumber} با موفقیت ذخیره شد.`, 'success');
     };
 
     const handleSaveRequisition = (requisition: Omit<StockRequisition, 'id' | 'status' | 'requestedBy' | 'date'>) => {
@@ -1803,7 +1840,7 @@ const App: React.FC = () => {
                 onBackupLocal={handleBackupLocal} 
                 onRestoreLocal={handleRestoreLocal} 
                 onBackupOnline={handleBackupOnline} 
-                onRestoreOnline={handleRestoreOnline}
+                onRestoreOnline={handleRestoreOnline} 
                 onPurgeData={()=>{}}
                 documentSettings={documentSettings} onSetDocumentSettings={setDocumentSettings}
                 rolePermissions={rolePermissions} onSetRolePermissions={setRolePermissions}
