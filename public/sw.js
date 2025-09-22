@@ -84,7 +84,7 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Fetch event: Implement robust offline handling.
+// Fetch event: Implement a robust, multi-strategy offline handling approach.
 self.addEventListener('fetch', (event) => {
   // Ignore non-GET requests and chrome extension requests.
   if (event.request.method !== 'GET' || event.request.url.startsWith('chrome-extension://')) {
@@ -93,53 +93,51 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // Strategy: Network-first, then cache, with special handling for API calls.
+  // Strategy 1: API calls are network-only, with an immediate offline fallback.
+  if (url.hostname.includes('supabase.co')) {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        console.warn(`[SW] Supabase API call failed: ${event.request.url}. Returning synthetic error.`);
+        return new Response(JSON.stringify({ message: "Network error: You are offline." }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      })
+    );
+    return;
+  }
+
+  // Strategy 2: For navigation requests (loading the app itself), use network-first to get the latest app shell.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        console.log('[SW] Navigate request failed, serving index from cache.');
+        return caches.match('/'); // Fallback to the root, which should be the cached index.html
+      })
+    );
+    return;
+  }
+
+  // Strategy 3: For all other assets (JS, CSS, fonts, etc.), use a cache-first strategy for speed and offline reliability.
   event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        // If the network request is successful, cache the response for non-API calls and return it.
-        if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque') && !url.hostname.includes('supabase.co')) {
+    caches.match(event.request).then((cachedResponse) => {
+      // If we have a response in the cache, serve it immediately.
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      // If not in the cache, fetch from the network.
+      return fetch(event.request).then((networkResponse) => {
+        // A valid response from the network.
+        // Cache it for next time and return it to the page.
+        if (networkResponse && networkResponse.status === 200) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseToCache);
           });
         }
         return networkResponse;
-      })
-      .catch(() => {
-        // Network request failed (offline). Now decide what to do.
-        
-        // CRITICAL: If it was a Supabase API call, we MUST NOT serve from cache.
-        // Instead, we return a synthetic error response that the app's logic can handle.
-        // This prevents the service worker from crashing.
-        if (url.hostname.includes('supabase.co')) {
-          console.warn(`[SW] Supabase API call failed for: ${event.request.url}. Returning synthetic network error.`);
-          return new Response(JSON.stringify({ message: "Network error: You are offline." }), {
-            status: 503, // Service Unavailable
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-
-        // For all other requests, try to serve from the cache.
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-          
-          // If the request is not in the cache, it's truly unavailable offline.
-          console.warn(`[SW] Fetch failed for: ${event.request.url}. This resource is not available in the cache.`);
-          
-          // For navigation requests, serve the base index.html page as a fallback.
-          if (event.request.mode === 'navigate') {
-            return caches.match('/');
-          }
-          
-          // For other assets, return a synthetic error response.
-          return new Response('Network error: Resource not available offline.', {
-            status: 408,
-            headers: { 'Content-Type': 'text/plain' },
-          });
-        });
-      })
+      });
+    })
   );
 });
