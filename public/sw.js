@@ -1,33 +1,14 @@
 // Incrementing cache name for updates to trigger the 'activate' event.
-const CACHE_NAME = 'hayat-cache-v14';
+const CACHE_NAME = 'hayat-cache-v15';
 
 // List of essential files for the app shell to work offline.
+// This list is now corrected to only include static assets and third-party libraries.
+// The application's own built assets (like index-....js) will be cached at runtime.
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json',
   '/icon.png',
-
-  // Local TSX files
-  '/index.tsx',
-  '/App.tsx',
-  '/Inventory.tsx',
-  '/Sales.tsx',
-  '/Customers.tsx',
-  '/Accounting.tsx',
-  '/Reports.tsx',
-  '/Settings.tsx',
-  '/Fulfillment.tsx',
-  '/Dashboard.tsx',
-  '/CustomerAccounts.tsx',
-  '/Suppliers.tsx',
-  '/Purchasing.tsx',
-  '/SupplierAccounts.tsx',
-  '/RecycleBin.tsx',
-  '/Checkneh.tsx',
-  '/Alerts.tsx',
-  '/MainWarehouse.tsx',
-  '/Login.tsx',
 
   // Third-party scripts and styles from index.html
   'https://cdn.tailwindcss.com',
