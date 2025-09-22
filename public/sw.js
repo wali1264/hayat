@@ -1,5 +1,5 @@
 // Incrementing cache name for updates to trigger the 'activate' event.
-const CACHE_NAME = 'hayat-cache-v13';
+const CACHE_NAME = 'hayat-cache-v14';
 
 // List of essential files for the app shell to work offline.
 const urlsToCache = [
@@ -27,6 +27,7 @@ const urlsToCache = [
   '/Checkneh.tsx',
   '/Alerts.tsx',
   '/MainWarehouse.tsx',
+  '/Login.tsx',
 
   // Third-party scripts and styles from index.html
   'https://cdn.tailwindcss.com',
@@ -37,9 +38,9 @@ const urlsToCache = [
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   
   // Import map dependencies (matching the import map in index.html)
-  'https://aistudiocdn.com/react@^19.1.1',
-  'https://aistudiocdn.com/react-dom@^19.1.1/client',
-  'https://aistudiocdn.com/@google/genai@^1.17.0',
+  'https://aistudiocdn.com/react@19.1.1',
+  'https://aistudiocdn.com/react-dom@19.1.1/client',
+  'https://aistudiocdn.com/@google/genai@1.17.0',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
 ];
 

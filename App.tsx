@@ -1094,25 +1094,26 @@ const App: React.FC = () => {
     const handleDeleteOrder = (id: number) => {
         const order = orders.find(o => o.id === id);
         if (!order) return;
-        
+
         let tempDrugs = JSON.parse(JSON.stringify(drugs));
-        if (order.items) {
-            for (const item of order.items) {
-                if (!item.batchAllocations) continue;
-                const drugToUpdate = tempDrugs.find(d => d.id === item.drugId);
-                if (drugToUpdate) {
-                    for (const allocation of item.batchAllocations) {
-                        const batchToUpdate = drugToUpdate.batches.find(b => b.lotNumber === allocation.lotNumber);
-                        if (batchToUpdate) {
-                            batchToUpdate.quantity += allocation.quantity;
-                        } else {
-                            drugToUpdate.batches.push({
-                                lotNumber: allocation.lotNumber,
-                                quantity: allocation.quantity,
-                                expiryDate: allocation.expiryDate,
-                                purchasePrice: allocation.purchasePrice,
-                            });
-                        }
+        // If it's a sale, add stock back. If it's a return, deduct stock.
+        const multiplier = order.type === 'sale' ? 1 : -1;
+
+        for (const item of (order.items || [])) {
+            if (!item.batchAllocations) continue;
+            const drugToUpdate = tempDrugs.find(d => d.id === item.drugId);
+            if (drugToUpdate) {
+                for (const allocation of item.batchAllocations) {
+                    const batchToUpdate = drugToUpdate.batches.find(b => b.lotNumber === allocation.lotNumber);
+                    if (batchToUpdate) {
+                        batchToUpdate.quantity += (allocation.quantity * multiplier);
+                    } else if (multiplier === 1) { // Only re-create batch if adding stock
+                        drugToUpdate.batches.push({
+                            lotNumber: allocation.lotNumber,
+                            quantity: allocation.quantity,
+                            expiryDate: allocation.expiryDate,
+                            purchasePrice: allocation.purchasePrice,
+                        });
                     }
                 }
             }
@@ -1167,18 +1168,49 @@ const App: React.FC = () => {
     };
     
     const handleRestoreItem = (item: TrashItem) => {
-        switch (item.itemType) {
-            case 'customer': setCustomers(prev => [...prev, item.data as Customer].sort((a,b) => b.id - a.id)); break;
-            case 'supplier': setSuppliers(prev => [...prev, item.data as Supplier].sort((a,b) => b.id - a.id)); break;
-            case 'order': setOrders(prev => [...prev, item.data as Order].sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())); break;
-            case 'purchaseBill': setPurchaseBills(prev => [...prev, item.data as PurchaseBill].sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())); break;
-            case 'drug': 
-                setDrugs(prev => [...prev, item.data as Drug]);
-                setMainWarehouseDrugs(prev => [...prev, item.data as Drug]);
-                break;
-            case 'expense': setExpenses(prev => [...prev, item.data as Expense]); break;
-            case 'user': setUsers(prev => [...prev, item.data as User]); break;
+        let tempDrugs = JSON.parse(JSON.stringify(drugs));
+        
+        if (item.itemType === 'order') {
+            const orderToRestore = item.data as Order;
+            // Reverse the logic of handleDeleteOrder:
+            // If it's a sale, deduct stock. If it's a return, add stock.
+            const multiplier = orderToRestore.type === 'sale' ? -1 : 1;
+
+            for (const orderItem of (orderToRestore.items || [])) {
+                if (!orderItem.batchAllocations) continue;
+                const drugToUpdate = tempDrugs.find(d => d.id === orderItem.drugId);
+                if (drugToUpdate) {
+                    for (const allocation of orderItem.batchAllocations) {
+                        const batchToUpdate = drugToUpdate.batches.find(b => b.lotNumber === allocation.lotNumber);
+                        if (batchToUpdate) {
+                            batchToUpdate.quantity += (allocation.quantity * multiplier);
+                        } else if (multiplier === 1) { // Only re-create batch if adding stock
+                            drugToUpdate.batches.push({
+                                lotNumber: allocation.lotNumber,
+                                quantity: allocation.quantity,
+                                expiryDate: allocation.expiryDate,
+                                purchasePrice: allocation.purchasePrice,
+                            });
+                        }
+                    }
+                }
+            }
+             setDrugs(tempDrugs);
+             setOrders(prev => [...prev, orderToRestore].sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()));
+        } else {
+             switch (item.itemType) {
+                case 'customer': setCustomers(prev => [...prev, item.data as Customer].sort((a,b) => b.id - a.id)); break;
+                case 'supplier': setSuppliers(prev => [...prev, item.data as Supplier].sort((a,b) => b.id - a.id)); break;
+                case 'purchaseBill': setPurchaseBills(prev => [...prev, item.data as PurchaseBill].sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())); break;
+                case 'drug': 
+                    setDrugs(prev => [...prev, item.data as Drug]);
+                    setMainWarehouseDrugs(prev => [...prev, item.data as Drug]);
+                    break;
+                case 'expense': setExpenses(prev => [...prev, item.data as Expense]); break;
+                case 'user': setUsers(prev => [...prev, item.data as User]); break;
+            }
         }
+
         setTrash(prev => prev.filter(t => t.id !== item.id));
         addToast('آیتم با موفقیت بازیابی شد.', 'success');
     };
@@ -1417,6 +1449,16 @@ const App: React.FC = () => {
     };
 
     const handleSaveOrder = (order: Order) => {
+        // Pre-flight check for sales returns
+        if (order.type === 'sale_return') {
+            for (const item of order.items) {
+                if (!item.batchAllocations || item.batchAllocations.length === 0) {
+                    addToast(`خطای بحرانی: اطلاعات بچ برای کالای مرجوعی '${item.drugName}' یافت نشد. عملیات لغو شد.`, 'error');
+                    return; // Abort save
+                }
+            }
+        }
+    
         let tempDrugs = JSON.parse(JSON.stringify(drugs));
         const isEditMode = orders.some(o => o.id === order.id);
 
@@ -1432,13 +1474,11 @@ const App: React.FC = () => {
                             if (batchToUpdate) {
                                 batchToUpdate.quantity += allocation.quantity;
                             } else {
-                                // **FIX**: Re-create the batch if it was fully depleted.
                                 drugToUpdate.batches.push({
                                     lotNumber: allocation.lotNumber,
                                     quantity: allocation.quantity,
                                     expiryDate: allocation.expiryDate,
                                     purchasePrice: allocation.purchasePrice,
-                                    // productionDate might be missing if not stored, which is acceptable
                                 });
                             }
                         }
@@ -1499,22 +1539,18 @@ const App: React.FC = () => {
             }
             setDrugs(tempDrugs);
         } else if (order.type === 'sale_return') {
-            // **CRITICAL FIX**: Add stock back to inventory for sale returns.
             for (const item of order.items) {
                 const drugToUpdate = tempDrugs.find(d => d.id === item.drugId);
                 if (!drugToUpdate) {
                     addToast(`خطای بازگشت: محصول ${item.drugName} در انبار یافت نشد.`, 'error');
                     continue; 
                 }
-                // When returning, we assume it goes back to the same lot it came from.
-                // The original batchAllocations should be preserved from the original sale order.
                 if (item.batchAllocations) {
                     for (const allocation of item.batchAllocations) {
                          const batchToUpdate = drugToUpdate.batches.find(b => b.lotNumber === allocation.lotNumber);
                          if (batchToUpdate) {
                             batchToUpdate.quantity += allocation.quantity;
                          } else {
-                            // Re-create the batch if it doesn't exist (e.g., was fully sold and now is being returned)
                              drugToUpdate.batches.push({
                                 lotNumber: allocation.lotNumber,
                                 quantity: allocation.quantity,
@@ -1522,12 +1558,6 @@ const App: React.FC = () => {
                                 purchasePrice: allocation.purchasePrice,
                              });
                          }
-                    }
-                } else {
-                    // Fallback if batch info is missing (less accurate) - add to first available batch
-                    addToast(`هشدار: اطلاعات بچ برای ${item.drugName} یافت نشد. موجودی به اولین بچ اضافه شد.`, 'info');
-                    if(drugToUpdate.batches.length > 0) {
-                        drugToUpdate.batches[0].quantity += item.quantity;
                     }
                 }
             }

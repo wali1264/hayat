@@ -14,6 +14,8 @@ const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0
 const CloseIcon = () => <Icon path="M6 18L18 6M6 6l12 12" className="w-5 h-5 text-gray-500"/>;
 const UploadIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />;
 const DownloadIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />;
+const EditIcon = () => <Icon path="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" className="w-5 h-5" />;
+
 
 //=========== HELPERS ===========//
 const formatGregorianForDisplay = (dateStr: string): string => {
@@ -168,17 +170,30 @@ const ChecknehInvoicePrintModal = ({ isOpen, onClose, invoice, companyInfo, docu
 // --- New Invoice Form ---
 type ChecknehInvoiceFormProps = {
     customers: Customer[];
-    onSave: (invoice: Omit<ChecknehInvoice, 'id' | 'invoiceNumber' | 'totalAmount'>) => ChecknehInvoice;
-    setTab: (tab: Tab) => void;
+    onSave: (invoiceData: Omit<ChecknehInvoice, 'id' | 'invoiceNumber' | 'totalAmount'>, existingId?: number) => void;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
-    invoices: ChecknehInvoice[]; // Add invoices to calculate daily count for invoice number
+    initialData: ChecknehInvoice | null;
+    onCancel: () => void;
 };
 
-const ChecknehInvoiceForm = ({ customers, onSave, setTab, addToast, invoices }: ChecknehInvoiceFormProps) => {
+
+const ChecknehInvoiceForm = ({ customers, onSave, addToast, initialData, onCancel }: ChecknehInvoiceFormProps) => {
+    const isEditMode = initialData !== null;
     const defaultInfo = { customerName: '', supplierName: '', invoiceDate: new Date().toISOString().split('T')[0] };
     const [info, setInfo] = useState(defaultInfo);
     const [items, setItems] = useState<ChecknehItem[]>([]);
     const [currentItem, setCurrentItem] = useState({ drugName: '', quantity: '1', purchasePrice: '', sellingPrice: '', discountPercentage: '0', expiryDate: '' });
+
+    useEffect(() => {
+        if (initialData) {
+            setInfo({ customerName: initialData.customerName, supplierName: initialData.supplierName, invoiceDate: initialData.invoiceDate });
+            setItems(initialData.items);
+        } else {
+            setInfo(defaultInfo);
+            setItems([]);
+        }
+    }, [initialData]);
+
 
     const handleInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setInfo(prev => ({ ...prev, [e.target.name]: e.target.value }));
     const handleItemChange = (e: React.ChangeEvent<HTMLInputElement>) => setCurrentItem(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -200,11 +215,7 @@ const ChecknehInvoiceForm = ({ customers, onSave, setTab, addToast, invoices }: 
             addToast("لطفا مشتری، تامین‌کننده و حداقل یک قلم دارو را مشخص کنید.", 'error');
             return;
         }
-        onSave({ ...info, items });
-        setInfo(defaultInfo);
-        setItems([]);
-        addToast("فاکتور با موفقیت ذخیره شد.", 'success');
-        setTab('invoice_list');
+        onSave({ ...info, items }, isEditMode ? initialData.id : undefined);
     };
 
     const totalAmount = useMemo(() => {
@@ -216,7 +227,7 @@ const ChecknehInvoiceForm = ({ customers, onSave, setTab, addToast, invoices }: 
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-lg space-y-6">
-            <h3 className="text-xl font-bold text-gray-800">ثبت فاکتور جدید در بخش چکنه</h3>
+            <h3 className="text-xl font-bold text-gray-800">{isEditMode ? `ویرایش فاکتور ${initialData.invoiceNumber}` : 'ثبت فاکتور جدید در بخش چکنه'}</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <label className="block text-sm font-bold mb-1">مشتری (ضروری)</label>
@@ -262,7 +273,12 @@ const ChecknehInvoiceForm = ({ customers, onSave, setTab, addToast, invoices }: 
 
             <div className="flex justify-between items-center pt-4 border-t">
                 <div className="text-xl font-bold">مبلغ نهایی: <span className="text-teal-600">{totalAmount.toLocaleString()}</span> افغانی</div>
-                <button onClick={handleSaveInvoice} className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 shadow-md">ذخیره و ثبت نهایی فاکتور</button>
+                <div className="flex gap-4">
+                    {isEditMode && <button onClick={onCancel} className="px-6 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">انصراف</button>}
+                    <button onClick={handleSaveInvoice} className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 shadow-md">
+                        {isEditMode ? 'ذخیره تغییرات' : 'ذخیره و ثبت نهایی فاکتور'}
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -416,29 +432,47 @@ interface ChecknehProps {
 }
 
 const Checkneh: React.FC<ChecknehProps> = ({ customers, companyInfo, documentSettings, addToast, showConfirmation, invoices, setInvoices }) => {
-    const [activeTab, setActiveTab] = useState<Tab>('new_invoice');
+    const [activeTab, setActiveTab] = useState<Tab>('invoice_list');
     const [invoiceToPrint, setInvoiceToPrint] = useState<ChecknehInvoice | null>(null);
+    const [editingInvoice, setEditingInvoice] = useState<ChecknehInvoice | null>(null);
 
-    const handleSaveInvoice = (newInvoiceData: Omit<ChecknehInvoice, 'id' | 'invoiceNumber' | 'totalAmount'>): ChecknehInvoice => {
-        const totalAmount = newInvoiceData.items.reduce((sum, item) => {
+
+    const handleSaveOrUpdateInvoice = (invoiceData: Omit<ChecknehInvoice, 'id' | 'invoiceNumber' | 'totalAmount'>, existingId?: number) => {
+        const totalAmount = invoiceData.items.reduce((sum, item) => {
             const finalPrice = item.sellingPrice * (1 - item.discountPercentage / 100);
             return sum + (finalPrice * item.quantity);
         }, 0);
 
-        const date = new Date();
-        const year = date.getFullYear().toString().slice(-2);
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const dailyCount = invoices.filter(inv => inv.invoiceDate === new Date().toISOString().split('T')[0]).length + 1;
-        const invoiceNumber = `CHK-${year}${month}-${dailyCount.toString().padStart(3, '0')}`;
-        
-        const finalInvoice: ChecknehInvoice = {
-            ...newInvoiceData,
-            id: Date.now(),
-            totalAmount,
-            invoiceNumber
-        };
-        setInvoices(prev => [finalInvoice, ...prev].sort((a,b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()));
-        return finalInvoice;
+        if (existingId) {
+            // Update logic
+            const updatedInvoice: ChecknehInvoice = {
+                ...invoiceData,
+                id: existingId,
+                invoiceNumber: invoices.find(inv => inv.id === existingId)!.invoiceNumber, // Preserve original invoice number
+                totalAmount,
+            };
+            setInvoices(prev => prev.map(inv => inv.id === existingId ? updatedInvoice : inv));
+            addToast("فاکتور با موفقیت ویرایش شد.", 'success');
+        } else {
+            // Create logic
+            const invoiceDateObj = new Date(invoiceData.invoiceDate);
+            const year = invoiceDateObj.getFullYear().toString().slice(-2);
+            const month = (invoiceDateObj.getMonth() + 1).toString().padStart(2, '0');
+            const day = invoiceDateObj.getDate().toString().padStart(2, '0');
+            const dailyCount = invoices.filter(inv => inv.invoiceDate === invoiceData.invoiceDate).length + 1;
+            const invoiceNumber = `CHK-${year}${month}${day}-${dailyCount.toString().padStart(2, '0')}`;
+            
+            const finalInvoice: ChecknehInvoice = {
+                ...invoiceData,
+                id: Date.now(),
+                totalAmount,
+                invoiceNumber
+            };
+            setInvoices(prev => [finalInvoice, ...prev].sort((a,b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()));
+            addToast("فاکتور با موفقیت ذخیره شد.", 'success');
+        }
+        setEditingInvoice(null);
+        setActiveTab('invoice_list');
     };
     
     const handleDeleteInvoice = (id: number) => {
@@ -452,8 +486,18 @@ const Checkneh: React.FC<ChecknehProps> = ({ customers, companyInfo, documentSet
         );
     };
     
+    const handleEditInvoice = (invoice: ChecknehInvoice) => {
+        setEditingInvoice(invoice);
+        setActiveTab('new_invoice');
+    };
+
+    const handleCancelEdit = () => {
+        setEditingInvoice(null);
+        setActiveTab('invoice_list');
+    };
+
     const TabButton = ({ tabId, children }: { tabId: Tab, children: React.ReactNode }) => (
-        <button onClick={() => setActiveTab(tabId)} className={`px-4 py-2 font-semibold rounded-lg transition-colors ${activeTab === tabId ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+        <button onClick={() => { setActiveTab(tabId); setEditingInvoice(null); }} className={`px-4 py-2 font-semibold rounded-lg transition-colors ${activeTab === tabId ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
             {children}
         </button>
     );
@@ -474,7 +518,7 @@ const Checkneh: React.FC<ChecknehProps> = ({ customers, companyInfo, documentSet
             </div>
 
             <div>
-                {activeTab === 'new_invoice' && <ChecknehInvoiceForm customers={customers} onSave={handleSaveInvoice} setTab={setActiveTab} addToast={addToast} invoices={invoices} />}
+                {activeTab === 'new_invoice' && <ChecknehInvoiceForm customers={customers} onSave={handleSaveOrUpdateInvoice} addToast={addToast} initialData={editingInvoice} onCancel={handleCancelEdit} />}
                 {activeTab === 'invoice_list' && (
                      <div className="bg-white p-6 rounded-xl shadow-lg">
                          <h3 className="text-xl font-bold text-gray-800 mb-4">لیست فاکتورهای چکنه</h3>
@@ -494,6 +538,7 @@ const Checkneh: React.FC<ChecknehProps> = ({ customers, companyInfo, documentSet
                                     <td className="p-2">{inv.supplierName}</td>
                                     <td className="p-2 font-semibold">{inv.totalAmount.toLocaleString()}</td>
                                     <td className="p-2 flex gap-2">
+                                        <button onClick={() => handleEditInvoice(inv)} className="text-blue-600 p-1 hover:text-blue-800" title="ویرایش فاکتور"><EditIcon /></button>
                                         <button onClick={() => setInvoiceToPrint(inv)} className="text-blue-600 p-1 hover:text-blue-800" title="چاپ فاکتور"><PrintIcon /></button>
                                         <button onClick={() => handleDeleteInvoice(inv.id)} className="text-red-600 p-1 hover:text-red-800" title="حذف فاکتور"><TrashIcon className="w-5 h-5"/></button>
                                     </td>

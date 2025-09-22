@@ -28,10 +28,11 @@ const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0
 const ExcelIcon = () => <Icon path="M4 6h16v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 13h1m3 0h1" className="w-5 h-5"/>;
 const TraceIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 4H4v6M14 20h6v-6" />;
 const BuilderIcon = () => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0 3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />;
+const ReturnReportIcon = () => <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z M9 15l-3-3m0 0l3-3m-3 3h6" />;
 
 
 //=========== TYPES ===========//
-type ReportTab = 'report_builder' | 'profitability' | 'sales' | 'purchases' | 'inventory' | 'bonuses' | 'wasted_stock' | 'batch_traceability';
+type ReportTab = 'report_builder' | 'profitability' | 'sales' | 'purchases' | 'inventory' | 'bonuses' | 'wasted_stock' | 'batch_traceability' | 'sales_returns';
 type GeneratedReport = {
     title: string;
     headers: string[];
@@ -347,6 +348,56 @@ const WastedStockView = ({ filteredWastedStock }: { filteredWastedStock: Invento
                 rows={filteredWastedStock.map(w => [ new Date(w.date).toLocaleDateString('fa-IR'), w.drugName, w.quantity, w.reason, w.adjustedBy, w.totalLossValue ])}
                 isNumeric={[false, false, true, false, false, true]}
             />
+        </div>
+    );
+};
+
+const SalesReturnView = ({ filteredSales }: { filteredSales: Order[] }) => {
+    const returnData = useMemo(() => {
+        const returnOrders = filteredSales.filter(o => o.type === 'sale_return');
+        let totalReturnValue = 0;
+        let totalProfitLoss = 0;
+        
+        const tableRows = returnOrders.map(order => {
+            const itemsRevenue = Math.abs(order.items.reduce((sum, item) => {
+                 const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
+                    ? item.originalPrice
+                    : item.finalPrice;
+                return sum + (item.quantity * pricePerUnit);
+            }, 0));
+             const cogs = order.items.reduce((sum, item) => sum + (item.batchAllocations || []).reduce((cogsSum, alloc) => cogsSum + (alloc.quantity * alloc.purchasePrice), 0), 0);
+             const profitLoss = itemsRevenue - cogs;
+             
+             totalReturnValue += Math.abs(order.totalAmount);
+             totalProfitLoss += profitLoss;
+
+             return [
+                 new Date(order.orderDate).toLocaleDateString('fa-IR'),
+                 order.orderNumber,
+                 order.customerName,
+                 Math.abs(order.totalAmount),
+                 -profitLoss // Show loss as a positive number representing the loss
+             ];
+        });
+
+        return { totalReturnValue, totalProfitLoss, tableRows };
+    }, [filteredSales]);
+
+    return (
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                 <KPICard title="تعداد کل فاکتورهای مستردی" value={`${returnData.tableRows.length} فاکتور`} icon={<ReturnReportIcon />} colorClass="bg-orange-100 text-orange-600" />
+                <KPICard title="ارزش کل کالای مسترد شده" value={`${returnData.totalReturnValue.toLocaleString()} افغانی`} icon={<SalesIcon />} colorClass="bg-red-100 text-red-600" />
+                <KPICard title="مجموع زیان سود از مستردی‌ها" value={`${(returnData.totalProfitLoss * -1).toLocaleString()} افغانی`} icon={<ProfitIcon />} colorClass="bg-yellow-100 text-yellow-600" />
+            </div>
+             <div className="bg-white p-4 rounded-xl shadow-md">
+                <h3 className="font-bold mb-2">گزارش تفصیلی مستردی‌ها</h3>
+                <DataTable
+                    headers={['تاریخ', 'شماره فاکتور', 'نام مشتری', 'مبلغ کل مستردی', 'زیان سود']}
+                    rows={returnData.tableRows}
+                    isNumeric={[false, false, false, true, true]}
+                />
+            </div>
         </div>
     );
 };
@@ -1088,6 +1139,32 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                     rows: summary.sort((a,b) => b.totalAmount - a.totalAmount).map(s => [s.name, s.totalAmount, s.amountPaid, s.balance]),
                 };
             }
+            case 'sales_returns': {
+                const returnOrders = sales.filter(o => o.type === 'sale_return');
+                const rows = returnOrders.map(order => {
+                    const itemsRevenue = Math.abs(order.items.reduce((sum, item) => {
+                        const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
+                            ? item.originalPrice
+                            : item.finalPrice;
+                        return sum + (item.quantity * pricePerUnit);
+                    }, 0));
+                    const cogs = order.items.reduce((sum, item) => sum + (item.batchAllocations || []).reduce((cogsSum, alloc) => cogsSum + (alloc.quantity * alloc.purchasePrice), 0), 0);
+                    const profitLoss = itemsRevenue - cogs;
+                    return [
+                        new Date(order.orderDate).toLocaleDateString('fa-IR'),
+                        order.orderNumber,
+                        order.customerName,
+                        Math.abs(order.totalAmount),
+                        -profitLoss // Show loss as a positive number
+                    ];
+                });
+                return {
+                    title: 'گزارش مستردی‌های فروش',
+                    dateRange,
+                    headers: ['تاریخ', 'شماره فاکتور', 'مشتری', 'مبلغ کل مستردی', 'زیان سود'],
+                    rows,
+                };
+            }
             default:
                 return { title: `گزارش ${activeTab}`, dateRange, headers: [], rows: [] };
         }
@@ -1259,6 +1336,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 <ReportTabButton tabId="inventory" icon={<InventoryIcon />}>گزارش انبارها</ReportTabButton>
                 <ReportTabButton tabId="sales" icon={<SalesIcon />}>فروش</ReportTabButton>
                 <ReportTabButton tabId="purchases" icon={<PurchaseIcon />}>خرید</ReportTabButton>
+                <ReportTabButton tabId="sales_returns" icon={<ReturnReportIcon />}>مستردی‌ها</ReportTabButton>
                 <ReportTabButton tabId="bonuses" icon={<GiftIcon />}>بونس‌ها</ReportTabButton>
                 <ReportTabButton tabId="wasted_stock" icon={<WasteIcon />}>ضایعات</ReportTabButton>
             </div>
@@ -1268,6 +1346,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 {activeTab === 'sales' && <SalesSummaryView filteredSales={filteredData.sales} />}
                 {activeTab === 'purchases' && <PurchaseSummaryView filteredPurchases={filteredData.purchases} />}
                 {activeTab === 'inventory' && <InventoryReportView salesWarehouseDrugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} />}
+                {activeTab === 'sales_returns' && <SalesReturnView filteredSales={filteredData.sales} />}
                 {activeTab === 'bonuses' && <BonusSummaryView filteredSales={filteredData.sales} drugs={drugs} />}
                 {activeTab === 'wasted_stock' && <WastedStockView filteredWastedStock={filteredData.wastedStock} />}
                 {activeTab === 'batch_traceability' && <BatchTraceabilityView orders={orders} purchaseBills={purchaseBills} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} onPrint={handleTraceabilityPrint} lotNumberToTrace={lotNumberToTrace} />}

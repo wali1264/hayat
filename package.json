@@ -1,5 +1,5 @@
 {
-  "name": "copy-of-copy-of-copy-of-copy-of-copy-of-copy-of-copy-of-copy-of-cartansayz-ok",
+  "name": "copy-of-copy-of-copy-of-copy-of-copy-of-copy-of-copy-of-copy-of-copy-of-copy-of-copy-of-cartansayz-ok",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,9 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "@google/genai": "^1.17.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "@google/genai": "1.17.0",
     "@supabase/supabase-js": "2"
   },
   "devDependencies": {
