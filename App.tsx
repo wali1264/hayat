@@ -1,7 +1,5 @@
-
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import Inventory, { Drug, Batch, WriteOffReason, DrugModal } from './Inventory';
 import Sales, { Order, OrderItem, ExtraCharge, BatchAllocation } from './Sales';
@@ -71,12 +69,6 @@ const CloseIcon = ({ className = "w-6 h-6" }: { className?: string}) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
 );
-const MicIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-    </svg>
-);
-
 
 //=========== TOAST & MODAL & UPDATE COMPONENTS ===========//
 type ToastType = 'success' | 'error' | 'info';
@@ -511,79 +503,36 @@ type Message = {
     sender: 'user' | 'ai';
     text: string;
 };
-type AssistantStatus = 'idle' | 'listening' | 'processing' | 'speaking';
 
 type HayatAssistantProps = {
     isOpen: boolean;
     onClose: () => void;
     messages: Message[];
-    status: AssistantStatus;
-    onMicClick: () => void;
 };
 
-const HayatAssistant: React.FC<HayatAssistantProps> = ({ isOpen, onClose, messages, status, onMicClick }) => {
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
-
+const HayatAssistant: React.FC<HayatAssistantProps> = ({ isOpen, onClose, messages }) => {
     if (!isOpen) return null;
-
-    const getStatusInfo = () => {
-        switch (status) {
-            case 'listening':
-                return { text: 'در حال شنیدن...', color: 'text-blue-500', pulse: true };
-            case 'processing':
-                return { text: 'در حال پردازش دستور...', color: 'text-yellow-600', pulse: true };
-            case 'speaking':
-                return { text: 'در حال پاسخگویی...', color: 'text-green-500', pulse: true };
-            case 'idle':
-            default:
-                return { text: 'برای شروع، روی میکروفون کلیک کنید', color: 'text-gray-500', pulse: false };
-        }
-    };
-    const statusInfo = getStatusInfo();
-
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-30 z-[95]" onClick={onClose}>
-            <div className="fixed bottom-24 right-8 z-[100] w-96 bg-white rounded-xl shadow-2xl flex flex-col border animate-fade-in-up" onClick={e => e.stopPropagation()}>
-                <header className="p-4 border-b flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <SparklesIcon className="w-6 h-6 text-teal-500" />
-                        <h3 className="font-bold text-gray-800">معاون اجرایی هوشمند</h3>
+        <div className="fixed bottom-24 right-8 z-[100] w-96 bg-white rounded-xl shadow-2xl flex flex-col border">
+            <header className="p-4 border-b flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                    <SparklesIcon className="w-6 h-6 text-teal-500" />
+                    <h3 className="font-bold text-gray-800">دستیار هوشمند حیات</h3>
+                </div>
+                <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100">
+                    <CloseIcon className="w-5 h-5 text-gray-500"/>
+                </button>
+            </header>
+            <main className="p-4 h-80 overflow-y-auto bg-gray-50">
+                {messages.map((msg, i) => (
+                    <div key={i} className={`mb-3 p-3 rounded-xl max-w-[85%] ${msg.sender === 'user' ? 'bg-teal-500 text-white ml-auto' : 'bg-gray-200 text-gray-800 mr-auto'}`}>
+                        {msg.text}
                     </div>
-                    <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100">
-                        <CloseIcon className="w-5 h-5 text-gray-500"/>
-                    </button>
-                </header>
-                <main className="p-4 h-80 overflow-y-auto bg-gray-50 flex flex-col">
-                    {messages.length === 0 && (
-                        <div className="m-auto text-center text-gray-400">
-                            <p>سلام! چطور می‌توانم امروز به شما کمک کنم؟</p>
-                            <p className="text-xs mt-2">مثال: «برای شرکت کابل فارما یک فاکتور جدید بساز و ۱۰۰ عدد پنی‌سیلین اضافه کن»</p>
-                        </div>
-                    )}
-                    {messages.map((msg, i) => (
-                        <div key={i} className={`my-2 p-3 rounded-xl max-w-[85%] ${msg.sender === 'user' ? 'bg-teal-500 text-white self-end' : 'bg-gray-200 text-gray-800 self-start'}`}>
-                            {msg.text}
-                        </div>
-                    ))}
-                    <div ref={messagesEndRef} />
-                </main>
-                <footer className="p-4 border-t flex flex-col items-center justify-center">
-                    <button 
-                        onClick={onMicClick} 
-                        className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${status === 'listening' ? 'bg-red-500 hover:bg-red-600' : 'bg-teal-500 hover:bg-teal-600'}`}
-                        disabled={status === 'processing' || status === 'speaking'}
-                    >
-                        <MicIcon className="w-8 h-8 text-white"/>
-                    </button>
-                    <p className={`mt-2 text-sm font-semibold ${statusInfo.color} ${statusInfo.pulse ? 'animate-pulse' : ''}`}>
-                        {statusInfo.text}
-                    </p>
-                </footer>
-            </div>
+                ))}
+            </main>
+            <footer className="p-4 border-t">
+                <input type="text" placeholder="پیام خود را بنویسید..." className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            </footer>
         </div>
     );
 };
@@ -821,14 +770,6 @@ const App: React.FC = () => {
         message: React.ReactNode;
         onConfirm: () => void;
     } | null>(null);
-
-    // --- NEW: AI ASSISTANT STATE ---
-    const [isAssistantOpen, setIsAssistantOpen] = useState(false);
-    const [assistantStatus, setAssistantStatus] = useState<AssistantStatus>('idle');
-    const [assistantMessages, setAssistantMessages] = useState<Message[]>([]);
-    const recognitionRef = useRef<any>(null); // To hold SpeechRecognition instance
-    const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.API_KEY as string }), []);
-
 
     const showConfirmation = (title: string, message: React.ReactNode, onConfirm: () => void) => {
         setConfirmationModal({ isOpen: true, title, message, onConfirm });
@@ -1821,238 +1762,6 @@ const App: React.FC = () => {
         }
     }, [activeItem]);
     
-    // --- AI ASSISTANT LOGIC ---
-    const speak = (text: string) => {
-        if (!('speechSynthesis' in window)) {
-            console.warn("Speech Synthesis not supported.");
-            return;
-        }
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'fa-IR';
-        utterance.onstart = () => setAssistantStatus('speaking');
-        utterance.onend = () => setAssistantStatus('idle');
-        speechSynthesis.speak(utterance);
-    };
-
-    const executeAiAction = (action: any) => {
-        const { formatQuantity } = require('./Inventory');
-        switch (action.action) {
-            case 'CREATE_INVOICE': {
-                const { customerName, items: requestedItems } = action.parameters;
-                const customer = customers.find(c => c.name.trim() === customerName.trim());
-                if (!customer) return `مشتری با نام «${customerName}» یافت نشد.`;
-
-                const newOrderItems: OrderItem[] = [];
-                for (const requestedItem of requestedItems) {
-                    const drug = drugs.find(d => d.name.toLowerCase().includes(requestedItem.drugName.toLowerCase()));
-                    if (!drug) return `داروی «${requestedItem.drugName}» در انبار یافت نشد.`;
-                    
-                    const totalStock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
-                    if (totalStock < requestedItem.quantity) return `موجودی داروی «${drug.name}» (${totalStock} عدد) برای فروش (${requestedItem.quantity} عدد) کافی نیست.`;
-                    
-                    const finalPrice = drug.price * (1 - drug.discountPercentage / 100);
-                    newOrderItems.push({ drugId: drug.id, drugName: drug.name, manufacturer: drug.manufacturer, code: drug.code, quantity: requestedItem.quantity, bonusQuantity: 0, originalPrice: drug.price, discountPercentage: drug.discountPercentage, finalPrice: finalPrice });
-                }
-
-                const totalAmount = newOrderItems.reduce((sum, item) => sum + (item.quantity * item.finalPrice), 0);
-                const newOrder: Order = { id: Date.now(), type: 'sale', orderNumber: '', customerName: customer.name, orderDate: new Date().toISOString().split('T')[0], items: newOrderItems, extraCharges: [], totalAmount: totalAmount, amountPaid: 0, status: 'در حال پردازش', paymentStatus: 'پرداخت نشده' };
-                
-                handleSaveOrder(newOrder);
-                return `سفارش برای ${customer.name} با ${newOrderItems.length} قلم با موفقیت ثبت شد.`;
-            }
-            case 'QUERY_STOCK': {
-                const { drugName } = action.parameters;
-                const drug = drugs.find(d => d.name.toLowerCase().includes(drugName.toLowerCase()));
-                if (!drug) return `داروی «${drugName}» یافت نشد.`;
-                const totalStock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
-                const formattedStock = formatQuantity(totalStock, drug.unitsPerCarton, drug.cartonSize);
-                return `موجودی ${drug.name} برابر با ${formattedStock} است.`;
-            }
-            case 'QUERY_CUSTOMER_BALANCE': {
-                const { customerName } = action.parameters;
-                const balance = customerBalances.get(customerName);
-                if (balance === undefined) return `مشتری با نام «${customerName}» یافت نشد.`;
-                if (balance > 0) return `مانده حساب ${customerName}، مبلغ ${Math.round(balance).toLocaleString()} افغانی بدهکار است.`;
-                if (balance < 0) return `مانده حساب ${customerName}، مبلغ ${Math.round(Math.abs(balance)).toLocaleString()} افغانی بستانکار است.`;
-                return `حساب مشتری ${customerName} تسویه است.`;
-            }
-            case 'QUERY_DAILY_SALES': {
-                const today = new Date().toISOString().split('T')[0];
-                const salesToday = orders.filter(o => o.orderDate === today && o.status !== 'لغو شده' && o.type === 'sale').reduce((sum, order) => sum + order.totalAmount, 0);
-                return `مجموع فروش امروز ${Math.round(salesToday).toLocaleString()} افغانی بوده است.`;
-            }
-            case 'CREATE_CUSTOMER': {
-                const { customerName, customerPhone } = action.parameters;
-                if (!customerName || !customerPhone) return "لطفاً نام و شماره تماس مشتری را به طور کامل بیان کنید.";
-                if (customers.some(c => c.name.trim() === customerName.trim())) return `مشتری با نام «${customerName}» از قبل وجود دارد.`;
-
-                const newCustomer: Customer = {
-                    id: Date.now(),
-                    name: customerName,
-                    phone: customerPhone,
-                    manager: '',
-                    address: '',
-                    status: 'فعال',
-                    registrationDate: new Date().toISOString(),
-                };
-                setCustomers(prev => [newCustomer, ...prev]);
-                return `مشتری جدید «${customerName}» با موفقیت ثبت شد.`;
-            }
-             case 'CREATE_EXPENSE': {
-                const { expenseDescription, expenseAmount, expenseCategory } = action.parameters;
-                if (!expenseDescription || !expenseAmount) return "لطفاً شرح و مبلغ هزینه را به طور کامل بیان کنید.";
-
-                const newExpense: Expense = {
-                    id: Date.now(),
-                    description: expenseDescription,
-                    amount: Number(expenseAmount),
-                    category: expenseCategory || 'سایر',
-                    date: new Date().toISOString().split('T')[0],
-                };
-                setExpenses(prev => [newExpense, ...prev]);
-                return `هزینه «${expenseDescription}» به مبلغ ${Number(expenseAmount).toLocaleString()} افغانی با موفقیت ثبت شد.`;
-            }
-            case 'WRITE_OFF_STOCK': {
-                const { drugName, lotNumber, quantity, reason } = action.parameters;
-                if (!drugName || !lotNumber || !quantity || !reason) return "لطفاً نام دارو، شماره لات، تعداد و دلیل ضایعات را به طور کامل بیان کنید.";
-
-                const drug = drugs.find(d => d.name.toLowerCase().includes(drugName.toLowerCase()));
-                if (!drug) return `داروی «${drugName}» یافت نشد.`;
-                const batch = drug.batches.find(b => b.lotNumber === lotNumber);
-                if (!batch) return `لات نامبر «${lotNumber}» برای این دارو یافت نشد.`;
-                if (batch.quantity < quantity) return `موجودی لات «${lotNumber}» (${batch.quantity} عدد) برای ضایع کردن (${quantity} عدد) کافی نیست.`;
-
-                const validReasons: WriteOffReason[] = ['تاریخ گذشته', 'آسیب دیده', 'مفقود شده', 'سایر'];
-                const writeOffReason = validReasons.find(r => reason.includes(r)) || 'سایر';
-                
-                handleWriteOff(drug.id, lotNumber, Number(quantity), writeOffReason, `ثبت شده توسط دستیار هوشمند: ${reason}`);
-                return `تعداد ${quantity} از داروی ${drugName} از لات ${lotNumber} با موفقیت ضایع شد.`;
-            }
-            case 'TRACE_LOT_NUMBER': {
-                const { lotNumber } = action.parameters;
-                if (!lotNumber) return "لطفاً شماره لات را برای ردیابی مشخص کنید.";
-                handleTraceLotNumber(lotNumber);
-                return `در حال نمایش گزارش ردیابی برای لات نامبر ${lotNumber}.`;
-            }
-            default:
-                return "متاسفانه دستوری با این عنوان پیدا نکردم.";
-        }
-    };
-    
-    const processUserCommand = async (command: string) => {
-        setAssistantStatus('processing');
-        let responseText = "متاسفانه در پردازش دستور شما خطایی رخ داد.";
-        
-        const aiSchema = {
-            type: Type.OBJECT,
-            properties: {
-                action: { type: Type.STRING, enum: ["CREATE_INVOICE", "QUERY_STOCK", "QUERY_CUSTOMER_BALANCE", "QUERY_DAILY_SALES", "CREATE_CUSTOMER", "CREATE_EXPENSE", "WRITE_OFF_STOCK", "TRACE_LOT_NUMBER"] },
-                parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                        customerName: { type: Type.STRING },
-                        customerPhone: { type: Type.STRING },
-                        drugName: { type: Type.STRING },
-                        lotNumber: { type: Type.STRING },
-                        quantity: { type: Type.INTEGER },
-                        reason: { type: Type.STRING },
-                        expenseDescription: { type: Type.STRING },
-                        expenseAmount: { type: Type.INTEGER },
-                        expenseCategory: { type: Type.STRING, enum: ['حقوق', 'کرایه', 'حمل و نقل', 'بازاریابی', 'سایر'] },
-                        items: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    drugName: { type: Type.STRING },
-                                    quantity: { type: Type.INTEGER },
-                                },
-                                required: ["drugName", "quantity"],
-                            },
-                        },
-                    },
-                },
-            },
-            required: ["action"],
-        };
-
-        try {
-            const result = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: command,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: aiSchema,
-                    systemInstruction: "You are an expert AI assistant for a pharmacy management system in Persian. Your task is to understand user commands and questions, and convert them into a structured JSON format based on the provided schema. You can create invoices, answer questions (stock, balance, daily sales), create new customers, record expenses, write-off stock, and trace lot numbers. Infer the correct action and parameters from the user's natural language command. Only respond with the JSON object."
-                }
-            });
-            
-            const jsonText = result.text.trim();
-            const action = JSON.parse(jsonText);
-            responseText = executeAiAction(action);
-            
-        } catch (error) {
-            console.error("AI processing error:", error);
-            responseText = "خطایی در ارتباط با دستیار هوشمند به وجود آمد. لطفاً دوباره تلاش کنید.";
-        }
-
-        setAssistantMessages(prev => [...prev, { sender: 'ai', text: responseText }]);
-        speak(responseText);
-    };
-
-
-    const handleMicClick = () => {
-        if (assistantStatus === 'listening') {
-            recognitionRef.current?.stop();
-            setAssistantStatus('idle');
-            return;
-        }
-
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            const errorMsg = "مرورگر شما از قابلیت تشخیص گفتار پشتیبانی نمی‌کند.";
-            setAssistantMessages(prev => [...prev, { sender: 'ai', text: errorMsg }]);
-            speak(errorMsg);
-            return;
-        }
-
-        const recognition = new SpeechRecognition();
-        recognition.lang = 'fa-IR';
-        recognition.interimResults = false;
-        recognition.maxAlternatives = 1;
-        recognitionRef.current = recognition;
-
-        recognition.start();
-
-        recognition.onstart = () => {
-            setAssistantStatus('listening');
-        };
-
-        recognition.onresult = (event: any) => {
-            const command = event.results[0][0].transcript;
-            setAssistantMessages(prev => [...prev, { sender: 'user', text: command }]);
-            processUserCommand(command);
-        };
-
-        recognition.onspeechend = () => {
-            recognition.stop();
-        };
-        
-        recognition.onerror = (event: any) => {
-            console.error('Speech recognition error:', event.error);
-            setAssistantStatus('idle');
-        };
-
-        recognition.onend = () => {
-             setAssistantStatus(prevStatus => {
-                if (prevStatus === 'listening') {
-                    return 'idle';
-                }
-                return prevStatus;
-             });
-        };
-    };
-
     // RENDER LOGIC
     // ==========================================================
 
@@ -2182,25 +1891,6 @@ const App: React.FC = () => {
             >
                 {confirmationModal?.message}
             </ConfirmationModal>
-            
-            {/* AI Assistant FAB and Modal */}
-            <button
-                onClick={() => {
-                    setIsAssistantOpen(true);
-                    setAssistantMessages([]);
-                }}
-                className="fixed bottom-8 right-8 z-[98] w-16 h-16 bg-teal-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:bg-teal-700 transition-transform transform hover:scale-110 focus:outline-none focus:ring-4 focus:ring-teal-300"
-                aria-label="دستیار هوشمند"
-            >
-                <SparklesIcon className="w-8 h-8" />
-            </button>
-            <HayatAssistant
-                isOpen={isAssistantOpen}
-                onClose={() => setIsAssistantOpen(false)}
-                messages={assistantMessages}
-                status={assistantStatus}
-                onMicClick={handleMicClick}
-            />
         </div>
     );
 };
