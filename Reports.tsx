@@ -32,7 +32,7 @@ const ReturnReportIcon = () => <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 0
 
 
 //=========== TYPES ===========//
-type ReportTab = 'report_builder' | 'profitability' | 'sales' | 'purchases' | 'inventory' | 'bonuses' | 'wasted_stock' | 'batch_traceability' | 'sales_returns' | 'stock_ledger';
+type ReportTab = 'report_builder' | 'profitability' | 'sales' | 'purchases' | 'inventory' | 'bonuses' | 'wasted_stock' | 'batch_traceability' | 'sales_returns';
 type GeneratedReport = {
     title: string;
     headers: string[];
@@ -983,124 +983,6 @@ const AdvancedReportBuilder = ({ orders, drugs, mainWarehouseDrugs, customers, s
     );
 };
 
-// --- New Stock Ledger View ---
-type StockLedgerViewProps = {
-    mainWarehouseDrugs: Drug[];
-    orders: Order[];
-    purchaseBills: PurchaseBill[];
-    inventoryWriteOffs: InventoryWriteOff[];
-    onPrint: (data: any) => void;
-};
-
-const StockLedgerView = ({ mainWarehouseDrugs, orders, purchaseBills, inventoryWriteOffs, onPrint }: StockLedgerViewProps) => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
-    const [isLedgerModalOpen, setIsLedgerModalOpen] = useState(false);
-
-    const filteredDrugs = useMemo(() => {
-        if (!searchTerm) return [];
-        return mainWarehouseDrugs.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, 10);
-    }, [searchTerm, mainWarehouseDrugs]);
-
-    const handleViewLedger = (drug: Drug) => {
-        setSelectedDrug(drug);
-        setIsLedgerModalOpen(true);
-    };
-
-    const LedgerDetailModal = ({ drug }: { drug: Drug | null }) => {
-        const ledgerData = useMemo(() => {
-            if (!drug) return { transactions: [], summary: {} };
-            const drugId = drug.id;
-            let transactions: any[] = [];
-            
-            purchaseBills.forEach(bill => bill.items.forEach(item => { if (item.drugId === drugId) transactions.push({ date: bill.purchaseDate, type: 'خرید', doc: bill.billNumber, qty: item.quantity + (item.bonusQuantity || 0) }); }));
-            orders.forEach(order => order.items.forEach(item => { if (item.drugId === drugId) transactions.push({ date: order.orderDate, type: `فروش (${order.type})`, doc: order.orderNumber, qty: -(item.quantity + (item.bonusQuantity || 0)) }); }));
-            inventoryWriteOffs.forEach(wo => { if (wo.drugId === drugId) transactions.push({ date: wo.date, type: `ضایعات (${wo.reason})`, doc: `ض-${wo.id}`, qty: -wo.quantity }); });
-            
-            transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-            let balance = 0;
-            const processed = transactions.map(t => {
-                balance += t.qty;
-                return { ...t, balance };
-            });
-
-            return { transactions: processed };
-
-        }, [drug]);
-
-        if (!drug) return null;
-
-        return (
-            <div className="fixed inset-0 bg-black bg-opacity-60 z-[60] flex justify-center items-center p-4" onClick={() => setIsLedgerModalOpen(false)}>
-                <div className="bg-white rounded-xl p-8 max-w-4xl w-full" onClick={e => e.stopPropagation()}>
-                    <h3 className="text-xl font-bold mb-4">کاردکس کالا: {drug.name}</h3>
-                    <div className="max-h-[60vh] overflow-y-auto border rounded-lg">
-                        <DataTable 
-                            headers={['تاریخ', 'نوع تراکنش', 'شماره سند', 'تغییر', 'مانده']}
-                            rows={ledgerData.transactions.map(t => [new Date(t.date).toLocaleDateString('fa-IR'), t.type, t.doc, t.qty > 0 ? `+${t.qty}` : t.qty, t.balance])}
-                            isNumeric={[false, false, false, true, true]}
-                        />
-                    </div>
-                    <div className="flex justify-end mt-4">
-                        <button onClick={() => setIsLedgerModalOpen(false)} className="px-6 py-2 bg-gray-200 rounded-lg">بستن</button>
-                    </div>
-                </div>
-            </div>
-        );
-    };
-    
-    return (
-        <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
-             <LedgerDetailModal drug={selectedDrug} />
-            <h3 className="text-xl font-bold text-gray-800">کاردکس کالا</h3>
-            <div className="relative">
-                <input 
-                    type="text"
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    placeholder="برای جستجوی محصول تایپ کنید..."
-                    className="w-full p-2 border rounded-lg"
-                />
-                 {filteredDrugs.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 z-10 bg-white border shadow-lg mt-1">
-                        {filteredDrugs.map(drug => (
-                            <div key={drug.id} onClick={() => setSearchTerm(drug.name)} className="p-2 hover:bg-teal-50 cursor-pointer">{drug.name}</div>
-                        ))}
-                    </div>
-                )}
-            </div>
-            <div className="border rounded-lg max-h-96 overflow-y-auto">
-                <table className="w-full text-right">
-                     <thead className="bg-gray-50 sticky top-0"><tr>
-                        <th className="p-3">نام محصول</th>
-                        <th className="p-3">موجودی کل</th>
-                        <th className="p-3">قیمت خرید (میانگین)</th>
-                        <th className="p-3">عملیات</th>
-                    </tr></thead>
-                    <tbody className="divide-y">
-                        {filteredDrugs.filter(d => d.name === searchTerm).map(drug => {
-                             const totalQuantity = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
-                             const totalValue = drug.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
-                             const avgPurchasePrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
-                            return (
-                                <tr key={drug.id}>
-                                    <td className="p-3 font-semibold">{drug.name}</td>
-                                    <td className="p-3">{formatQuantity(totalQuantity, drug.unitsPerCarton, drug.cartonSize)}</td>
-                                    <td className="p-3 font-mono">{Math.round(avgPurchasePrice).toLocaleString()}</td>
-                                    <td className="p-3">
-                                        <button onClick={() => handleViewLedger(drug)} className="text-teal-600 font-semibold">مشاهده کاردکس</button>
-                                    </td>
-                                </tr>
-                            )
-                        })}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};
-
 
 //=========== MAIN COMPONENT ===========//
 type ReportsProps = {
@@ -1418,7 +1300,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                      </div>
                 </div>
                  <div className="relative" ref={exportMenuRef}>
-                    <button onClick={() => setIsExportMenuOpen(prev => !prev)} className="flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors text-sm bg-gray-600 text-white hover:bg-gray-700 shadow" disabled={activeTab === 'batch_traceability' || activeTab === 'inventory' || (activeTab === 'report_builder' && !generatedReport) || activeTab === 'stock_ledger'}>
+                    <button onClick={() => setIsExportMenuOpen(prev => !prev)} className="flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors text-sm bg-gray-600 text-white hover:bg-gray-700 shadow" disabled={activeTab === 'batch_traceability' || activeTab === 'inventory' || (activeTab === 'report_builder' && !generatedReport)}>
                         <ExportIcon />
                         چاپ / خروجی
                     </button>
@@ -1433,7 +1315,6 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
             
              <div className="flex items-center gap-2 flex-wrap justify-center bg-white rounded-xl shadow-md p-2">
                 <ReportTabButton tabId="report_builder" icon={<BuilderIcon />}>گزارش‌ساز پیشرفته</ReportTabButton>
-                <ReportTabButton tabId="stock_ledger" icon={<InventoryIcon />}>کاردکس کالا</ReportTabButton>
                 <ReportTabButton tabId="profitability" icon={<ProfitIcon />}>سودآوری</ReportTabButton>
                 <ReportTabButton tabId="batch_traceability" icon={<TraceIcon />}>ردیابی بچ</ReportTabButton>
                 <ReportTabButton tabId="inventory" icon={<InventoryIcon />}>گزارش انبارها</ReportTabButton>
@@ -1453,7 +1334,6 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 {activeTab === 'bonuses' && <BonusSummaryView filteredSales={filteredData.sales} drugs={drugs} />}
                 {activeTab === 'wasted_stock' && <WastedStockView filteredWastedStock={filteredData.wastedStock} />}
                 {activeTab === 'batch_traceability' && <BatchTraceabilityView orders={orders} purchaseBills={purchaseBills} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} onPrint={handleTraceabilityPrint} lotNumberToTrace={lotNumberToTrace} />}
-                {activeTab === 'stock_ledger' && <StockLedgerView mainWarehouseDrugs={mainWarehouseDrugs} orders={orders} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} onPrint={()=>{}} />}
                 {activeTab === 'report_builder' && (
                      <div className="space-y-4">
                         <AdvancedReportBuilder 
