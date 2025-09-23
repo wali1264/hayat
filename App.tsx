@@ -827,8 +827,7 @@ const App: React.FC = () => {
     const [assistantStatus, setAssistantStatus] = useState<AssistantStatus>('idle');
     const [assistantMessages, setAssistantMessages] = useState<Message[]>([]);
     const recognitionRef = useRef<any>(null); // To hold SpeechRecognition instance
-    // FIX: Use process.env.API_KEY as per the guidelines.
-    const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.API_KEY }), []);
+    const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.API_KEY as string }), []);
 
 
     const showConfirmation = (title: string, message: React.ReactNode, onConfirm: () => void) => {
@@ -2041,16 +2040,6 @@ const App: React.FC = () => {
         
         recognition.onerror = (event: any) => {
             console.error('Speech recognition error:', event.error);
-            let errorMsg = "خطایی در تشخیص گفتار رخ داد. لطفاً دوباره تلاش کنید.";
-            if (event.error === 'network') {
-                errorMsg = "خطا در اتصال به سرویس تشخیص گفتار. لطفاً اتصال اینترنت خود را بررسی کنید. ممکن است این قابلیت در محیط پیش‌نمایش فعلی محدود شده باشد.";
-            } else if (event.error === 'no-speech') {
-                errorMsg = "صدایی تشخیص داده نشد. لطفاً نزدیک‌تر به میکروفون صحبت کنید.";
-            } else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                errorMsg = "دسترسی به میکروفون مجاز نیست. لطفاً دسترسی را در تنظیمات مرورگر خود فعال کنید.";
-            }
-            
-            setAssistantMessages(prev => [...prev, { sender: 'ai', text: errorMsg }]);
             setAssistantStatus('idle');
         };
 
