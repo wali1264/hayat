@@ -827,7 +827,8 @@ const App: React.FC = () => {
     const [assistantStatus, setAssistantStatus] = useState<AssistantStatus>('idle');
     const [assistantMessages, setAssistantMessages] = useState<Message[]>([]);
     const recognitionRef = useRef<any>(null); // To hold SpeechRecognition instance
-    const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.API_KEY as string }), []);
+    // FIX: Use process.env.API_KEY as per the guidelines.
+    const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.API_KEY }), []);
 
 
     const showConfirmation = (title: string, message: React.ReactNode, onConfirm: () => void) => {
