@@ -180,7 +180,7 @@ const FinanceAndExpenses: React.FC<AccountingProps> = ({ orders, expenses, onSav
         <div className="bg-white p-6 rounded-xl shadow-lg flex items-center justify-between">
             <div>
                 <p className="text-sm font-medium text-gray-500">{title}</p>
-                <p className="text-2xl font-bold text-gray-800">{value.toLocaleString()} <span className="text-lg font-normal">افغانی</span></p>
+                <p className="text-2xl font-bold text-gray-800">{Math.round(value).toLocaleString()} <span className="text-lg font-normal">افغانی</span></p>
             </div>
             <div className={`p-4 rounded-full ${colorClass}`}>
                 {icon}
@@ -249,7 +249,7 @@ const FinanceAndExpenses: React.FC<AccountingProps> = ({ orders, expenses, onSav
                                         {new Date(expense.date).toLocaleDateString('fa-IR')}
                                         <div className="font-mono text-xs text-gray-400">{formatGregorianForDisplay(expense.date)}</div>
                                     </td>
-                                    <td className="p-4 text-gray-800 font-semibold">{expense.amount.toLocaleString()}</td>
+                                    <td className="p-4 text-gray-800 font-semibold">{Math.round(expense.amount).toLocaleString()}</td>
                                     <td className="p-4">
                                         <div className="flex items-center space-x-2 space-x-reverse">
                                             {canManageExpenses && (

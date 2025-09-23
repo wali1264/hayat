@@ -165,8 +165,8 @@ const Dashboard: React.FC<DashboardProps> = ({ drugs, orders, customers, onNavig
     return (
         <div className="p-8 space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
-                <DashboardCard title="فروش امروز" value={`${salesToday.toLocaleString()} افغانی`} change="مجموع فروشات امروز" icon={<SalesIcon className="w-8 h-8"/>} color="bg-green-100 text-green-600" onClick={() => onNavigate('sales')} />
-                <DashboardCard title="مجموع طلب از مشتریان" value={`${totalReceivables.toLocaleString()} افغانی`} change="موجودی قابل وصول" icon={<MoneyIcon className="w-8 h-8"/>} color="bg-red-100 text-red-600" onClick={() => onNavigate('customer_accounts')} />
+                <DashboardCard title="فروش امروز" value={`${Math.round(salesToday).toLocaleString()} افغانی`} change="مجموع فروشات امروز" icon={<SalesIcon className="w-8 h-8"/>} color="bg-green-100 text-green-600" onClick={() => onNavigate('sales')} />
+                <DashboardCard title="مجموع طلب از مشتریان" value={`${Math.round(totalReceivables).toLocaleString()} افغانی`} change="موجودی قابل وصول" icon={<MoneyIcon className="w-8 h-8"/>} color="bg-red-100 text-red-600" onClick={() => onNavigate('customer_accounts')} />
                 <DashboardCard title="مشتریان فعال" value={activeCustomersCount.toString()} change="مجموع مشتریان فعال" icon={<CustomersIcon className="w-8 h-8"/>} color="bg-yellow-100 text-yellow-600" onClick={() => onNavigate('customers')} />
                 <DashboardCard title="سفارشات در انتظار" value={`${pendingFulfillmentCount} سفارش`} change="جهت آماده سازی" icon={<FulfillmentIcon className="w-8 h-8"/>} color="bg-blue-100 text-blue-600" onClick={() => onNavigate('fulfillment')} />
             </div>

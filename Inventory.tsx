@@ -186,7 +186,7 @@ const BatchDetailsRow = ({ drug, colSpan, onTraceLotNumber }: { drug: Drug; colS
                                     <td className="p-2 font-mono">{batch.lotNumber}</td>
                                     <td className="p-2">{formatQuantity(batch.quantity, drug.unitsPerCarton, drug.cartonSize)}</td>
                                     <td className="p-2">{new Date(batch.expiryDate).toLocaleDateString('fa-IR')}</td>
-                                    <td className="p-2 font-mono">{batch.purchasePrice.toLocaleString()}</td>
+                                    <td className="p-2 font-mono">{Math.round(batch.purchasePrice).toLocaleString()}</td>
                                     <td className="p-2">
                                         <button onClick={() => onTraceLotNumber(batch.lotNumber)} title="ردیابی این لات" className="p-1 text-teal-600 hover:text-teal-800">
                                             <TraceIcon />
@@ -1027,7 +1027,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                                                 <td className="p-4 whitespace-nowrap text-gray-500">{drug.manufacturer}</td>
                                                 <td className="p-4 whitespace-nowrap text-gray-500 font-mono text-xs">{drug.code || '-'}</td>
                                                 <td className="p-4 whitespace-nowrap text-gray-500">{drug.category || '-'}</td>
-                                                <td className="p-4 whitespace-nowrap text-gray-600">{drug.price.toLocaleString()}</td>
+                                                <td className="p-4 whitespace-nowrap text-gray-600">{Math.round(drug.price).toLocaleString()}</td>
                                                 <td className="p-4 whitespace-nowrap">
                                                     {drug.discountPercentage > 0 ? (
                                                         <span className="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700">

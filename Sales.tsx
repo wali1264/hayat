@@ -51,7 +51,6 @@ export type OrderItem = {
     originalPrice: number;
     discountPercentage: number;
     finalPrice: number;
-    applyDiscountWithBonus?: boolean;
     isPriceOverridden?: boolean;
     batchAllocations?: BatchAllocation[];
 };
@@ -217,28 +216,17 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     const [catalogCategory, setCatalogCategory] = useState('all');
     const [historyVisibleForDrugId, setHistoryVisibleForDrugId] = useState<number | null>(null);
 
-    // --- NEW: State for price slider interaction ---
-    const [dragState, setDragState] = useState<{
-        itemId: number | null;
-        startY: number;
-        startPrice: number;
-        originalPrice: number;
-    }>({ itemId: null, startY: 0, startPrice: 0, originalPrice: 0 });
-
     const isEditMode = initialData !== null && mode === 'sale';
 
     const totalAmount = useMemo(() => {
         const itemsTotal = items.reduce((sum, item) => {
-            const pricePerUnit = item.isPriceOverridden
-                ? item.finalPrice
-                : (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-                    ? item.originalPrice
-                    : item.finalPrice;
-            return sum + (item.quantity * pricePerUnit);
+            // The finalPrice already includes the discount.
+            // Bonus items are free and their quantity is not included here.
+            return sum + (item.quantity * item.finalPrice);
         }, 0);
         const chargesTotal = extraCharges.reduce((sum, charge) => sum + charge.amount, 0);
         const rawTotal = itemsTotal + chargesTotal;
-        return Math.round(rawTotal * 100) / 100;
+        return Math.round(rawTotal);
     }, [items, extraCharges]);
 
     const availableDrugsForCatalog = useMemo(() => {
@@ -277,7 +265,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     useEffect(() => {
         if (isOpen) {
              if (initialData) {
-                setOrderInfo({ customerName: initialData.customerName, amountPaid: initialData.amountPaid, status: initialData.status });
+                setOrderInfo({ customerName: initialData.customerName, amountPaid: Math.round(initialData.amountPaid), status: initialData.status });
                 setItems(initialData.items.map(item => ({...item, bonusQuantity: item.bonusQuantity || 0})));
                 setExtraCharges(initialData.extraCharges || []);
                 if(mode === 'return') {
@@ -295,70 +283,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
             setHistoryVisibleForDrugId(null);
         }
     }, [isOpen, initialData, mode]);
-
-
-    // --- NEW: Price Slider Handlers ---
-    const handleDragStart = (e: React.MouseEvent, item: OrderItem) => {
-        e.preventDefault();
-        if (!permissions.canGiveManualDiscount) return;
-        setDragState({
-            itemId: item.drugId,
-            startY: e.clientY,
-            startPrice: item.finalPrice,
-            originalPrice: item.originalPrice
-        });
-    };
-
-    const handleDragMove = useCallback((e: MouseEvent) => {
-        if (dragState.itemId === null) return;
-
-        const deltaY = e.clientY - dragState.startY;
-        let newFinalPrice = dragState.startPrice - deltaY; // 1 pixel = 1 currency unit change
-
-        // Clamp the price to be between 0 and the original price
-        if (newFinalPrice > dragState.originalPrice) newFinalPrice = dragState.originalPrice;
-        if (newFinalPrice < 0) newFinalPrice = 0;
-
-        let calculatedDiscount = 0;
-        if (dragState.originalPrice > 0) {
-            calculatedDiscount = ((dragState.originalPrice - newFinalPrice) / dragState.originalPrice) * 100;
-        }
-        
-        // Enforce maximum discount percentage
-        if (calculatedDiscount > permissions.maxDiscountPercentage) {
-            newFinalPrice = dragState.originalPrice * (1 - (permissions.maxDiscountPercentage / 100));
-            calculatedDiscount = permissions.maxDiscountPercentage;
-        }
-
-        setItems(currentItems =>
-            currentItems.map(it => {
-                if (it.drugId === dragState.itemId) {
-                    return {
-                        ...it,
-                        finalPrice: newFinalPrice,
-                        discountPercentage: Math.round(calculatedDiscount * 100) / 100,
-                        isPriceOverridden: true,
-                    };
-                }
-                return it;
-            })
-        );
-    }, [dragState, permissions.maxDiscountPercentage, setItems]);
-
-    const handleDragEnd = useCallback(() => {
-        setDragState({ itemId: null, startY: 0, startPrice: 0, originalPrice: 0 });
-    }, []);
-
-    useEffect(() => {
-        if (dragState.itemId !== null) {
-            window.addEventListener('mousemove', handleDragMove);
-            window.addEventListener('mouseup', handleDragEnd);
-            return () => {
-                window.removeEventListener('mousemove', handleDragMove);
-                window.removeEventListener('mouseup', handleDragEnd);
-            };
-        }
-    }, [dragState.itemId, handleDragMove, handleDragEnd]);
 
 
     if (!isOpen) return null;
@@ -406,7 +330,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                 originalPrice: drug.price,
                 discountPercentage: drug.discountPercentage,
                 finalPrice: finalPrice,
-                applyDiscountWithBonus: false,
                 isPriceOverridden: false
             }]);
         }
@@ -460,7 +383,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     };
     
     const handleBonusQuantityChange = (drugId: number, newBonusQuantityStr: string) => {
-        // Not applicable for returns
         if (mode === 'return') return;
 
         const newBonusQuantity = parseInt(newBonusQuantityStr, 10) || 0;
@@ -478,13 +400,41 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
             currentItems.map(it => it.drugId === drugId ? { ...it, bonusQuantity: newBonusQuantity } : it)
         );
     };
-    
-    const handleApplyDiscountToggle = (drugId: number, isChecked: boolean) => {
+
+    const handleDiscountChange = (drugId: number, newDiscountStr: string) => {
+        const newDiscount = parseFloat(newDiscountStr);
+
+        // Handle empty or invalid input by resetting to 0 discount
+        if (isNaN(newDiscount) || newDiscount < 0) {
+            setItems(currentItems =>
+                currentItems.map(it => {
+                    if (it.drugId === drugId) {
+                        return { ...it, discountPercentage: 0, finalPrice: it.originalPrice, isPriceOverridden: true };
+                    }
+                    return it;
+                })
+            );
+            return;
+        }
+
+        const clampedDiscount = Math.min(newDiscount, permissions.maxDiscountPercentage);
+
         setItems(currentItems =>
-            currentItems.map(it => it.drugId === drugId ? { ...it, applyDiscountWithBonus: isChecked } : it)
+            currentItems.map(it => {
+                if (it.drugId === drugId) {
+                    const newFinalPrice = it.originalPrice * (1 - (clampedDiscount / 100));
+                    return {
+                        ...it,
+                        discountPercentage: clampedDiscount,
+                        finalPrice: newFinalPrice,
+                        isPriceOverridden: true,
+                    };
+                }
+                return it;
+            })
         );
     };
-
+    
     const handleAddCharge = () => {
         const amount = Number(newCharge.amount);
         if (!newCharge.description.trim() || !amount || amount <= 0) {
@@ -630,7 +580,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                             <thead className="text-right">
                                                 <tr className="border-b">
                                                     <th className="p-2 font-semibold">نام دارو</th>
-                                                    <th className="p-2 font-semibold text-center w-56">{mode === 'return' ? 'تعداد برگشتی' : 'تعداد (فروش / بونس)'}</th>
+                                                    <th className="p-2 font-semibold text-center w-80">{mode === 'return' ? 'تعداد برگشتی' : 'تعداد / بونس / تخفیف'}</th>
                                                     <th className="p-2 font-semibold">قیمت واحد</th>
                                                     <th className="p-2 font-semibold">مبلغ جزء</th>
                                                     <th className="p-2 text-center">{mode === 'sale' ? 'سابقه' : ''}</th>
@@ -641,13 +591,12 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                                 {items.map(item => {
                                                     const drugInStock = drugs.find(d => d.id === item.drugId);
                                                     const deconstructedQty = deconstructQuantity(item.quantity, drugInStock);
-                                                    const deconstructedBonus = deconstructQuantity(item.bonusQuantity, drugInStock);
 
                                                     const handleCartonBasedChange = (isBonus: boolean, field: 'large' | 'small' | 'unit', value: string) => {
                                                         if (!drugInStock) return;
                                                         const numValue = Number(value) || 0;
                                                         
-                                                        const currentDeconstructed = isBonus ? deconstructedBonus : deconstructedQty;
+                                                        const currentDeconstructed = deconstructQuantity(item.quantity, drugInStock);
                                                         
                                                         const newLarge = field === 'large' ? numValue : currentDeconstructed.large;
                                                         const newSmall = field === 'small' ? numValue : currentDeconstructed.small;
@@ -659,69 +608,37 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
 
                                                         const newTotal = (newLarge * unitsPerLargeCarton) + (newSmall * unitsPerCarton) + newUnit;
                                                         
-                                                        if (isBonus) {
-                                                            handleBonusQuantityChange(item.drugId, String(newTotal));
-                                                        } else {
-                                                            handleQuantityChange(item.drugId, String(newTotal));
-                                                        }
+                                                        handleQuantityChange(item.drugId, String(newTotal));
                                                     };
-
-                                                    const pricePerUnit = item.isPriceOverridden
-                                                        ? item.finalPrice
-                                                        : (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-                                                            ? item.originalPrice
-                                                            : item.finalPrice;
+                                                    
                                                     const history = lastPurchaseHistory.get(item.drugId);
                                                     return (
                                                     <React.Fragment key={item.drugId}>
                                                     <tr className="border-b last:border-0 hover:bg-gray-50">
                                                         <td className="p-2">{item.drugName}</td>
                                                         <td className="p-2">
-                                                            <div className="grid grid-cols-3 gap-1">
+                                                            <div className="grid grid-cols-5 gap-1">
                                                                 <input type="number" value={deconstructedQty.large || ''} onChange={e => handleCartonBasedChange(false, 'large', e.target.value)} className="w-full text-center border rounded-md py-1" min="0" placeholder="بزرگ" title="کارتن بزرگ" disabled={!drugInStock?.cartonSize} />
                                                                 <input type="number" value={deconstructedQty.small || ''} onChange={e => handleCartonBasedChange(false, 'small', e.target.value)} className="w-full text-center border rounded-md py-1" min="0" placeholder="کوچک" title="کارتن کوچک" disabled={!drugInStock?.unitsPerCarton} />
                                                                 <input type="number" value={deconstructedQty.unit || ''} onChange={e => handleCartonBasedChange(false, 'unit', e.target.value)} className="w-full text-center border rounded-md py-1" min="0" placeholder="عدد" title="عدد" />
+                                                                <input type="number" value={item.bonusQuantity || ''} onChange={e => handleBonusQuantityChange(item.drugId, e.target.value)} className="w-full text-center border rounded-md py-1 bg-yellow-50" min="0" placeholder="بونس" title="بونس (واحدی)" disabled={mode === 'return'} />
+                                                                <input type="number" value={item.discountPercentage ? item.discountPercentage : ''} onChange={e => handleDiscountChange(item.drugId, e.target.value)} className="w-full text-center border rounded-md py-1 bg-green-50" min="0" max={permissions.maxDiscountPercentage} placeholder="تخفیف" title="تخفیف (٪)" disabled={!permissions.canGiveManualDiscount || (mode === 'return')} />
                                                             </div>
-                                                            {mode === 'sale' &&
-                                                                <div className="grid grid-cols-3 gap-1 mt-1">
-                                                                    <input type="number" value={deconstructedBonus.large || ''} onChange={e => handleCartonBasedChange(true, 'large', e.target.value)} className="w-full text-center border rounded-md py-1 bg-yellow-50" min="0" placeholder="بونس" title="بونس کارتن بزرگ" disabled={!drugInStock?.cartonSize} />
-                                                                    <input type="number" value={deconstructedBonus.small || ''} onChange={e => handleCartonBasedChange(true, 'small', e.target.value)} className="w-full text-center border rounded-md py-1 bg-yellow-50" min="0" placeholder="بونس" title="بونس کارتن کوچک" disabled={!drugInStock?.unitsPerCarton} />
-                                                                    <input type="number" value={deconstructedBonus.unit || ''} onChange={e => handleCartonBasedChange(true, 'unit', e.target.value)} className="w-full text-center border rounded-md py-1 bg-yellow-50" min="0" placeholder="بونس" title="بونس عدد" />
-                                                                </div>
-                                                            }
-                                                            {mode === 'sale' && item.bonusQuantity > 0 && item.discountPercentage > 0 && (
-                                                                <div className="text-center mt-1">
-                                                                    <label className="flex items-center justify-center gap-1.5 cursor-pointer text-xs text-gray-600">
-                                                                        <input type="checkbox" checked={!!item.applyDiscountWithBonus} onChange={e => handleApplyDiscountToggle(item.drugId, e.target.checked)} className="form-checkbox h-3.5 w-3.5 text-teal-600" />
-                                                                        اعمال تخفیف با بونس
-                                                                    </label>
-                                                                </div>
-                                                            )}
                                                         </td>
                                                         <td className="p-2 relative">
                                                             <div className="flex items-center justify-center gap-2 group h-full">
-                                                                {(item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (
+                                                                {item.discountPercentage > 0 ? (
                                                                     <div className="flex items-center gap-2">
-                                                                        <span className="font-bold text-gray-800">{item.originalPrice.toLocaleString()}</span>
-                                                                        <span className="text-xs font-bold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full" title="چون بونس اعمال شده، تخفیف نادیده گرفته شد">بونس</span>
-                                                                    </div>
-                                                                ) : item.discountPercentage > 0 ? (
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-gray-500 line-through">{item.originalPrice.toLocaleString()}</span>
-                                                                        <span className="font-bold text-teal-600">{item.finalPrice.toLocaleString(undefined, {maximumFractionDigits: 0})}</span>
+                                                                        <span className="text-gray-500 line-through">{Math.round(item.originalPrice).toLocaleString()}</span>
+                                                                        <span className="font-bold text-teal-600">{Math.round(item.finalPrice).toLocaleString()}</span>
                                                                         <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{item.discountPercentage.toFixed(1)}%</span>
                                                                     </div>
                                                                 ) : (
-                                                                    <span className="font-bold">{item.originalPrice.toLocaleString()}</span>
-                                                                )}
-                                                                {permissions.canGiveManualDiscount && (
-                                                                    <div onMouseDown={(e) => handleDragStart(e, item)} className="absolute right-[-10px] top-0 h-full w-5 flex items-center justify-center cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity" title="برای تخفیف، پایین بکشید">
-                                                                        <div className="w-1 h-6 bg-gray-300 rounded-full group-active:bg-teal-500"></div>
-                                                                    </div>
+                                                                    <span className="font-bold">{Math.round(item.originalPrice).toLocaleString()}</span>
                                                                 )}
                                                             </div>
                                                         </td>
-                                                        <td className="p-2 font-semibold">{(item.quantity * pricePerUnit).toLocaleString()}</td>
+                                                        <td className="p-2 font-semibold">{Math.round(item.quantity * item.finalPrice).toLocaleString()}</td>
                                                         <td className="p-2 text-center">
                                                             {mode === 'sale' && <button type="button" onClick={() => setHistoryVisibleForDrugId(historyVisibleForDrugId === item.drugId ? null : item.drugId)} className={`p-1 rounded-full ${historyVisibleForDrugId === item.drugId ? 'bg-blue-200 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`} title="نمایش سابقه خرید مشتری"><HistoryIcon /></button>}
                                                         </td>
@@ -738,7 +655,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                                                         <span><span className="font-semibold">{history.quantity}</span> عدد</span>
                                                                         <span>بونس: <span className="font-semibold">{history.bonusQuantity > 0 ? history.bonusQuantity : 'نداشت'}</span></span>
                                                                         <span>تخفیف: <span className="font-semibold">{history.discountPercentage > 0 ? `${history.discountPercentage}%` : 'نداشت'}</span></span>
-                                                                        <span>قیمت نهایی: <span className="font-semibold">{history.finalPrice.toLocaleString()}</span></span>
+                                                                        <span>قیمت نهایی: <span className="font-semibold">{Math.round(history.finalPrice).toLocaleString()}</span></span>
                                                                     </div>
                                                                 ) : (
                                                                     <p className="text-center text-gray-600">سابقه خریدی برای این مشتری یافت نشد.</p>
@@ -766,7 +683,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                                             <p className="font-semibold">{charge.description}</p>
                                                         </div>
                                                         <div className="flex items-center gap-4">
-                                                            <p className="text-gray-800 font-semibold">{charge.amount.toLocaleString()} افغانی</p>
+                                                            <p className="text-gray-800 font-semibold">{Math.round(charge.amount).toLocaleString()} افغانی</p>
                                                             <button type="button" onClick={() => handleRemoveCharge(charge.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
                                                         </div>
                                                     </li>
@@ -795,7 +712,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                                 </div>
                                 <div className="text-right">
                                     <p className={labelStyles}>{mode === 'return' ? 'مبلغ کل مستردی' : 'مبلغ کل سفارش'}</p>
-                                    <p className={`text-2xl font-bold ${mode === 'return' ? 'text-red-600' : 'text-teal-600'}`}>{totalAmount.toLocaleString()} <span className="text-lg">افغانی</span></p>
+                                    <p className={`text-2xl font-bold ${mode === 'return' ? 'text-red-600' : 'text-teal-600'}`}>{Math.round(totalAmount).toLocaleString()} <span className="text-lg">افغانی</span></p>
                                 </div>
                             </div>
                         </form>
@@ -847,10 +764,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
     
     const itemsSubtotal = order.items.reduce((sum, item) => sum + (item.quantity * item.originalPrice), 0);
     const itemsTotalAfterDiscount = order.items.reduce((sum, item) => {
-        const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-            ? item.originalPrice
-            : item.finalPrice;
-        return sum + (item.quantity * pricePerUnit);
+        return sum + (item.quantity * item.finalPrice);
     }, 0);
     const totalItemsDiscount = itemsSubtotal - itemsTotalAfterDiscount;
     const extraCharges = order.extraCharges || [];
@@ -907,7 +821,6 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                         <tbody className="divide-y">
                             {order.items.map((item, index) => {
                                 const drugInfo = drugs.find(d => d.id === item.drugId);
-                                const finalPrice = item.isPriceOverridden ? item.finalPrice : (item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? item.originalPrice : item.finalPrice;
                                 return (
                                 <tr key={item.drugId}>
                                     <td className="p-3">{index + 1}</td>
@@ -921,9 +834,9 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                                     </td>
                                     <td className="p-3">{formatQuantity(item.quantity, drugInfo?.unitsPerCarton, drugInfo?.cartonSize)}</td>
                                     {showBonusInPrint && <td className="p-3">{item.bonusQuantity > 0 ? formatQuantity(item.bonusQuantity, drugInfo?.unitsPerCarton, drugInfo?.cartonSize) : '-'}</td>}
-                                    <td className="p-3">{item.originalPrice.toLocaleString()}</td>
+                                    <td className="p-3">{Math.round(item.originalPrice).toLocaleString()}</td>
                                     <td className="p-3">{item.discountPercentage > 0 ? `${item.discountPercentage.toFixed(2)}%` : '-'}</td>
-                                    <td className="p-3 font-semibold">{(finalPrice * item.quantity).toLocaleString()}</td>
+                                    <td className="p-3 font-semibold">{Math.round(item.finalPrice * item.quantity).toLocaleString()}</td>
                                 </tr>
                             )})}
                         </tbody>
@@ -932,33 +845,33 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                         <div className="w-full max-w-sm space-y-3 print-summary pt-4">
                             <div className="flex justify-between">
                                 <span className="text-gray-600">جمع جزء:</span>
-                                <span className="font-semibold">{itemsSubtotal.toLocaleString()}</span>
+                                <span className="font-semibold">{Math.round(itemsSubtotal).toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-gray-600">مجموع تخفیف:</span>
-                                <span className="font-semibold text-green-600">{(+totalItemsDiscount.toFixed(2)).toLocaleString()}</span>
+                                <span className="font-semibold text-green-600">{Math.round(totalItemsDiscount).toLocaleString()}</span>
                             </div>
                             {extraCharges.map(charge => (
                                 <div key={charge.id} className="flex justify-between">
                                     <span className="text-gray-600">{charge.description}:</span>
-                                    <span className="font-semibold">{charge.amount.toLocaleString()}</span>
+                                    <span className="font-semibold">{Math.round(charge.amount).toLocaleString()}</span>
                                 </div>
                             ))}
                             <div className="flex justify-between text-xl font-bold text-gray-800 pt-2 border-t">
                                 <span>مبلغ نهایی قابل پرداخت:</span>
-                                <span>{(+order.totalAmount.toFixed(2)).toLocaleString()} افغانی</span>
+                                <span>{Math.round(order.totalAmount).toLocaleString()} افغانی</span>
                             </div>
                              <div className="flex justify-between">
                                 <span>مبلغ پرداخت شده:</span>
-                                <span>{(+order.amountPaid.toFixed(2)).toLocaleString()}</span>
+                                <span>{Math.round(order.amountPaid).toLocaleString()}</span>
                             </div>
                              <div className="flex justify-between">
                                 <span>مانده قبلی:</span>
-                                <span>{(+previousBalance.toFixed(2)).toLocaleString()}</span>
+                                <span>{Math.round(previousBalance).toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-lg font-bold">
                                 <span>مانده نهایی:</span>
-                                <span>{(+finalBalance.toFixed(2)).toLocaleString()}</span>
+                                <span>{Math.round(finalBalance).toLocaleString()}</span>
                             </div>
                         </div>
                     </div>
@@ -1139,10 +1052,7 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                                 const orderStatusStyle = getOrderStatusStyle(order.status);
                                 const paymentStatusStyle = getPaymentStatusStyle(order.paymentStatus);
                                 const itemsRevenue = order.items.reduce((sum, item) => {
-                                     const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-                                        ? item.originalPrice
-                                        : item.finalPrice;
-                                    return sum + (item.quantity * pricePerUnit);
+                                    return sum + (item.quantity * item.finalPrice);
                                 }, 0);
                                 const cogs = order.items.reduce((sum, item) => sum + (item.batchAllocations || []).reduce((cogsSum, alloc) => cogsSum + (alloc.quantity * alloc.purchasePrice), 0), 0);
                                 // FIX: Correctly calculate profit for sale returns as a negative value.
@@ -1155,8 +1065,8 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                                         {new Date(order.orderDate).toLocaleDateString('fa-IR')}
                                         <div className="font-mono text-xs text-gray-400">{formatGregorianForDisplay(order.orderDate)}</div>
                                     </td>
-                                    <td className="p-4 font-semibold">{Math.abs(order.totalAmount).toLocaleString()}</td>
-                                    <td className={`p-4 font-semibold ${profit < 0 ? 'text-red-600' : 'text-gray-700'}`}>{profit.toLocaleString()}</td>
+                                    <td className="p-4 font-semibold">{Math.round(Math.abs(order.totalAmount)).toLocaleString()}</td>
+                                    <td className={`p-4 font-semibold ${profit < 0 ? 'text-red-600' : 'text-gray-700'}`}>{Math.round(profit).toLocaleString()}</td>
                                     <td className="p-4"><span className={`px-2 py-1 text-xs font-bold rounded-full ${paymentStatusStyle.bg} ${paymentStatusStyle.text}`}>{order.paymentStatus}</span></td>
                                     <td className="p-4"><span className={`px-2 py-1 text-xs font-bold rounded-full ${orderStatusStyle.bg} ${orderStatusStyle.text}`}>{order.status}</span></td>
                                     <td className="p-4"><div className="flex gap-2">

@@ -159,9 +159,9 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, customer, or
                                     <td className="p-3 whitespace-nowrap font-mono text-xs">{formatGregorianForDisplay(entry.date)}</td>
                                     <td className="p-3 whitespace-nowrap font-mono text-xs">{entry.refCode || '-'}</td>
                                     <td className="p-3">{entry.description}</td>
-                                    <td className="p-3 text-red-600">{entry.debit > 0 ? entry.debit.toLocaleString() : '-'}</td>
-                                    <td className="p-3 text-green-600">{entry.credit > 0 ? entry.credit.toLocaleString() : '-'}</td>
-                                    <td className={`p-3 font-bold ${entry.balance >= 0 ? 'text-gray-800' : 'text-green-700'}`}>{entry.balance.toLocaleString()}</td>
+                                    <td className="p-3 text-red-600">{entry.debit > 0 ? Math.round(entry.debit).toLocaleString() : '-'}</td>
+                                    <td className="p-3 text-green-600">{entry.credit > 0 ? Math.round(entry.credit).toLocaleString() : '-'}</td>
+                                    <td className={`p-3 font-bold ${entry.balance >= 0 ? 'text-gray-800' : 'text-green-700'}`}>{Math.round(entry.balance).toLocaleString()}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -171,7 +171,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, customer, or
                     <div className="text-right">
                         <p className="text-sm text-gray-500">مانده نهایی حساب:</p>
                         <p className={`text-2xl font-bold ${customer.balance >= 0 ? 'text-red-700' : 'text-green-700'}`}>
-                            {customer.balance.toLocaleString()} افغانی
+                            {Math.round(customer.balance).toLocaleString()} افغانی
                         </p>
                     </div>
                 </div>
@@ -214,9 +214,9 @@ const CustomerAccountStatement = ({ reportData, companyInfo, documentSettings, c
                         <tr key={index}>
                             <td className="p-2 whitespace-nowrap">{new Date(entry.date).toLocaleDateString('fa-IR')}</td>
                             <td className="p-2">{entry.desc}</td>
-                            <td className="p-2 text-red-600">{entry.debit > 0 ? entry.debit.toLocaleString() : '-'}</td>
-                            <td className="p-2 text-green-600">{entry.credit > 0 ? entry.credit.toLocaleString() : '-'}</td>
-                            <td className="p-2 font-bold">{entry.balance.toLocaleString()}</td>
+                            <td className="p-2 text-red-600">{entry.debit > 0 ? Math.round(entry.debit).toLocaleString() : '-'}</td>
+                            <td className="p-2 text-green-600">{entry.credit > 0 ? Math.round(entry.credit).toLocaleString() : '-'}</td>
+                            <td className="p-2 font-bold">{Math.round(entry.balance).toLocaleString()}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -225,19 +225,19 @@ const CustomerAccountStatement = ({ reportData, companyInfo, documentSettings, c
                 <div className="w-full max-w-sm space-y-3 print-summary pt-4">
                      <div className="flex justify-between text-md">
                         <span className="text-gray-600">مانده اولیه:</span>
-                        <span className="font-semibold">{reportData.summary.openingBalance.toLocaleString()}</span>
+                        <span className="font-semibold">{Math.round(reportData.summary.openingBalance).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-md">
                         <span className="text-gray-600">مجموع بدهکار (فاکتورها):</span>
-                        <span className="font-semibold">{reportData.summary.totalBilledInRange.toLocaleString()}</span>
+                        <span className="font-semibold">{Math.round(reportData.summary.totalBilledInRange).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-md">
                         <span className="text-gray-600">مجموع بستانکار (پرداختی‌ها):</span>
-                        <span className="font-semibold">{reportData.summary.totalPaidInRange.toLocaleString()}</span>
+                        <span className="font-semibold">{Math.round(reportData.summary.totalPaidInRange).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-xl font-bold text-gray-800 pt-2 border-t">
                         <span>مانده نهایی حساب:</span>
-                        <span>{reportData.summary.finalBalance.toLocaleString()} افغانی</span>
+                        <span>{Math.round(reportData.summary.finalBalance).toLocaleString()} افغانی</span>
                     </div>
                 </div>
             </div>
@@ -485,10 +485,10 @@ const CustomerAccounts: React.FC<CustomerAccountsProps> = ({ customers, orders, 
                                 customerSummaries.map(summary => (
                                     <tr key={summary.customerId} className={`hover:bg-gray-50 transition-colors ${summary.balance > 0 ? 'bg-red-50 hover:bg-red-100' : ''}`}>
                                         <td className="p-4 text-gray-800 font-medium">{summary.customerName}</td>
-                                        <td className="p-4 text-gray-600">{summary.totalBilled.toLocaleString()}</td>
-                                        <td className="p-4 text-green-600">{summary.totalPaid.toLocaleString()}</td>
+                                        <td className="p-4 text-gray-600">{Math.round(summary.totalBilled).toLocaleString()}</td>
+                                        <td className="p-4 text-green-600">{Math.round(summary.totalPaid).toLocaleString()}</td>
                                         <td className={`p-4 font-bold ${summary.balance > 0 ? 'text-red-600' : 'text-gray-800'}`}>
-                                            {summary.balance.toLocaleString()}
+                                            {Math.round(summary.balance).toLocaleString()}
                                         </td>
                                         <td className="p-4">
                                             <button 

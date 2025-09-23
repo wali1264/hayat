@@ -57,7 +57,7 @@ const DataTable = ({ headers, rows, isNumeric = [] }: { headers: string[], rows:
                         <tr key={rowIndex} className="hover:bg-teal-50 transition-colors">
                             {row.map((cell, cellIndex) => 
                                 <td key={cellIndex} className={`p-4 whitespace-nowrap ${isNumeric[cellIndex] ? 'font-mono' : ''}`}>
-                                    {typeof cell === 'number' ? cell.toLocaleString() : cell}
+                                    {typeof cell === 'number' ? Math.round(cell).toLocaleString() : cell}
                                 </td>
                             )}
                         </tr>
@@ -97,24 +97,19 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
         for (const order of filteredSales) {
             if (order.type !== 'sale') continue;
             
-            // Revenue is calculated from the order total, excluding extra charges for profit analysis.
+            // Revenue is based on the final price of items sold. Bonus items don't generate revenue.
             const itemsRevenue = order.items.reduce((sum, item) => {
-                 const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-                    ? item.originalPrice
-                    : item.finalPrice;
-                return sum + (item.quantity * pricePerUnit);
+                return sum + (item.quantity * item.finalPrice);
             }, 0);
             totalRevenue += itemsRevenue;
             
             for (const item of order.items) {
-                // *** FIX: Calculate Cost of Goods Sold (COGS) from precise batch allocations ***
+                // Cost of Goods Sold (COGS) from precise batch allocations
                 const itemCogs = item.batchAllocations
                     ? item.batchAllocations.reduce((sum, alloc) => sum + (alloc.quantity * alloc.purchasePrice), 0)
-                    : 0; // Fallback for old data or if allocations are missing
+                    : 0; 
 
-                const itemRevenue = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-                    ? item.originalPrice * item.quantity
-                    : item.finalPrice * item.quantity;
+                const itemRevenue = item.finalPrice * item.quantity;
                 
                 const itemProfit = itemRevenue - itemCogs;
                 
@@ -156,10 +151,7 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
             if (!monthlyData[month]) monthlyData[month] = { revenue: 0, cogs: 0 };
             
             const itemsRevenue = order.items.reduce((sum, item) => {
-                 const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-                    ? item.originalPrice
-                    : item.finalPrice;
-                return sum + (item.quantity * pricePerUnit);
+                return sum + (item.quantity * item.finalPrice);
             }, 0);
             monthlyData[month].revenue += itemsRevenue;
 
@@ -216,10 +208,10 @@ const ProfitabilityView = ({ filteredSales, drugs, filteredWastedStock }: { filt
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <KPICard title="مجموع درآمد" value={`${profitData.totalRevenue.toLocaleString()} افغانی`} icon={<SalesIcon />} colorClass="bg-green-100 text-green-600" />
-                <KPICard title="هزینه کالای فروخته شده" value={`${profitData.totalCogs.toLocaleString()} افغانی`} icon={<PurchaseIcon />} colorClass="bg-red-100 text-red-600" />
-                <KPICard title="هزینه کالاهای ضایع شده" value={`${profitData.totalWastedCost.toLocaleString()} افغانی`} icon={<WasteIcon />} colorClass="bg-yellow-100 text-yellow-600" />
-                <KPICard title="سود ناخالص" value={`${profitData.grossProfit.toLocaleString()} افغانی`} icon={<ProfitIcon />} colorClass="bg-blue-100 text-blue-600" />
+                <KPICard title="مجموع درآمد" value={`${Math.round(profitData.totalRevenue).toLocaleString()} افغانی`} icon={<SalesIcon />} colorClass="bg-green-100 text-green-600" />
+                <KPICard title="هزینه کالای فروخته شده" value={`${Math.round(profitData.totalCogs).toLocaleString()} افغانی`} icon={<PurchaseIcon />} colorClass="bg-red-100 text-red-600" />
+                <KPICard title="هزینه کالاهای ضایع شده" value={`${Math.round(profitData.totalWastedCost).toLocaleString()} افغانی`} icon={<WasteIcon />} colorClass="bg-yellow-100 text-yellow-600" />
+                <KPICard title="سود ناخالص" value={`${Math.round(profitData.grossProfit).toLocaleString()} افغانی`} icon={<ProfitIcon />} colorClass="bg-blue-100 text-blue-600" />
             </div>
              <div className="bg-white p-4 rounded-xl shadow-md"><h3 className="font-bold mb-2">روند سودآوری ماهانه</h3><div className="relative h-72"><canvas ref={monthlyProfitChartRef}></canvas></div></div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -324,8 +316,8 @@ const BonusSummaryView = ({ filteredSales, drugs }: { filteredSales: Order[], dr
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <KPICard title="تعداد کل بونس داده شده" value={`${bonusData.totalBonusUnits.toLocaleString()} عدد`} icon={<GiftIcon />} colorClass="bg-purple-100 text-purple-600" />
-                <KPICard title="ارزش کل بونس‌ها (هزینه)" value={`${bonusData.totalBonusValue.toLocaleString()} افغانی`} icon={<PurchaseIcon />} colorClass="bg-red-100 text-red-600" />
+                <KPICard title="تعداد کل بونس داده شده" value={`${Math.round(bonusData.totalBonusUnits).toLocaleString()} عدد`} icon={<GiftIcon />} colorClass="bg-purple-100 text-purple-600" />
+                <KPICard title="ارزش کل بونس‌ها (هزینه)" value={`${Math.round(bonusData.totalBonusValue).toLocaleString()} افغانی`} icon={<PurchaseIcon />} colorClass="bg-red-100 text-red-600" />
             </div>
             <div className="bg-white p-4 rounded-xl shadow-md">
                 <h3 className="font-bold mb-2">گزارش تفصیلی بونس‌ها</h3>
@@ -360,10 +352,7 @@ const SalesReturnView = ({ filteredSales }: { filteredSales: Order[] }) => {
         
         const tableRows = returnOrders.map(order => {
             const itemsRevenue = Math.abs(order.items.reduce((sum, item) => {
-                 const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-                    ? item.originalPrice
-                    : item.finalPrice;
-                return sum + (item.quantity * pricePerUnit);
+                return sum + (item.quantity * item.finalPrice);
             }, 0));
              const cogs = order.items.reduce((sum, item) => sum + (item.batchAllocations || []).reduce((cogsSum, alloc) => cogsSum + (alloc.quantity * alloc.purchasePrice), 0), 0);
              const profitLoss = itemsRevenue - cogs;
@@ -387,8 +376,8 @@ const SalesReturnView = ({ filteredSales }: { filteredSales: Order[] }) => {
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                  <KPICard title="تعداد کل فاکتورهای مستردی" value={`${returnData.tableRows.length} فاکتور`} icon={<ReturnReportIcon />} colorClass="bg-orange-100 text-orange-600" />
-                <KPICard title="ارزش کل کالای مسترد شده" value={`${returnData.totalReturnValue.toLocaleString()} افغانی`} icon={<SalesIcon />} colorClass="bg-red-100 text-red-600" />
-                <KPICard title="مجموع زیان سود از مستردی‌ها" value={`${(returnData.totalProfitLoss * -1).toLocaleString()} افغانی`} icon={<ProfitIcon />} colorClass="bg-yellow-100 text-yellow-600" />
+                <KPICard title="ارزش کل کالای مسترد شده" value={`${Math.round(returnData.totalReturnValue).toLocaleString()} افغانی`} icon={<SalesIcon />} colorClass="bg-red-100 text-red-600" />
+                <KPICard title="مجموع زیان سود از مستردی‌ها" value={`${Math.round(returnData.totalProfitLoss * -1).toLocaleString()} افغانی`} icon={<ProfitIcon />} colorClass="bg-yellow-100 text-yellow-600" />
             </div>
              <div className="bg-white p-4 rounded-xl shadow-md">
                 <h3 className="font-bold mb-2">گزارش تفصیلی مستردی‌ها</h3>
@@ -437,10 +426,10 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <KPICard title="ارزش موجودی انبار فروش" value={`${inventoryData.salesValue.toLocaleString()} افغانی`} icon={<SalesIcon />} colorClass="bg-cyan-100 text-cyan-600" />
-                <KPICard title="ارزش موجودی انبار اصلی" value={`${inventoryData.mainValue.toLocaleString()} افغانی`} icon={<InventoryIcon />} colorClass="bg-blue-100 text-blue-600" />
-                <KPICard title="ارزش کل موجودی" value={`${inventoryData.totalValue.toLocaleString()} افغانی`} icon={<ProfitIcon />} colorClass="bg-indigo-100 text-indigo-600" />
-                <KPICard title="ارزش موجودی نزدیک به انقضا" value={`${inventoryData.expiringValue.toLocaleString()} افغانی`} icon={<WasteIcon />} colorClass="bg-yellow-100 text-yellow-600" />
+                <KPICard title="ارزش موجودی انبار فروش" value={`${Math.round(inventoryData.salesValue).toLocaleString()} افغانی`} icon={<SalesIcon />} colorClass="bg-cyan-100 text-cyan-600" />
+                <KPICard title="ارزش موجودی انبار اصلی" value={`${Math.round(inventoryData.mainValue).toLocaleString()} افغانی`} icon={<InventoryIcon />} colorClass="bg-blue-100 text-blue-600" />
+                <KPICard title="ارزش کل موجودی" value={`${Math.round(inventoryData.totalValue).toLocaleString()} افغانی`} icon={<ProfitIcon />} colorClass="bg-indigo-100 text-indigo-600" />
+                <KPICard title="ارزش موجودی نزدیک به انقضا" value={`${Math.round(inventoryData.expiringValue).toLocaleString()} افغانی`} icon={<WasteIcon />} colorClass="bg-yellow-100 text-yellow-600" />
             </div>
             
             <div className="bg-white p-4 rounded-xl shadow-md">
@@ -455,7 +444,7 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
                                 const totalQuantity = d.batches.reduce((sum, b) => sum + b.quantity, 0);
                                 const totalValue = d.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
                                 const avgPurchasePrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
-                                return [d.name, formatQuantity(totalQuantity, d.unitsPerCarton), avgPurchasePrice.toFixed(2), totalValue];
+                                return [d.name, formatQuantity(totalQuantity, d.unitsPerCarton), avgPurchasePrice, totalValue];
                             })}
                             isNumeric={[false, false, true, true]}
                         />
@@ -468,7 +457,7 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
                                 const totalQuantity = d.batches.reduce((sum, b) => sum + b.quantity, 0);
                                 const totalValue = d.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
                                 const avgPurchasePrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
-                                return [d.name, formatQuantity(totalQuantity, d.unitsPerCarton), avgPurchasePrice.toFixed(2), totalValue];
+                                return [d.name, formatQuantity(totalQuantity, d.unitsPerCarton), avgPurchasePrice, totalValue];
                             })}
                             isNumeric={[false, false, true, true]}
                         />
@@ -564,7 +553,7 @@ const BatchTraceabilityView = ({ orders, purchaseBills, drugs, mainWarehouseDrug
                                 <li>شماره فاکتور: <strong>{result.purchaseInfo.bill.billNumber}</strong></li>
                                 <li>تعداد خریداری شده: <strong>{result.purchaseInfo.quantity}</strong></li>
                                 {(result.purchaseInfo.bonusQuantity > 0) && <li>تعداد بونس: <strong>{result.purchaseInfo.bonusQuantity}</strong></li>}
-                                <li>قیمت خرید (قبل از تخفیف): <strong>{result.purchaseInfo.purchasePrice.toLocaleString()}</strong></li>
+                                <li>قیمت خرید (قبل از تخفیف): <strong>{Math.round(result.purchaseInfo.purchasePrice).toLocaleString()}</strong></li>
                                 {(result.purchaseInfo.discountPercentage > 0) && <li>تخفیف: <strong>{result.purchaseInfo.discountPercentage}%</strong></li>}
                             </ul>
                         ) : <p>اطلاعات خریدی برای این لات یافت نشد.</p>}
@@ -618,7 +607,7 @@ const ReportPrintView = ({ title, dateRange, headers, rows, companyInfo, documen
                             <tr key={rowIndex}>
                                 {row.map((cell, cellIndex) => 
                                     <td key={cellIndex} className="p-2">
-                                        {typeof cell === 'number' ? cell.toLocaleString() : cell}
+                                        {typeof cell === 'number' ? Math.round(cell).toLocaleString() : cell}
                                     </td>
                                 )}
                             </tr>
@@ -790,7 +779,7 @@ const AdvancedReportBuilder = ({ orders, drugs, mainWarehouseDrugs, customers, s
                         relevantOrders.forEach(order => order.items.forEach(item => {
                             if (!allItems && selectedItem?.id !== item.drugId) return;
                             const existing = productSales.get(item.drugId) || { name: item.drugName, qty: 0, bonus: 0, revenue: 0, profit: 0 };
-                            const itemRevenue = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (item.originalPrice * item.quantity) : (item.finalPrice * item.quantity);
+                            const itemRevenue = item.finalPrice * item.quantity;
                             const itemCogs = (item.batchAllocations || []).reduce((sum, alloc) => sum + (alloc.quantity * alloc.purchasePrice), 0);
                             existing.qty += item.quantity;
                             existing.bonus += item.bonusQuantity || 0;
@@ -819,7 +808,7 @@ const AdvancedReportBuilder = ({ orders, drugs, mainWarehouseDrugs, customers, s
                          relevantOrders.forEach(order => {
                             if (!allItems && selectedItem?.name !== order.customerName) return;
                             const existing = customerSales.get(order.customerName) || { invoices: 0, sales: 0, profit: 0 };
-                            const orderRevenue = order.items.reduce((sum, item) => sum + ((item.bonusQuantity > 0 && !item.applyDiscountWithBonus) ? (item.originalPrice * item.quantity) : (item.finalPrice * item.quantity)), 0);
+                            const orderRevenue = order.items.reduce((sum, item) => sum + (item.finalPrice * item.quantity), 0);
                             const orderCogs = order.items.reduce((sum, item) => sum + (item.batchAllocations || []).reduce((s, a) => s + a.quantity * a.purchasePrice, 0), 0);
                             existing.invoices += 1;
                             existing.sales += orderRevenue + order.extraCharges.reduce((s, c) => s + c.amount, 0);
@@ -1085,9 +1074,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
         switch (tab) {
             case 'profitability': {
                  const profitItems = sales.filter(o => o.type === 'sale').flatMap(o => o.items).reduce((acc, item) => {
-                    const itemRevenue = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-                        ? item.originalPrice * item.quantity
-                        : item.finalPrice * item.quantity;
+                    const itemRevenue = item.finalPrice * item.quantity;
                     const itemCogs = (item.batchAllocations || []).reduce((sum, alloc) => sum + (alloc.quantity * alloc.purchasePrice), 0);
                     const itemProfit = itemRevenue - itemCogs;
                     
@@ -1143,10 +1130,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 const returnOrders = sales.filter(o => o.type === 'sale_return');
                 const rows = returnOrders.map(order => {
                     const itemsRevenue = Math.abs(order.items.reduce((sum, item) => {
-                        const pricePerUnit = (item.bonusQuantity > 0 && !item.applyDiscountWithBonus)
-                            ? item.originalPrice
-                            : item.finalPrice;
-                        return sum + (item.quantity * pricePerUnit);
+                        return sum + (item.quantity * item.finalPrice);
                     }, 0));
                     const cogs = order.items.reduce((sum, item) => sum + (item.batchAllocations || []).reduce((cogsSum, alloc) => cogsSum + (alloc.quantity * alloc.purchasePrice), 0), 0);
                     const profitLoss = itemsRevenue - cogs;
@@ -1371,7 +1355,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                                         {generatedReport.summary.map(item => (
                                             <div key={item.label} className="bg-gray-100 p-3 rounded-lg">
                                                 <p className="text-sm text-gray-600">{item.label}</p>
-                                                <p className="text-lg font-bold">{typeof item.value === 'number' ? item.value.toLocaleString() : item.value}</p>
+                                                <p className="text-lg font-bold">{typeof item.value === 'number' ? Math.round(item.value).toLocaleString() : item.value}</p>
                                             </div>
                                         ))}
                                     </div>

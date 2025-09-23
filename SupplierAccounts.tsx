@@ -155,9 +155,9 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, supplier, bi
                                     <td className="p-3 whitespace-nowrap">{new Date(entry.date).toLocaleDateString('fa-IR')}</td>
                                     <td className="p-3 whitespace-nowrap font-mono text-xs">{formatGregorianForDisplay(entry.date)}</td>
                                     <td className="p-3">{entry.description}</td>
-                                    <td className="p-3 text-green-600">{entry.debit > 0 ? entry.debit.toLocaleString() : '-'}</td>
-                                    <td className="p-3 text-red-600">{entry.credit > 0 ? entry.credit.toLocaleString() : '-'}</td>
-                                    <td className={`p-3 font-bold text-gray-800`}>{entry.balance.toLocaleString()}</td>
+                                    <td className="p-3 text-green-600">{entry.debit > 0 ? Math.round(entry.debit).toLocaleString() : '-'}</td>
+                                    <td className="p-3 text-red-600">{entry.credit > 0 ? Math.round(entry.credit).toLocaleString() : '-'}</td>
+                                    <td className={`p-3 font-bold text-gray-800`}>{Math.round(entry.balance).toLocaleString()}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -167,7 +167,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, supplier, bi
                     <div className="text-right">
                         <p className="text-sm text-gray-500">مانده نهایی حساب (بدهی ما):</p>
                         <p className={`text-2xl font-bold ${supplier.balance > 0 ? 'text-red-700' : 'text-green-700'}`}>
-                            {supplier.balance.toLocaleString()} افغانی
+                            {Math.round(supplier.balance).toLocaleString()} افغانی
                         </p>
                     </div>
                 </div>
@@ -209,8 +209,8 @@ const SupplierAccountStatement = ({ reportData, companyInfo, documentSettings, c
                         <tr key={bill.id}>
                             <td className="p-2 whitespace-nowrap">{new Date(bill.purchaseDate).toLocaleDateString('fa-IR')}</td>
                             <td className="p-2">{bill.type === 'purchase' ? `فاکتور خرید #${bill.billNumber}` : `مستردی خرید #${bill.billNumber}`}</td>
-                            <td className="p-2 text-green-600">{bill.amountPaid > 0 ? bill.amountPaid.toLocaleString() : '-'}</td>
-                            <td className="p-2 text-red-600">{bill.totalAmount > 0 ? bill.totalAmount.toLocaleString() : '-'}</td>
+                            <td className="p-2 text-green-600">{bill.amountPaid > 0 ? Math.round(bill.amountPaid).toLocaleString() : '-'}</td>
+                            <td className="p-2 text-red-600">{bill.totalAmount > 0 ? Math.round(bill.totalAmount).toLocaleString() : '-'}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -219,15 +219,15 @@ const SupplierAccountStatement = ({ reportData, companyInfo, documentSettings, c
                 <div className="w-full max-w-sm space-y-3 print-summary pt-4">
                     <div className="flex justify-between text-md">
                         <span className="text-gray-600">مجموع خرید در بازه زمانی:</span>
-                        <span className="font-semibold">{reportData.summary.totalPurchased.toLocaleString()}</span>
+                        <span className="font-semibold">{Math.round(reportData.summary.totalPurchased).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-md">
                         <span className="text-gray-600">مجموع پرداختی در بازه زمانی:</span>
-                        <span className="font-semibold">{reportData.summary.totalPaid.toLocaleString()}</span>
+                        <span className="font-semibold">{Math.round(reportData.summary.totalPaid).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-xl font-bold text-gray-800 pt-2 border-t">
                         <span>مانده نهایی حساب (بدهی ما):</span>
-                        <span>{reportData.summary.finalBalance.toLocaleString()} افغانی</span>
+                        <span>{Math.round(reportData.summary.finalBalance).toLocaleString()} افغانی</span>
                     </div>
                 </div>
             </div>
@@ -434,10 +434,10 @@ const SupplierAccounts: React.FC<SupplierAccountsProps> = ({ suppliers, purchase
                                 supplierSummaries.map(summary => (
                                     <tr key={summary.supplierId} className={`hover:bg-gray-50 transition-colors ${summary.balance > 0 ? 'bg-red-50 hover:bg-red-100' : ''}`}>
                                         <td className="p-4 text-gray-800 font-medium">{summary.supplierName}</td>
-                                        <td className="p-4 text-gray-600">{summary.totalPurchased.toLocaleString()}</td>
-                                        <td className="p-4 text-green-600">{summary.totalPaid.toLocaleString()}</td>
+                                        <td className="p-4 text-gray-600">{Math.round(summary.totalPurchased).toLocaleString()}</td>
+                                        <td className="p-4 text-green-600">{Math.round(summary.totalPaid).toLocaleString()}</td>
                                         <td className={`p-4 font-bold ${summary.balance > 0 ? 'text-red-600' : 'text-gray-800'}`}>
-                                            {summary.balance.toLocaleString()}
+                                            {Math.round(summary.balance).toLocaleString()}
                                         </td>
                                         <td className="p-4">
                                             <button 
