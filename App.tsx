@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, Session, RealtimeChannel } from '@supabase/supabase-js';
 import Inventory, { Drug, Batch, WriteOffReason, DrugModal } from './Inventory';
 import Sales, { Order, OrderItem, ExtraCharge, BatchAllocation } from './Sales';
 import Customers, { Customer } from './Customers';
@@ -1761,6 +1761,37 @@ const App: React.FC = () => {
             setPreselectedCustomerId(null);
         }
     }, [activeItem]);
+
+    // --- NEW: Remote Control Command Listener ---
+    useEffect(() => {
+        if (!currentUser || !licenseInfo) return;
+
+        const handleNewCommand = (payload: any) => {
+            const command = payload.new;
+            console.log("Received command:", command);
+            // Process command here based on command.type
+            if (command.type === 'PING') {
+                addToast(`دستور پینگ از ${command.sent_by} دریافت شد!`, 'success');
+            }
+            // Add other command handlers here
+        };
+
+        const channel: RealtimeChannel = supabase
+            .channel('public:commands')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'commands' }, handleNewCommand)
+            .subscribe((status, err) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log('Connected to command channel.');
+                }
+                if (err) {
+                    console.error('Command channel error:', err);
+                }
+            });
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [currentUser, licenseInfo, addToast]);
     
     // RENDER LOGIC
     // ==========================================================
