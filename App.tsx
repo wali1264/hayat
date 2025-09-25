@@ -1878,8 +1878,7 @@ const App: React.FC = () => {
     // ==========================================================
 
     if (isRemoteMode) {
-        // FIX: Pass the 'drugs' prop to RemoteControl as it is required.
-        return <RemoteControl addToast={addToast} currentUser={currentUser} orders={orders} customers={customers} drugs={drugs} />;
+        return <RemoteControl addToast={addToast} users={users} orders={orders} customers={customers} drugs={drugs} />;
     }
 
     // Loading Screen

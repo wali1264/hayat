@@ -562,21 +562,70 @@ const MobileShell = ({ currentUser, onLogout, activeView, setActiveView, childre
     );
 };
 
+// --- NEW: Standalone Login Screen for Remote ---
+const RemoteLogin = ({ onLogin, addToast, users }: { onLogin: (user: User) => void; addToast: (message: string, type?: 'success' | 'error' | 'info') => void; users: User[] }) => {
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const user = users.find(u => u.username === username && u.password === password);
+        if (user) {
+            onLogin(user);
+        } else {
+            addToast('نام کاربری یا رمز عبور اشتباه است.', 'error');
+        }
+    };
+
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+            <div className="w-full max-w-sm p-8 space-y-6 bg-white rounded-2xl shadow-xl">
+                <div className="text-center">
+                    <h1 className="text-2xl font-bold text-teal-800">ورود به ریموت کنترل</h1>
+                    <p className="mt-2 text-sm text-gray-500">با حساب کاربری اصلی خود وارد شوید</p>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+                            placeholder="نام کاربری" required autoFocus
+                            className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                    </div>
+                    <div>
+                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                            placeholder="رمز عبور" required
+                            className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                    </div>
+                    <button type="submit" className="w-full py-3 bg-teal-600 text-white font-bold rounded-lg hover:bg-teal-700 transition-colors">
+                        ورود
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
 
 //=========== MAIN COMPONENT (Entry Point) ===========//
-const RemoteControl = ({ addToast, currentUser, orders, customers, drugs }: { 
+const RemoteControl = ({ addToast, users, orders, customers, drugs }: { 
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
-    currentUser: User | null;
+    users: User[];
     orders: Order[];
     customers: Customer[];
     drugs: Drug[];
 }) => {
+    const [remoteUser, setRemoteUser] = useState<User | null>(null);
     const [activeView, setActiveView] = useState('dashboard');
     const [isCreatingOrder, setIsCreatingOrder] = useState(false);
     const [waitingForCommandId, setWaitingForCommandId] = useState<string | null>(null);
 
     const handleLogout = () => {
-        addToast("برای خروج، لطفاً از برنامه اصلی خارج شوید.", "info");
+        setRemoteUser(null);
+        addToast("شما از ریموت کنترل خارج شدید.", "info");
+    };
+    
+    const handleLogin = (user: User) => {
+        addToast(`خوش آمدید، ${user.username}!`, 'success');
+        setRemoteUser(user);
     };
 
     // If user navigates away from sales tab, exit order creation mode
@@ -588,21 +637,20 @@ const RemoteControl = ({ addToast, currentUser, orders, customers, drugs }: {
 
     // Listener for command results
     useEffect(() => {
-        if (!currentUser || !waitingForCommandId) return;
+        if (!remoteUser || !waitingForCommandId) return;
 
         const handleNewResult = (payload: any) => {
             const result = payload.new;
             
-            // The subscription filter should handle this, but double-check
             if (result.command_id === waitingForCommandId) {
                 const toastType = result.status === 'SUCCESS' ? 'success' : 'error';
                 addToast(result.message, toastType);
                 
                 if (result.status === 'SUCCESS') {
-                    setIsCreatingOrder(false); // Close the wizard on success
+                    setIsCreatingOrder(false);
                 }
                 
-                setWaitingForCommandId(null); // Stop waiting
+                setWaitingForCommandId(null);
             }
         };
 
@@ -621,14 +669,14 @@ const RemoteControl = ({ addToast, currentUser, orders, customers, drugs }: {
                 if (err) {
                     console.error('Command_results channel error:', err);
                     addToast('خطا در اتصال به کانال بازخورد.', 'error');
-                    setWaitingForCommandId(null); // Reset on error
+                    setWaitingForCommandId(null);
                 }
             });
 
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [waitingForCommandId, currentUser, addToast]);
+    }, [waitingForCommandId, remoteUser, addToast]);
 
 
     const renderActiveView = () => {
@@ -638,7 +686,7 @@ const RemoteControl = ({ addToast, currentUser, orders, customers, drugs }: {
                 customers={customers} 
                 drugs={drugs} 
                 onCancel={() => setIsCreatingOrder(false)} 
-                currentUser={currentUser!} 
+                currentUser={remoteUser!} 
                 addToast={addToast}
                 setWaitingForCommandId={setWaitingForCommandId}
             />;
@@ -653,18 +701,13 @@ const RemoteControl = ({ addToast, currentUser, orders, customers, drugs }: {
         }
     };
 
-
-    if (!currentUser) {
-        return (
-            <div className="flex items-center justify-center h-screen">
-                <p>لطفاً ابتدا به برنامه اصلی وارد شوید.</p>
-            </div>
-        );
+    if (!remoteUser) {
+        return <RemoteLogin onLogin={handleLogin} addToast={addToast} users={users} />;
     }
 
     return (
         <MobileShell 
-            currentUser={currentUser} 
+            currentUser={remoteUser} 
             onLogout={handleLogout} 
             activeView={activeView}
             setActiveView={setActiveView}
