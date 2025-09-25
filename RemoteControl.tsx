@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { Order } from './Sales';
+import { Customer } from './Customers';
+import { User } from './Settings';
+
+// Declare global libraries
+declare var Chart: any;
+
 
 //=========== SUPABASE CLIENT ===========//
 const supabaseUrl = 'https://uqokruakwmqfynszaine.supabase.co';
@@ -7,210 +14,203 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
 //=========== ICONS ===========//
-const LogoutIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
-    </svg>
+const Icon = ({ path, className = "w-6 h-6" }: { path: string, className?: string | null }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={path}></path>
+  </svg>
 );
-const SendIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-    </svg>
+
+const navIcons = {
+    dashboard: <Icon path="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />,
+    inventory: <Icon path="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />,
+    sales: <Icon path="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />,
+    customers: <Icon path="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />,
+    // FIX: Add missing customer_accounts icon definition
+    customer_accounts: <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />,
+    menu: <Icon path="M4 6h16M4 12h16M4 18h16" />,
+    logout: <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />,
+    reports: <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />,
+};
+
+//=========== VIEWS / SCREENS ===========//
+
+// --- Placeholder for other views ---
+const PlaceholderView = ({ view, onNavigate }) => (
+    <div className="text-center p-8">
+        <div className="text-teal-500 opacity-20">{view?.icon && React.cloneElement(view.icon, { className: "w-32 h-32 mx-auto" })}</div>
+        <h2 className="mt-4 text-2xl font-bold text-gray-400">صفحه {view?.label}</h2>
+        <p className="text-gray-400">قابلیت‌های این بخش در موبایل پیاده‌سازی خواهد شد.</p>
+    </div>
 );
-const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
-const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.067-2.09 1.02-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>;
 
+// --- Dashboard View ---
+const KPICard = ({ title, value, icon, color }) => (
+    <div className={`bg-white p-4 rounded-xl shadow flex items-center justify-between`}>
+        <div>
+            <p className="text-xs font-medium text-gray-500">{title}</p>
+            <p className="text-xl font-bold text-gray-800">{value}</p>
+        </div>
+        <div className={`p-3 rounded-full ${color}`}>
+            {React.cloneElement(icon, { className: "w-6 h-6" })}
+        </div>
+    </div>
+);
 
-//=========== LOGIN SCREEN COMPONENT ===========//
-const LoginScreen = ({ onLoginSuccess, addToast }: { onLoginSuccess: (username: string) => void, addToast: (message: string, type?: 'success' | 'error' | 'info') => void }) => {
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
+const DashboardView = ({ orders, customers }: { orders: Order[], customers: Customer[] }) => {
+    const salesChartRef = useRef<HTMLCanvasElement>(null);
 
-    const handleLogin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsLoading(true);
+    const { salesToday, totalReceivables, activeCustomersCount, pendingFulfillmentCount } = useMemo(() => {
+        const today = new Date().toISOString().split('T')[0];
+        const salesToday = orders
+            .filter(o => o.orderDate === today && o.status !== 'لغو شده')
+            .reduce((sum, order) => sum + order.totalAmount, 0);
 
-        try {
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email: `${username}@example.com`,
-                password,
-            });
+        const totalReceivables = orders
+            .filter(o => o.status !== 'لغو شده')
+            .reduce((sum, order) => sum + (order.totalAmount - order.amountPaid), 0);
 
-            if (error) throw error;
-            if (data.user) {
-                 onLoginSuccess(username);
-                 addToast(`خوش آمدید, ${username}! اتصال ریموت برقرار شد.`, 'success');
-            }
-        } catch (err: any) {
-             addToast('نام کاربری یا رمز عبور اشتباه است.', 'error');
-        } finally {
-            setIsLoading(false);
-        }
-    };
+        const activeCustomersCount = customers.filter(c => c.status === 'فعال').length;
+        const pendingFulfillmentCount = orders.filter(o => o.status === 'در حال پردازش').length;
+
+        return { salesToday, totalReceivables, activeCustomersCount, pendingFulfillmentCount };
+    }, [orders, customers]);
+
+    const salesTrendData = useMemo(() => {
+        const last7Days = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            return d.toISOString().split('T')[0];
+        }).reverse();
+
+        const salesByDay = orders
+            .filter(o => o.status !== 'لغو شده' && last7Days.includes(o.orderDate))
+            .reduce<{ [key: string]: number }>((acc, order) => {
+                acc[order.orderDate] = (acc[order.orderDate] || 0) + order.totalAmount;
+                return acc;
+            }, {});
+
+        return {
+            labels: last7Days.map(d => new Date(d).toLocaleDateString('fa-IR', { day: 'numeric', month: 'short' })),
+            data: last7Days.map(d => salesByDay[d] || 0),
+        };
+    }, [orders]);
     
+    useEffect(() => {
+        let chartInstance: any;
+        if (salesChartRef.current) {
+            const ctx = salesChartRef.current.getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: salesTrendData.labels,
+                    datasets: [{
+                        label: 'فروش روزانه',
+                        data: salesTrendData.data,
+                        backgroundColor: '#14b8a6',
+                        borderRadius: 4,
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+            });
+        }
+        return () => {
+            if (chartInstance) chartInstance.destroy();
+        };
+    }, [salesTrendData]);
+
     return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
-            <div className="w-full max-w-sm p-8 space-y-6 bg-white rounded-2xl shadow-xl">
-                <div className="text-center">
-                    <h1 className="text-2xl font-bold text-teal-800">ورود به ریموت کنترل</h1>
-                    <p className="mt-2 text-gray-500">از حساب کاربری اصلی برنامه استفاده کنید</p>
+        <div className="p-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+                <KPICard title="فروش امروز" value={`${Math.round(salesToday).toLocaleString()}`} icon={navIcons.sales} color="bg-green-100 text-green-600" />
+                <KPICard title="مجموع طلبات" value={`${Math.round(totalReceivables).toLocaleString()}`} icon={navIcons.customer_accounts} color="bg-red-100 text-red-600" />
+                <KPICard title="مشتریان فعال" value={activeCustomersCount.toString()} icon={navIcons.customers} color="bg-yellow-100 text-yellow-600" />
+                <KPICard title="سفارشات در انتظار" value={`${pendingFulfillmentCount}`} icon={navIcons.inventory} color="bg-blue-100 text-blue-600" />
+            </div>
+            <div className="bg-white p-4 rounded-xl shadow">
+                <h3 className="font-bold text-gray-800 mb-2">روند فروش (۷ روز گذشته)</h3>
+                <div className="relative h-48">
+                    <canvas ref={salesChartRef}></canvas>
                 </div>
-                <form onSubmit={handleLogin} className="space-y-4">
-                     <div>
-                        <label className="text-sm font-medium text-gray-700">نام کاربری</label>
-                        <input type="text" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md" />
-                    </div>
-                    <div>
-                        <label className="text-sm font-medium text-gray-700">رمز عبور</label>
-                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md" />
-                    </div>
-                    <button type="submit" disabled={isLoading} className="w-full py-3 px-4 bg-teal-600 text-white rounded-lg font-semibold hover:bg-teal-700 disabled:bg-teal-400">
-                        {isLoading ? 'در حال ورود...' : 'ورود'}
-                    </button>
-                </form>
             </div>
         </div>
     );
 };
 
+//=========== MOBILE SHELL COMPONENTS ===========//
+const allViews = [
+    { id: 'dashboard', label: 'داشبورد', icon: navIcons.dashboard },
+    { id: 'sales', label: 'فروش', icon: navIcons.sales },
+    { id: 'inventory', label: 'انبار', icon: navIcons.inventory },
+    { id: 'customers', label: 'مشتریان', icon: navIcons.customers },
+    { id: 'reports', label: 'گزارشات', icon: navIcons.reports },
+];
+const mainTabs = allViews.slice(0, 4);
 
-//=========== MAIN REMOTE CONTROL COMPONENT ===========//
-const RemoteControl = ({ addToast }: { addToast: (message: string, type?: 'success' | 'error' | 'info') => void }) => {
-    const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('hayat_remote_user'));
+const MobileShell = ({ currentUser, onLogout, orders, customers }: { currentUser: User, onLogout: () => void, orders: Order[], customers: Customer[] }) => {
+    const [activeView, setActiveView] = useState('dashboard');
     
-    // State for the Quick Sale form
-    const [customerName, setCustomerName] = useState('');
-    const [amountPaid, setAmountPaid] = useState('');
-    const [items, setItems] = useState<{ drugId: string; quantity: string }[]>([]);
-    const [newItem, setNewItem] = useState({ drugId: '', quantity: '' });
+    const activeViewDetails = allViews.find(v => v.id === activeView);
 
-    const handleSendCommand = async (type: string, payload: any) => {
-        if (!currentUser) return;
-        
-        const { error } = await supabase.from('commands').insert({ sent_by: currentUser, type, payload });
+    const handleNavClick = (viewId: string) => setActiveView(viewId);
 
-        if (error) {
-            addToast(`خطا در ارسال دستور: ${error.message}`, 'error');
-        } else {
-            addToast(`دستور با موفقیت به برنامه اصلی ارسال شد.`, 'success');
-        }
-    };
+    return (
+        <div className="flex flex-col h-screen bg-gray-100">
+            <header className="bg-white shadow-md p-4 flex justify-between items-center flex-shrink-0 z-10">
+                <h1 className="font-bold text-lg text-teal-700">{activeViewDetails?.label || 'ریموت کنترل'}</h1>
+                <div className="flex items-center gap-4">
+                    <span className="text-sm font-semibold">{currentUser.username}</span>
+                    <button onClick={onLogout} title="خروج">{navIcons.logout}</button>
+                </div>
+            </header>
+            
+            <main className="flex-1 overflow-y-auto">
+                {activeView === 'dashboard' && <DashboardView orders={orders} customers={customers} />}
+                {activeView !== 'dashboard' && <PlaceholderView view={activeViewDetails} onNavigate={handleNavClick} />}
+            </main>
 
-    const handleAddItem = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newItem.drugId || !newItem.quantity) {
-            addToast('لطفا شناسه و تعداد محصول را وارد کنید.', 'error');
-            return;
-        }
-        setItems([...items, newItem]);
-        setNewItem({ drugId: '', quantity: '' });
-    };
-    
-    const handleRemoveItem = (index: number) => {
-        setItems(items.filter((_, i) => i !== index));
-    };
+            <footer className="bg-white shadow-[0_-2px_10px_rgba(0,0,0,0.1)] flex-shrink-0 z-50">
+                <nav className="flex justify-around items-center h-16">
+                    {mainTabs.map(tab => (
+                        <button key={tab.id} onClick={() => handleNavClick(tab.id)} className={`flex flex-col items-center justify-center w-full h-full transition-colors ${activeView === tab.id ? 'text-teal-600' : 'text-gray-500'}`}>
+                            {tab.icon}
+                            <span className="text-xs font-semibold">{tab.label}</span>
+                        </button>
+                    ))}
+                    <button onClick={() => handleNavClick('reports')} className={`flex flex-col items-center justify-center w-full h-full transition-colors ${activeView === 'reports' ? 'text-teal-600' : 'text-gray-500'}`}>
+                        {navIcons.reports}
+                        <span className="text-xs font-semibold">گزارشات</span>
+                    </button>
+                </nav>
+            </footer>
+        </div>
+    );
+};
 
-    const handleSubmitSale = async () => {
-        if (!customerName || items.length === 0) {
-            addToast('لطفا نام مشتری و حداقل یک قلم را وارد کنید.', 'error');
-            return;
-        }
-        const payload = {
-            customerName,
-            amountPaid: Number(amountPaid) || 0,
-            items: items.map(item => ({
-                drugId: Number(item.drugId),
-                quantity: Number(item.quantity),
-                bonusQuantity: 0
-            }))
-        };
-        await handleSendCommand('CREATE_QUICK_SALE', payload);
-        // Reset form after sending
-        setCustomerName('');
-        setAmountPaid('');
-        setItems([]);
-    };
 
+//=========== MAIN COMPONENT (Entry Point) ===========//
+const RemoteControl = ({ addToast, currentUser, orders, customers }: { 
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    currentUser: User | null;
+    orders: Order[];
+    customers: Customer[];
+}) => {
+    // The remote control view should only be rendered if there is a logged-in user.
+    // The logout function is a placeholder as the session is managed by the main App.
     const handleLogout = () => {
-        localStorage.removeItem('hayat_remote_user');
-        setCurrentUser(null);
+        addToast("برای خروج، لطفاً از برنامه اصلی خارج شوید.", "info");
     };
 
     if (!currentUser) {
-        return <LoginScreen onLoginSuccess={(username) => {
-            localStorage.setItem('hayat_remote_user', username);
-            setCurrentUser(username);
-        }} addToast={addToast} />;
+        // This state should ideally not be reached if App.tsx handles rendering correctly,
+        // but it's a good fallback.
+        return (
+            <div className="flex items-center justify-center h-screen">
+                <p>لطفاً ابتدا به برنامه اصلی وارد شوید.</p>
+            </div>
+        );
     }
 
-    return (
-        <div className="flex flex-col min-h-screen bg-gray-100">
-            <header className="bg-white shadow-md p-4 flex justify-between items-center flex-shrink-0">
-                <h1 className="font-bold text-lg text-teal-700">ریموت کنترل حیات</h1>
-                <div className="flex items-center gap-4">
-                    <span className="text-sm font-semibold">{currentUser}</span>
-                    <button onClick={handleLogout} title="خروج"><LogoutIcon /></button>
-                </div>
-            </header>
-            <main className="flex-1 p-4 flex flex-col items-center space-y-4 overflow-y-auto">
-                <div className="w-full max-w-lg bg-white rounded-xl shadow-lg p-6 space-y-4">
-                    <h2 className="text-xl font-bold text-gray-800 border-b pb-2">ثبت فاکتور سریع</h2>
-                    
-                    {/* Items List */}
-                    <div className="space-y-2">
-                         <h3 className="text-sm font-semibold text-gray-600">اقلام فاکتور:</h3>
-                         {items.length === 0 ? (
-                            <p className="text-center text-gray-500 text-sm py-4">هیچ قلمی اضافه نشده است.</p>
-                         ) : (
-                            <ul className="divide-y max-h-40 overflow-y-auto pr-2">
-                                {items.map((item, index) => (
-                                    <li key={index} className="py-2 flex justify-between items-center">
-                                        <p>محصول شناسه: <span className="font-mono font-bold">{item.drugId}</span> - تعداد: <span className="font-mono font-bold">{item.quantity}</span></p>
-                                        <button onClick={() => handleRemoveItem(index)} className="p-1 text-red-500 hover:text-red-700"><TrashIcon /></button>
-                                    </li>
-                                ))}
-                            </ul>
-                         )}
-                    </div>
-
-                    {/* Add Item Form */}
-                    <form onSubmit={handleAddItem} className="p-3 bg-gray-50 rounded-lg flex items-end gap-2">
-                        <div className="flex-1">
-                            <label className="text-xs font-bold text-gray-700">شناسه محصول</label>
-                            <input type="number" placeholder="مثال: 123" value={newItem.drugId} onChange={e => setNewItem({...newItem, drugId: e.target.value})} className="w-full p-2 border rounded-md mt-1" required />
-                        </div>
-                         <div className="flex-1">
-                            <label className="text-xs font-bold text-gray-700">تعداد</label>
-                            <input type="number" placeholder="مثال: 10" value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: e.target.value})} className="w-full p-2 border rounded-md mt-1" required />
-                        </div>
-                        <button type="submit" className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 h-10 w-10 flex-shrink-0"><PlusIcon /></button>
-                    </form>
-
-                    {/* Customer and Payment */}
-                    <div className="pt-4 border-t space-y-4">
-                        <div>
-                            <label className="text-sm font-bold text-gray-700">نام مشتری</label>
-                            <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="نام مشتری را وارد کنید..." className="w-full p-2 border rounded-md mt-1" required />
-                        </div>
-                        <div>
-                            <label className="text-sm font-bold text-gray-700">مبلغ پرداخت شده</label>
-                            <input type="number" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="0" className="w-full p-2 border rounded-md mt-1" />
-                        </div>
-                    </div>
-
-                    {/* Submit Button */}
-                    <button 
-                        onClick={handleSubmitSale}
-                        className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition-colors"
-                    >
-                        <SendIcon />
-                        ارسال دستور فروش
-                    </button>
-                </div>
-            </main>
-        </div>
-    );
+    return <MobileShell currentUser={currentUser} onLogout={handleLogout} orders={orders} customers={customers} />;
 };
 
 export default RemoteControl;

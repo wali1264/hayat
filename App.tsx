@@ -1862,7 +1862,7 @@ const App: React.FC = () => {
     // ==========================================================
 
     if (isRemoteMode) {
-        return <RemoteControl addToast={addToast} />;
+        return <RemoteControl addToast={addToast} currentUser={currentUser} orders={orders} customers={customers} />;
     }
 
     // Loading Screen
