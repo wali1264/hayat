@@ -565,11 +565,12 @@ function getOrCreateMachineId(): string {
 
 //=========== MAIN APP COMPONENT ===========//
 const App: React.FC = () => {
-    // --- Phase 1: Remote Control View ---
-    // This logic checks the URL path. If it ends with '/remote.html',
-    // it renders the RemoteControl component instead of the main application.
-    // This approach solves the 404 error by handling the routing inside the app.
-    const isRemoteMode = window.location.pathname.endsWith('/remote.html');
+    // --- Remote Control View ---
+    // This logic checks the URL for a `?view=remote` parameter.
+    // If present, it renders the RemoteControl component instead of the main app.
+    // This avoids 404 errors by using query parameters instead of direct file paths.
+    const urlParams = new URLSearchParams(window.location.search);
+    const isRemoteMode = urlParams.get('view') === 'remote';
 
     const [toasts, setToasts] = useState<Toast[]>([]);
     const addToast = (message: string, type: ToastType = 'info') => {
