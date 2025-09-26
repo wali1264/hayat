@@ -37,487 +37,85 @@ const PlusIcon = () => <Icon path="M12 6v6m0 0v6m0-6h6m-6 0H6" />;
 const MinusIcon = ({ className = "w-5 h-5" }) => <Icon path="M20 12H4" className={className} />;
 const TrashIcon = ({ className = "w-5 h-5" }) => <Icon path="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" className={className}/>;
 const ShoppingCartIcon = ({ className = "w-6 h-6" }) => <Icon path="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" className={className}/>;
+const WifiOffIcon = () => <Icon path="M18.364 5.636a9 9 0 010 12.728M12 18h.01M4.929 4.929a12.003 12.003 0 0114.142 0M1 1l22 22M8.465 8.465a5 5 0 017.07 0" />;
 
 
 //=========== HELPERS ===========//
-const getOrderStatusStyle = (status: OrderStatus) => {
-    switch (status) {
-        case 'تکمیل شده': return { text: 'text-green-700', bg: 'bg-green-100' };
-        case 'ارسال شده': return { text: 'text-blue-700', bg: 'bg-blue-100' };
-        case 'در حال پردازش': return { text: 'text-yellow-700', bg: 'bg-yellow-100' };
-        case 'لغو شده': return { text: 'text-gray-700', bg: 'bg-gray-100' };
-        default: return { text: 'text-gray-700', bg: 'bg-gray-100' };
-    }
-};
-
-const getPaymentStatusStyle = (status: PaymentStatus) => {
-    switch (status) {
-        case 'پرداخت شده': return { text: 'text-green-700', bg: 'bg-green-100' };
-        case 'قسمتی پرداخت شده': return { text: 'text-yellow-700', bg: 'bg-yellow-100' };
-        case 'پرداخت نشده': return { text: 'text-red-700', bg: 'bg-red-100' };
-        default: return { text: 'text-gray-700', bg: 'bg-gray-100' };
-    }
-};
-
+// ... (Helper functions like getOrderStatusStyle, getPaymentStatusStyle can be copied here if needed)
 
 //=========== VIEWS / SCREENS ===========//
 
-// --- Placeholder for other views ---
-const PlaceholderView = ({ view, onNavigate }) => (
+const PlaceholderView = ({ view }) => (
     <div className="text-center p-8">
         <div className="text-teal-500 opacity-20">{view?.icon && React.cloneElement(view.icon, { className: "w-32 h-32 mx-auto" })}</div>
         <h2 className="mt-4 text-2xl font-bold text-gray-400">صفحه {view?.label}</h2>
-        <p className="text-gray-400">قابلیت‌های این بخش در موبایل پیاده‌سازی خواهد شد.</p>
+        <p className="text-gray-400">این قابلیت در حال توسعه است.</p>
     </div>
 );
 
-// --- Dashboard View ---
-const KPICard = ({ title, value, icon, color }) => (
-    <div className={`bg-white p-4 rounded-xl shadow flex items-center justify-between`}>
-        <div>
-            <p className="text-xs font-medium text-gray-500">{title}</p>
-            <p className="text-xl font-bold text-gray-800">{value}</p>
-        </div>
-        <div className={`p-3 rounded-full ${color}`}>
-            {React.cloneElement(icon, { className: "w-6 h-6" })}
-        </div>
-    </div>
-);
+// --- NEW: Customer Management View for Remote ---
+const NewCustomerView = ({ onSave, onCancel }) => {
+    const [name, setName] = useState('');
+    const [phone, setPhone] = useState('');
 
-const DashboardView = ({ orders, customers }: { orders: Order[], customers: Customer[] }) => {
-    const salesChartRef = useRef<HTMLCanvasElement>(null);
-
-    const { salesToday, totalReceivables, activeCustomersCount, pendingFulfillmentCount } = useMemo(() => {
-        const today = new Date().toISOString().split('T')[0];
-        const salesToday = orders
-            .filter(o => o.orderDate === today && o.status !== 'لغو شده')
-            .reduce((sum, order) => sum + order.totalAmount, 0);
-
-        const totalReceivables = orders
-            .filter(o => o.status !== 'لغو شده')
-            .reduce((sum, order) => sum + (order.totalAmount - order.amountPaid), 0);
-
-        const activeCustomersCount = customers.filter(c => c.status === 'فعال').length;
-        const pendingFulfillmentCount = orders.filter(o => o.status === 'در حال پردازش').length;
-
-        return { salesToday, totalReceivables, activeCustomersCount, pendingFulfillmentCount };
-    }, [orders, customers]);
-
-    const salesTrendData = useMemo(() => {
-        const last7Days = Array.from({ length: 7 }, (_, i) => {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            return d.toISOString().split('T')[0];
-        }).reverse();
-
-        const salesByDay = orders
-            .filter(o => o.status !== 'لغو شده' && last7Days.includes(o.orderDate))
-            .reduce<{ [key: string]: number }>((acc, order) => {
-                acc[order.orderDate] = (acc[order.orderDate] || 0) + order.totalAmount;
-                return acc;
-            }, {});
-
-        return {
-            labels: last7Days.map(d => new Date(d).toLocaleDateString('fa-IR', { day: 'numeric', month: 'short' })),
-            data: last7Days.map(d => salesByDay[d] || 0),
-        };
-    }, [orders]);
-    
-    useEffect(() => {
-        let chartInstance: any;
-        if (salesChartRef.current) {
-            const ctx = salesChartRef.current.getContext('2d');
-            chartInstance = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: salesTrendData.labels,
-                    datasets: [{
-                        label: 'فروش روزانه',
-                        data: salesTrendData.data,
-                        backgroundColor: '#14b8a6',
-                        borderRadius: 4,
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
-            });
+    const handleSave = () => {
+        if (name.trim() && phone.trim()) {
+            onSave(name, phone);
         }
-        return () => {
-            if (chartInstance) chartInstance.destroy();
-        };
-    }, [salesTrendData]);
+    };
 
     return (
-        <div className="p-4 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-                <KPICard title="فروش امروز" value={`${Math.round(salesToday).toLocaleString()}`} icon={navIcons.sales} color="bg-green-100 text-green-600" />
-                <KPICard title="مجموع طلبات" value={`${Math.round(totalReceivables).toLocaleString()}`} icon={navIcons.customer_accounts} color="bg-red-100 text-red-600" />
-                <KPICard title="مشتریان فعال" value={activeCustomersCount.toString()} icon={navIcons.customers} color="bg-yellow-100 text-yellow-600" />
-                <KPICard title="سفارشات در انتظار" value={`${pendingFulfillmentCount}`} icon={navIcons.inventory} color="bg-blue-100 text-blue-600" />
-            </div>
-            <div className="bg-white p-4 rounded-xl shadow">
-                <h3 className="font-bold text-gray-800 mb-2">روند فروش (۷ روز گذشته)</h3>
-                <div className="relative h-48">
-                    <canvas ref={salesChartRef}></canvas>
+        <div className="flex flex-col h-full bg-gray-50">
+            <header className="bg-white p-4 border-b flex justify-between items-center sticky top-0 z-10">
+                <h2 className="font-bold text-lg">افزودن مشتری جدید</h2>
+                <button onClick={onCancel} className="text-gray-600 font-semibold">انصراف</button>
+            </header>
+            <div className="p-4 space-y-4">
+                <div>
+                    <label className="block text-sm font-bold mb-1">نام مشتری</label>
+                    <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-3 border rounded-lg" autoFocus />
+                </div>
+                <div>
+                    <label className="block text-sm font-bold mb-1">شماره تماس</label>
+                    <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 border rounded-lg" />
                 </div>
             </div>
+             <footer className="bg-white p-4 mt-auto">
+                <button onClick={handleSave} className="w-full bg-teal-600 text-white p-3 rounded-lg font-bold">ذخیره مشتری</button>
+            </footer>
         </div>
     );
 };
 
-// --- Sales View ---
-const SalesView = ({ orders, onStartNewOrder }: { orders: Order[], onStartNewOrder: () => void }) => {
+const RemoteCustomersView = ({ customers, onAddCustomer }) => {
     const [searchTerm, setSearchTerm] = useState('');
-
-    const filteredOrders = useMemo(() => {
-        return orders
-            .filter(o =>
-                o.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                o.orderNumber.toLowerCase().includes(searchTerm.toLowerCase())
-            )
-            .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
-    }, [orders, searchTerm]);
+    const filteredCustomers = useMemo(() => {
+        return customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [customers, searchTerm]);
 
     return (
         <div className="flex flex-col h-full relative">
             <div className="p-4 bg-white border-b sticky top-0 z-10">
-                <div className="relative">
-                    <input
-                        type="text"
-                        placeholder="جستجو بر اساس نام مشتری یا شماره فاکتور..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border rounded-full bg-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    />
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <SearchIcon />
-                    </div>
-                </div>
+                <input type="text" placeholder="جستجوی مشتری..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full px-4 py-2 border rounded-full bg-gray-100" />
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-24">
-                {filteredOrders.length > 0 ? (
-                    filteredOrders.map(order => {
-                        const orderStatusStyle = getOrderStatusStyle(order.status);
-                        const paymentStatusStyle = getPaymentStatusStyle(order.paymentStatus);
-                        const isReturn = order.type === 'sale_return';
-                        return (
-                            <div key={order.id} className={`bg-white rounded-xl shadow p-4 space-y-3 border-r-4 ${isReturn ? 'border-orange-400' : 'border-teal-500'}`}>
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <h3 className="font-bold text-gray-800">{order.customerName}</h3>
-                                        <p className="text-sm text-gray-500 font-mono">{order.orderNumber}</p>
-                                    </div>
-                                    <div className="text-left">
-                                        <p className={`font-bold text-lg ${isReturn ? 'text-orange-600' : 'text-teal-600'}`}>
-                                            {isReturn && '- '}
-                                            {Math.round(Math.abs(order.totalAmount)).toLocaleString()} 
-                                            <span className="text-sm font-normal"> افغانی</span>
-                                        </p>
-                                        <p className="text-xs text-gray-400">{new Date(order.orderDate).toLocaleDateString('fa-IR')}</p>
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center text-xs font-semibold pt-2 border-t border-dashed">
-                                    <span className={`px-2 py-1 rounded-full ${paymentStatusStyle.bg} ${paymentStatusStyle.text}`}>
-                                        {order.paymentStatus}
-                                    </span>
-                                    <span className={`px-2 py-1 rounded-full ${orderStatusStyle.bg} ${orderStatusStyle.text}`}>
-                                        {order.status}
-                                    </span>
-                                </div>
-                            </div>
-                        );
-                    })
-                ) : (
-                    <div className="text-center py-16">
-                        <p className="text-gray-500">هیچ فاکتوری با این مشخصات یافت نشد.</p>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 pb-24">
+                {filteredCustomers.map(customer => (
+                    <div key={customer.id} className="bg-white p-3 rounded-lg shadow-sm">
+                        <p className="font-semibold">{customer.name}</p>
+                        <p className="text-sm text-gray-500">{customer.phone}</p>
                     </div>
-                )}
+                ))}
             </div>
-            <button
-              onClick={onStartNewOrder}
-              className="absolute bottom-20 right-6 bg-teal-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 z-20"
-              aria-label="سفارش جدید"
-            >
-              <PlusIcon />
+            <button onClick={onAddCustomer} className="absolute bottom-20 right-6 bg-teal-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center z-20">
+                <PlusIcon />
             </button>
         </div>
     );
 };
 
 
-// --- NEW: Order Creation Wizard Components ---
-const CustomerSelectionStep = ({ customers, onSelect, onCancel }) => {
-    const [searchTerm, setSearchTerm] = useState('');
-
-    const filteredCustomers = useMemo(() => {
-        return customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [customers, searchTerm]);
-
-    return (
-        <div className="flex flex-col h-full bg-gray-50">
-            <header className="bg-white p-4 border-b flex justify-between items-center sticky top-0 z-10">
-                <h2 className="font-bold text-lg">مرحله ۱: انتخاب مشتری</h2>
-                <button onClick={onCancel} className="text-gray-600 font-semibold">انصراف</button>
-            </header>
-            <div className="p-4">
-                <div className="relative">
-                    <input
-                        type="text"
-                        placeholder="جستجوی مشتری..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border rounded-full bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        autoFocus
-                    />
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <SearchIcon />
-                    </div>
-                </div>
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
-                {filteredCustomers.map(customer => (
-                    <button key={customer.id} onClick={() => onSelect(customer)} className="w-full text-right bg-white p-4 rounded-lg shadow-sm border hover:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500">
-                        <p className="font-semibold">{customer.name}</p>
-                        <p className="text-sm text-gray-500">{customer.phone}</p>
-                    </button>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-const ItemSelectionStep = ({ drugs, order, onOrderChange, onBack, onProceed }) => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isCartVisible, setIsCartVisible] = useState(false);
-
-    const availableDrugs = useMemo(() => {
-        return drugs
-            .map(d => ({ ...d, totalStock: d.batches.reduce((sum, b) => sum + b.quantity, 0) }))
-            .filter(d => d.totalStock > 0)
-            .filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [drugs, searchTerm]);
-
-    const handleItemChange = (drugId: number, change: number) => {
-        const existingItem = order.items.find(i => i.drugId === drugId);
-        if (existingItem) {
-            const newQuantity = existingItem.quantity + change;
-            if (newQuantity <= 0) {
-                onOrderChange({ ...order, items: order.items.filter(i => i.drugId !== drugId) });
-            } else {
-                onOrderChange({ ...order, items: order.items.map(i => i.drugId === drugId ? { ...i, quantity: newQuantity } : i) });
-            }
-        } else if (change > 0) {
-            const drug = drugs.find(d => d.id === drugId);
-            if (!drug) return;
-            const newItem: OrderItem = {
-                drugId: drug.id,
-                drugName: drug.name,
-                quantity: 1,
-                bonusQuantity: 0,
-                originalPrice: drug.price,
-                discountPercentage: drug.discountPercentage,
-                finalPrice: drug.price * (1 - drug.discountPercentage / 100),
-            };
-            onOrderChange({ ...order, items: [...order.items, newItem] });
-        }
-    };
-    
-    const handleRemoveItem = (drugId: number) => {
-        onOrderChange({ ...order, items: order.items.filter(i => i.drugId !== drugId) });
-    };
-
-    const totalAmount = useMemo(() => order.items.reduce((sum, item) => sum + (item.quantity * item.finalPrice), 0), [order.items]);
-
-    return (
-        <div className="flex flex-col h-full bg-gray-50 relative">
-            <header className="bg-white p-4 border-b flex justify-between items-center sticky top-0 z-10">
-                <h2 className="font-bold text-lg">مرحله ۲: افزودن کالا</h2>
-                <button onClick={onBack} className="text-gray-600 font-semibold">بازگشت</button>
-            </header>
-            
-            <div className="p-4 bg-white border-b">
-                 <div className="relative">
-                    <input type="text" placeholder="جستجوی محصول..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border rounded-full bg-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
-                </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 pb-24">
-                {availableDrugs.map(drug => {
-                    const itemInCart = order.items.find(i => i.drugId === drug.id);
-                    return (
-                        <div key={drug.id} className="bg-white p-3 rounded-lg shadow-sm flex items-center justify-between">
-                            <div>
-                                <p className="font-semibold">{drug.name}</p>
-                                <p className="text-sm text-gray-500">{drug.manufacturer}</p>
-                                <p className="text-xs font-mono">موجودی: {drug.totalStock} | قیمت: {drug.price.toLocaleString()}</p>
-                            </div>
-                            {itemInCart ? (
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => handleItemChange(drug.id, -1)} className="p-2 bg-gray-200 rounded-full"><MinusIcon /></button>
-                                    <span className="font-bold w-8 text-center">{itemInCart.quantity}</span>
-                                    <button onClick={() => handleItemChange(drug.id, 1)} className="p-2 bg-gray-200 rounded-full"><PlusIcon /></button>
-                                </div>
-                            ) : (
-                                <button onClick={() => handleItemChange(drug.id, 1)} className="p-2 bg-teal-100 text-teal-700 rounded-lg font-semibold text-sm">افزودن</button>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-
-            {order.items.length > 0 && (
-                <footer className="absolute bottom-0 left-0 right-0 bg-white shadow-[0_-2px_10px_rgba(0,0,0,0.1)] p-4 space-y-3">
-                    <button onClick={() => setIsCartVisible(!isCartVisible)} className="w-full flex justify-between items-center text-left">
-                        <div className="flex items-center gap-3">
-                            <ShoppingCartIcon />
-                            <div>
-                                <p className="font-semibold">{order.items.length} قلم در سبد خرید</p>
-                                <p className="text-sm text-gray-600">جمع کل: {totalAmount.toLocaleString()} افغانی</p>
-                            </div>
-                        </div>
-                        <span className="text-sm font-semibold text-teal-600">{isCartVisible ? 'بستن' : 'مشاهده'}</span>
-                    </button>
-
-                    {isCartVisible && (
-                        <div className="pt-3 border-t max-h-40 overflow-y-auto space-y-2">
-                            {order.items.map(item => (
-                                <div key={item.drugId} className="flex justify-between items-center">
-                                    <p className="text-sm">{item.drugName} <span className="font-mono text-xs">x{item.quantity}</span></p>
-                                    <div className="flex items-center gap-2">
-                                        <p className="text-sm font-semibold">{(item.quantity * item.finalPrice).toLocaleString()}</p>
-                                        <button onClick={() => handleRemoveItem(item.drugId)} className="text-red-500 p-1"><TrashIcon /></button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                    
-                    <button onClick={onProceed} className="w-full bg-teal-600 text-white p-3 rounded-lg font-bold">بررسی نهایی</button>
-                </footer>
-            )}
-        </div>
-    );
-};
-
-const FinalReviewStep = ({ order, onBack, onSave }) => {
-    const [amountPaid, setAmountPaid] = useState('');
-    const totalAmount = useMemo(() => order.items.reduce((sum, item) => sum + (item.quantity * item.finalPrice), 0), [order.items]);
-
-    const handleSaveClick = () => {
-        onSave(Number(amountPaid) || 0);
-    };
-
-    return (
-        <div className="flex flex-col h-full bg-gray-50">
-            <header className="bg-white p-4 border-b flex justify-between items-center sticky top-0">
-                <h2 className="font-bold text-lg">مرحله ۳: بررسی نهایی</h2>
-                <button onClick={onBack} className="text-gray-600 font-semibold">بازگشت</button>
-            </header>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                    <p className="text-sm text-gray-500">فاکتور برای:</p>
-                    <p className="font-bold text-lg">{order.customerName}</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm space-y-2">
-                    <h3 className="font-bold">خلاصه اقلام:</h3>
-                    {order.items.map(item => (
-                        <div key={item.drugId} className="flex justify-between text-sm">
-                            <span>{item.drugName} <span className="font-mono text-xs">x{item.quantity}</span></span>
-                            <span className="font-semibold">{(item.quantity * item.finalPrice).toLocaleString()}</span>
-                        </div>
-                    ))}
-                    <div className="flex justify-between font-bold pt-2 border-t">
-                        <span>جمع کل</span>
-                        <span>{totalAmount.toLocaleString()}</span>
-                    </div>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                    <label htmlFor="amountPaid" className="block text-sm font-bold mb-2">مبلغ پرداخت شده (افغانی)</label>
-                    <input
-                        type="number"
-                        id="amountPaid"
-                        value={amountPaid}
-                        onChange={(e) => setAmountPaid(e.target.value)}
-                        placeholder="0"
-                        className="w-full p-3 border rounded-lg text-lg font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    />
-                </div>
-            </div>
-            <footer className="bg-white p-4 shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
-                <button onClick={handleSaveClick} className="w-full bg-teal-600 text-white p-3 rounded-lg font-bold text-lg">
-                    ذخیره و ثبت فاکتور
-                </button>
-            </footer>
-        </div>
-    );
-};
-
-
-const OrderCreationWizard = ({ customers, drugs, onCancel, currentUser, addToast, setWaitingForCommandId }) => {
-    const [step, setStep] = useState(1);
-    const [newOrder, setNewOrder] = useState<Partial<Order>>({ items: [] });
-    
-    const handleCustomerSelect = (customer: Customer) => {
-        setNewOrder(prev => ({ ...prev, customerName: customer.name, items: [] }));
-        setStep(2);
-    };
-
-    const handleSaveQuickSale = async (amountPaid: number) => {
-        if (!newOrder.customerName || !newOrder.items || newOrder.items.length === 0) {
-            addToast("خطا: اطلاعات فاکتور ناقص است.", 'error');
-            return;
-        }
-
-        const payload = {
-            customerName: newOrder.customerName,
-            amountPaid: amountPaid,
-            items: newOrder.items.map(item => ({
-                drugId: item.drugId,
-                quantity: item.quantity,
-                bonusQuantity: item.bonusQuantity || 0
-            }))
-        };
-        
-        addToast("در حال ارسال فرمان به سیستم اصلی...", "info");
-        try {
-            const { data, error } = await supabase.from('commands').insert({
-                type: 'CREATE_QUICK_SALE',
-                payload: payload,
-                sent_by: currentUser.username
-            }).select('id').single();
-
-            if (error) throw error;
-            
-            if (data && data.id) {
-                setWaitingForCommandId(data.id);
-            } else {
-                throw new Error("پاسخی از پایگاه داده برای شناسه فرمان دریافت نشد.");
-            }
-
-        } catch (error) {
-            console.error("Error sending quick sale command:", error);
-            addToast("خطا در ارسال فرمان به سیستم اصلی.", 'error');
-        }
-    };
-
-    if (step === 1) {
-        return <CustomerSelectionStep customers={customers} onSelect={handleCustomerSelect} onCancel={onCancel} />;
-    }
-
-    if (step === 2) {
-        return <ItemSelectionStep drugs={drugs} order={newOrder} onOrderChange={setNewOrder} onBack={() => setStep(1)} onProceed={() => setStep(3)} />;
-    }
-
-    if (step === 3) {
-        return <FinalReviewStep order={newOrder} onBack={() => setStep(2)} onSave={handleSaveQuickSale} />;
-    }
-    
-    return null;
-};
-
-//=========== MOBILE SHELL COMPONENTS ===========//
+//=========== MOBILE SHELL & LOGIN ===========//
+// ... (MobileShell component can be copied here)
 const allViews = [
     { id: 'dashboard', label: 'داشبورد', icon: navIcons.dashboard },
     { id: 'sales', label: 'فروش', icon: navIcons.sales },
@@ -525,8 +123,6 @@ const allViews = [
     { id: 'customers', label: 'مشتریان', icon: navIcons.customers },
     { id: 'reports', label: 'گزارشات', icon: navIcons.reports },
 ];
-const mainTabs = allViews.slice(0, 4);
-
 const MobileShell = ({ currentUser, onLogout, activeView, setActiveView, children }) => {
     const activeViewDetails = allViews.find(v => v.id === activeView);
 
@@ -546,16 +142,12 @@ const MobileShell = ({ currentUser, onLogout, activeView, setActiveView, childre
 
             <footer className="bg-white shadow-[0_-2px_10px_rgba(0,0,0,0.1)] flex-shrink-0 z-50">
                 <nav className="flex justify-around items-center h-16">
-                    {mainTabs.map(tab => (
+                    {allViews.map(tab => (
                         <button key={tab.id} onClick={() => setActiveView(tab.id)} className={`flex flex-col items-center justify-center w-full h-full transition-colors ${activeView === tab.id ? 'text-teal-600' : 'text-gray-500'}`}>
                             {tab.icon}
                             <span className="text-xs font-semibold">{tab.label}</span>
                         </button>
                     ))}
-                    <button onClick={() => setActiveView('reports')} className={`flex flex-col items-center justify-center w-full h-full transition-colors ${activeView === 'reports' ? 'text-teal-600' : 'text-gray-500'}`}>
-                        {navIcons.reports}
-                        <span className="text-xs font-semibold">گزارشات</span>
-                    </button>
                 </nav>
             </footer>
         </div>
@@ -563,17 +155,55 @@ const MobileShell = ({ currentUser, onLogout, activeView, setActiveView, childre
 };
 
 // --- NEW: Standalone Login Screen for Remote ---
-const RemoteLogin = ({ onLogin, addToast, users }: { onLogin: (user: User) => void; addToast: (message: string, type?: 'success' | 'error' | 'info') => void; users: User[] }) => {
+const RemoteLogin = ({ onLogin, addToast }: { onLogin: (companyUsername: string, user: User) => void; addToast: (message: string, type?: 'success' | 'error' | 'info') => void; }) => {
+    const [companyUsername, setCompanyUsername] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const user = users.find(u => u.username === username && u.password === password);
-        if (user) {
-            onLogin(user);
-        } else {
-            addToast('نام کاربری یا رمز عبور اشتباه است.', 'error');
+        setIsLoading(true);
+        addToast("در حال اعتبارسنجی شرکت...", "info");
+        try {
+            // 1. Find the company by its unique username
+            const { data: licenseData, error: licenseError } = await supabase
+                .from('licenses')
+                .select('id, user_id')
+                .eq('username', companyUsername)
+                .single();
+            
+            if (licenseError || !licenseData) {
+                throw new Error("نام کاربری شرکت یافت نشد.");
+            }
+            
+            addToast("در حال دریافت اطلاعات کاربران...", "info");
+
+            // 2. Fetch the latest backup data which contains the users array
+            const { data: backupData, error: backupError } = await supabase
+                .from('backups')
+                .select('backup_data')
+                .eq('license_id', licenseData.id)
+                .single();
+
+            if (backupError || !backupData || !backupData.backup_data || !Array.isArray(backupData.backup_data.users)) {
+                throw new Error("اطلاعات کاربران شرکت یافت نشد. لطفاً از برنامه اصلی یک پشتیبان آنلاین تهیه کنید.");
+            }
+
+            // 3. Authenticate the user against the fetched users array
+            const users: User[] = backupData.backup_data.users;
+            const user = users.find(u => u.username === username && u.password === password);
+
+            if (user) {
+                onLogin(companyUsername, user); // Pass both company and user info up
+            } else {
+                addToast('نام کاربری یا رمز عبور کارمند اشتباه است.', 'error');
+            }
+
+        } catch (error: any) {
+            addToast(error.message || 'خطا در ورود.', 'error');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -582,21 +212,26 @@ const RemoteLogin = ({ onLogin, addToast, users }: { onLogin: (user: User) => vo
             <div className="w-full max-w-sm p-8 space-y-6 bg-white rounded-2xl shadow-xl">
                 <div className="text-center">
                     <h1 className="text-2xl font-bold text-teal-800">ورود به ریموت کنترل</h1>
-                    <p className="mt-2 text-sm text-gray-500">با حساب کاربری اصلی خود وارد شوید</p>
+                    <p className="mt-2 text-sm text-gray-500">اطلاعات شرکت و کاربر را وارد کنید</p>
                 </div>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
+                        <input type="text" value={companyUsername} onChange={(e) => setCompanyUsername(e.target.value)}
+                            placeholder="نام کاربری شرکت" required autoFocus
+                            className="w-full px-4 py-3 border rounded-lg" />
+                    </div>
+                    <div>
                         <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-                            placeholder="نام کاربری" required autoFocus
-                            className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                            placeholder="نام کاربری شما" required
+                            className="w-full px-4 py-3 border rounded-lg" />
                     </div>
                     <div>
                         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                            placeholder="رمز عبور" required
-                            className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                            placeholder="رمز عبور شما" required
+                            className="w-full px-4 py-3 border rounded-lg" />
                     </div>
-                    <button type="submit" className="w-full py-3 bg-teal-600 text-white font-bold rounded-lg hover:bg-teal-700 transition-colors">
-                        ورود
+                    <button type="submit" disabled={isLoading} className="w-full py-3 bg-teal-600 text-white font-bold rounded-lg hover:bg-teal-700 disabled:bg-teal-400">
+                        {isLoading ? 'در حال بررسی...' : 'ورود'}
                     </button>
                 </form>
             </div>
@@ -604,114 +239,211 @@ const RemoteLogin = ({ onLogin, addToast, users }: { onLogin: (user: User) => vo
     );
 };
 
+// --- NEW: System Offline View ---
+const SystemOfflineView = () => (
+    <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-gray-100">
+        <div className="bg-white p-10 rounded-2xl shadow-lg border">
+            <WifiOffIcon />
+            <h2 className="mt-4 text-2xl font-bold text-gray-800">سیستم مرکزی آفلاین است</h2>
+            <p className="mt-2 text-gray-600 max-w-sm">
+                امکان استفاده از ریموت کنترل وجود ندارد زیرا برنامه اصلی به اینترنت متصل نیست. لطفاً با دفتر تماس بگیرید.
+            </p>
+        </div>
+    </div>
+);
+
 
 //=========== MAIN COMPONENT (Entry Point) ===========//
-const RemoteControl = ({ addToast, users, orders, customers, drugs }: { 
+const RemoteControl = ({ addToast }: { 
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
-    users: User[];
-    orders: Order[];
-    customers: Customer[];
-    drugs: Drug[];
 }) => {
+    const [licenseId, setLicenseId] = useState<number | null>(null);
     const [remoteUser, setRemoteUser] = useState<User | null>(null);
     const [activeView, setActiveView] = useState('dashboard');
-    const [isCreatingOrder, setIsCreatingOrder] = useState(false);
-    const [waitingForCommandId, setWaitingForCommandId] = useState<string | null>(null);
-
-    const handleLogout = () => {
-        setRemoteUser(null);
-        addToast("شما از ریموت کنترل خارج شدید.", "info");
-    };
     
-    const handleLogin = (user: User) => {
-        addToast(`خوش آمدید، ${user.username}!`, 'success');
-        setRemoteUser(user);
-    };
+    // Remote data states
+    const [remoteCustomers, setRemoteCustomers] = useState<Customer[]>([]);
+    // ... other remote data states like remoteOrders, remoteDrugs would go here
 
-    // If user navigates away from sales tab, exit order creation mode
+    const [isSystemOnline, setIsSystemOnline] = useState<boolean | null>(null);
+    const [waitingForCommandId, setWaitingForCommandId] = useState<number | null>(null);
+
+    // Fetch initial data on successful login
     useEffect(() => {
-        if (activeView !== 'sales') {
-            setIsCreatingOrder(false);
-        }
-    }, [activeView]);
+        if (!licenseId) return;
 
-    // Listener for command results
-    useEffect(() => {
-        if (!remoteUser || !waitingForCommandId) return;
+        const fetchInitialData = async () => {
+            addToast("در حال دریافت آخرین اطلاعات...", "info");
+            try {
+                const { data, error } = await supabase
+                    .from('backups')
+                    .select('backup_data')
+                    .eq('license_id', licenseId)
+                    .single();
 
-        const handleNewResult = (payload: any) => {
-            const result = payload.new;
-            
-            if (result.command_id === waitingForCommandId) {
-                const toastType = result.status === 'SUCCESS' ? 'success' : 'error';
-                addToast(result.message, toastType);
-                
-                if (result.status === 'SUCCESS') {
-                    setIsCreatingOrder(false);
+                if (error || !data || !data.backup_data) {
+                    throw new Error("خطا در دریافت اطلاعات. لطفاً مطمئن شوید یک پشتیبان آنلاین وجود دارد.");
                 }
-                
-                setWaitingForCommandId(null);
+
+                const backup = data.backup_data;
+                setRemoteCustomers(backup.customers || []);
+                // setRemoteOrders(backup.orders || []);
+                // setRemoteDrugs(backup.drugs || []);
+                addToast("اطلاعات با موفقیت بارگذاری شد.", "success");
+            } catch (error: any) {
+                addToast(error.message, 'error');
+                handleLogout(); // Log out if data fetch fails
             }
         };
 
-        const channel: RealtimeChannel = supabase
-            .channel(`command_results_channel_${waitingForCommandId}`)
-            .on('postgres_changes', { 
-                event: 'INSERT', 
-                schema: 'public', 
-                table: 'command_results', 
-                filter: `command_id=eq.${waitingForCommandId}` 
-            }, handleNewResult)
-            .subscribe((status, err) => {
-                if (status === 'SUBSCRIBED') {
-                    console.log('Connected to command_results channel for command:', waitingForCommandId);
-                }
-                if (err) {
-                    console.error('Command_results channel error:', err);
-                    addToast('خطا در اتصال به کانال بازخورد.', 'error');
-                    setWaitingForCommandId(null);
-                }
-            });
+        fetchInitialData();
+    }, [licenseId]);
 
-        return () => {
-            supabase.removeChannel(channel);
+    // Check system status (heartbeat) periodically
+    useEffect(() => {
+        if (!licenseId) return;
+
+        const checkStatus = async () => {
+            const { data, error } = await supabase
+                .from('company_status')
+                .select('last_seen_at')
+                .eq('license_id', licenseId)
+                .single();
+
+            if (error || !data) {
+                console.error("Heartbeat check failed:", error);
+                setIsSystemOnline(false);
+                return;
+            }
+            
+            const lastSeen = new Date(data.last_seen_at).getTime();
+            const now = new Date().getTime();
+            const minutesAgo = (now - lastSeen) / (1000 * 60);
+
+            setIsSystemOnline(minutesAgo < 2); // Consider online if seen within the last 2 minutes
         };
-    }, [waitingForCommandId, remoteUser, addToast]);
 
+        checkStatus(); // Check immediately
+        const interval = setInterval(checkStatus, 15000); // And every 15 seconds
+        
+        return () => clearInterval(interval); // Cleanup interval on component unmount
+    }, [licenseId]);
+    
+    // Listen for real-time data updates (when main app creates a new backup)
+    useEffect(() => {
+        if (!licenseId) return;
+        const channel = supabase.channel(`backup-updates-for-${licenseId}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'backups',
+                filter: `license_id=eq.${licenseId}`
+            }, payload => {
+                addToast("داده‌های جدید از سیستم مرکزی دریافت شد.", "info");
+                const backup = payload.new.backup_data;
+                if (backup && Array.isArray(backup.customers)) {
+                    setRemoteCustomers(backup.customers);
+                }
+            })
+            .subscribe();
+        return () => { supabase.removeChannel(channel); };
+    }, [licenseId]);
+
+
+    const handleLogout = () => {
+        setRemoteUser(null);
+        setLicenseId(null);
+        addToast("شما از ریموت کنترل خارج شدید.", "info");
+    };
+    
+    const handleLogin = async (companyUsername: string, user: User) => {
+        try {
+            const { data: licenseData } = await supabase
+                .from('licenses').select('id').eq('username', companyUsername).single();
+            if (!licenseData) throw new Error();
+
+            setLicenseId(licenseData.id);
+            setRemoteUser(user);
+            addToast(`خوش آمدید، ${user.username}!`, 'success');
+        } catch {
+             addToast('خطا در دریافت شناسه شرکت.', 'error');
+        }
+    };
+
+    const sendCommand = async (type: string, payload: any) => {
+        if (!licenseId || !remoteUser) return;
+        addToast("در حال ارسال فرمان...", "info");
+        try {
+            const { error } = await supabase.from('commands').insert({
+                license_id: licenseId,
+                type,
+                payload,
+                sent_by: remoteUser.username
+            });
+            if (error) throw error;
+            addToast("فرمان با موفقیت ارسال شد.", "success");
+        } catch (error: any) {
+            addToast(`خطا در ارسال فرمان: ${error.message}`, 'error');
+        }
+    };
+    
+    // --- State for navigation inside a view ---
+    const [customerView, setCustomerView] = useState<'list' | 'add'>('list');
+
+    useEffect(() => {
+        // Reset sub-view when changing main tab
+        if (activeView !== 'customers') {
+            setCustomerView('list');
+        }
+    }, [activeView]);
+
+    const handleAddCustomer = (name: string, phone: string) => {
+        const newCustomerData = {
+            id: Date.now(), // Temporary ID
+            name,
+            phone,
+            manager: '',
+            address: '',
+            registrationDate: new Date().toISOString(),
+            status: 'فعال' as const
+        };
+        sendCommand('CREATE_CUSTOMER', newCustomerData);
+        setCustomerView('list'); // Go back to list after saving
+    };
 
     const renderActiveView = () => {
         const activeViewDetails = allViews.find(v => v.id === activeView);
-        if (activeView === 'sales' && isCreatingOrder) {
-            return <OrderCreationWizard 
-                customers={customers} 
-                drugs={drugs} 
-                onCancel={() => setIsCreatingOrder(false)} 
-                currentUser={remoteUser!} 
-                addToast={addToast}
-                setWaitingForCommandId={setWaitingForCommandId}
-            />;
-        }
         switch (activeView) {
             case 'dashboard':
-                return <DashboardView orders={orders} customers={customers} />;
+                // Dashboard view to be implemented
+                return <PlaceholderView view={activeViewDetails} />;
+            case 'customers':
+                if (customerView === 'add') {
+                    return <NewCustomerView onSave={handleAddCustomer} onCancel={() => setCustomerView('list')} />;
+                }
+                return <RemoteCustomersView customers={remoteCustomers} onAddCustomer={() => setCustomerView('add')} />;
             case 'sales':
-                return <SalesView orders={orders} onStartNewOrder={() => setIsCreatingOrder(true)} />;
+                // Sales view to be implemented
+                return <PlaceholderView view={activeViewDetails} />;
             default:
-                return <PlaceholderView view={activeViewDetails} onNavigate={setActiveView} />;
+                return <PlaceholderView view={activeViewDetails} />;
         }
     };
 
     if (!remoteUser) {
-        return <RemoteLogin onLogin={handleLogin} addToast={addToast} users={users} />;
+        return <RemoteLogin onLogin={handleLogin} addToast={addToast} />;
+    }
+    
+    if (isSystemOnline === null) {
+        return <div className="flex items-center justify-center h-screen">در حال بررسی وضعیت سیستم مرکزی...</div>;
+    }
+    
+    if (isSystemOnline === false) {
+        return <SystemOfflineView />;
     }
 
     return (
-        <MobileShell 
-            currentUser={remoteUser} 
-            onLogout={handleLogout} 
-            activeView={activeView}
-            setActiveView={setActiveView}
-        >
+        <MobileShell currentUser={remoteUser} onLogout={handleLogout} activeView={activeView} setActiveView={setActiveView}>
             {renderActiveView()}
         </MobileShell>
     );

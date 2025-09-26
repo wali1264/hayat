@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { SupabaseClient } from '@supabase/supabase-js';
 
@@ -83,8 +84,19 @@ const getRoleStyle = (role: UserRole) => {
     }
 };
 
+const ToggleSwitch = ({ enabled, onChange }: { enabled: boolean, onChange: () => void }) => (
+    <button
+        type="button"
+        className={`${enabled ? 'bg-teal-600' : 'bg-gray-200'} relative inline-flex items-center h-6 rounded-full w-11 transition-colors`}
+        onClick={onChange}
+    >
+        <span className={`${enabled ? 'translate-x-6' : 'translate-x-1'} inline-block w-4 h-4 transform bg-white rounded-full transition-transform`} />
+    </button>
+);
+
+
 //=========== SUB-COMPONENTS ===========//
-const SettingsCard = ({ title, description, children }) => (
+const SettingsCard = ({ title, description, children }: { title: string, description: string, children: React.ReactNode }) => (
     <div className="bg-white rounded-xl shadow-lg">
         <div className="p-6 border-b">
             <h3 className="text-xl font-bold text-gray-800">{title}</h3>
@@ -720,6 +732,21 @@ const SecuritySettingsSection = ({ backupKey, onBackupKeyChange, addToast }) => 
     );
 }
 
+const OnlineModeSection = ({ isOnlineMode, onSetIsOnlineMode }: { isOnlineMode: boolean, onSetIsOnlineMode: (enabled: boolean) => void }) => {
+    return (
+        <div className="flex items-center justify-between p-4 border rounded-lg bg-gray-50">
+            <div>
+                <p className="font-semibold text-gray-800">فعال‌سازی حالت همگام‌سازی آنلاین و ریموت</p>
+                <p className="text-sm text-gray-600 mt-1">
+                    با فعال‌سازی این حالت، برنامه به صورت لحظه‌ای با سرور همگام می‌شود و به سایر کاربران اجازه دسترسی از طریق ریموت را می‌دهد.
+                </p>
+            </div>
+            <ToggleSwitch enabled={isOnlineMode} onChange={() => onSetIsOnlineMode(!isOnlineMode)} />
+        </div>
+    );
+};
+
+
 //=========== MAIN COMPONENT ===========//
 type SettingsProps = {
     companyInfo: CompanyInfo;
@@ -731,7 +758,7 @@ type SettingsProps = {
     backupKey: string | null;
     onBackupKeyChange: (newKey: string) => void;
     supabase: SupabaseClient;
-    licenseId: string | null;
+    licenseId: number | null;
     onBackupLocal: () => void;
     onRestoreLocal: (event: React.ChangeEvent<HTMLInputElement>) => void;
     onBackupOnline: () => Promise<boolean>;
@@ -741,6 +768,8 @@ type SettingsProps = {
     onSetDocumentSettings: (settings: DocumentSettings) => void;
     rolePermissions: RolePermissions;
     onSetRolePermissions: (permissions: RolePermissions) => void;
+    isOnlineMode: boolean;
+    onSetIsOnlineMode: (enabled: boolean) => void;
     hasUnsavedChanges: boolean;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     showConfirmation: (title: string, message: React.ReactNode, onConfirm: () => void) => void;
@@ -752,6 +781,10 @@ const Settings: React.FC<SettingsProps> = (props) => {
         <div className="p-8 space-y-8">
             <SettingsCard title="اطلاعات شرکت" description="تنظیمات اولیه و اطلاعات تماس شرکت خود را مدیریت کنید.">
                 <CompanyInfoSection companyInfo={props.companyInfo} onSetCompanyInfo={props.onSetCompanyInfo} />
+            </SettingsCard>
+
+            <SettingsCard title="حالت آنلاین و دسترسی ریموت" description="قابلیت‌های آنلاین و کار تیمی را فعال یا غیرفعال کنید.">
+                <OnlineModeSection isOnlineMode={props.isOnlineMode} onSetIsOnlineMode={props.onSetIsOnlineMode} />
             </SettingsCard>
 
             <SettingsCard title="شخصی‌سازی فاکتور و گزارشات" description="ظاهر و چیدمان اسناد چاپی خود را مطابق با سلیقه و برند خود تنظیم کنید.">

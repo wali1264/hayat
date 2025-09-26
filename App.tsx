@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient, Session, RealtimeChannel } from '@supabase/supabase-js';
@@ -45,7 +46,7 @@ const CustomersIcon = ({ className }: { className?: string }) => <Icon path="M17
 const CustomerAccountsIcon = ({ className }: { className?: string }) => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" className={className} />;
 const AccountingIcon = ({ className }: { className?: string }) => <Icon path="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M12 21a9 9 0 110-18 9 9 0 010 18z" className={className} />;
 const ReportsIcon = ({ className }: { className?: string }) => <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className={className} />;
-const SettingsIcon = ({ className }: { className?: string }) => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0 3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" className={className} />;
+const SettingsIcon = ({ className }: { className?: string }) => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0 3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" className={className} />;
 const LogoutIcon = ({ className }: { className?: string }) => <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" className={className} />;
 const SuppliersIcon = ({ className }: { className?: string }) => <Icon path="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V6a1 1 0 011-1h2a1 1 0 011 1v10a1 1 0 01-1 1h-1m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" className={className} />;
 const PurchasingIcon = ({ className }: { className?: string }) => <Icon path="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" className={className} />;
@@ -545,7 +546,7 @@ type LicenseStatus = 'LOADING' | 'NEEDS_ACTIVATION' | 'NEEDS_VALIDATION' | 'INVA
 type OnlineValidationResult = 'VALID' | 'INVALID_DEACTIVATED' | 'INVALID_MACHINE_ID' | 'NOT_FOUND' | 'NETWORK_ERROR';
 
 type LicenseInfo = {
-    id: string; // This is the license table row UUID
+    id: number; // Changed to number to match bigint
     user_id: string; // This is the auth.users UUID
     machine_id: string;
     session: Session;
@@ -769,6 +770,7 @@ const App: React.FC = () => {
         totalDebt: { enabled: false, threshold: 1000000 }
     });
     const [rolePermissions, setRolePermissions] = usePersistentState<RolePermissions>('hayat_rolePermissions', initialRolePermissions);
+    const [isOnlineMode, setIsOnlineMode] = usePersistentState<boolean>('hayat_isOnlineMode', false);
 
     // --- NEW AUTHENTICATION STATE ---
     const [currentUser, setCurrentUser] = usePersistentState<User | null>('hayat_currentUser', null);
@@ -1772,113 +1774,45 @@ const App: React.FC = () => {
         }
     }, [activeItem]);
 
-    // --- NEW: Remote Control Command Listener ---
+    // --- NEW: Heartbeat for Online Mode ---
     useEffect(() => {
-        if (!currentUser || !licenseInfo) return;
+        if (!isOnlineMode || !licenseInfo) {
+            return;
+        }
 
-        const handleNewCommand = async (payload: any) => {
-            const command = payload.new;
-            console.log("Received command:", command);
+        let heartbeatInterval: number;
 
-            const postResult = async (status: 'SUCCESS' | 'ERROR', message: string, payload: any = null) => {
-                await supabase.from('command_results').insert({
-                    command_id: command.id,
-                    status,
-                    message,
-                    payload
+        const updateStatus = async () => {
+            try {
+                const { error } = await supabase.from('company_status').upsert({
+                    license_id: licenseInfo.id,
+                    last_seen_at: new Date().toISOString(),
                 });
-            };
-
-            switch (command.type) {
-                case 'PING':
-                    addToast(`دستور پینگ از ${command.sent_by} دریافت شد!`, 'success');
-                    await postResult('SUCCESS', 'پینگ با موفقیت دریافت شد.');
-                    break;
-                
-                case 'CREATE_QUICK_SALE': {
-                    const { customerName, amountPaid, items: remoteItems } = command.payload;
-                    try {
-                        if (!customerName || !remoteItems) {
-                            throw new Error("اطلاعات فاکتور از ریموت ناقص است.");
-                        }
-
-                        const orderItems: OrderItem[] = [];
-                        for (const remoteItem of remoteItems) {
-                            const drug = drugs.find(d => d.id === remoteItem.drugId);
-                            if (!drug) {
-                                throw new Error(`محصول با شناسه ${remoteItem.drugId} یافت نشد.`);
-                            }
-                            const finalPrice = drug.price * (1 - drug.discountPercentage / 100);
-                            orderItems.push({
-                                drugId: drug.id,
-                                drugName: drug.name,
-                                manufacturer: drug.manufacturer,
-                                code: drug.code,
-                                quantity: remoteItem.quantity,
-                                bonusQuantity: remoteItem.bonusQuantity || 0,
-                                originalPrice: drug.price,
-                                discountPercentage: drug.discountPercentage,
-                                finalPrice: finalPrice,
-                                isPriceOverridden: false,
-                            });
-                        }
-                        
-                        const totalAmount = orderItems.reduce((sum, item) => sum + (item.quantity * item.finalPrice), 0);
-                        let paymentStatus: Order['paymentStatus'] = 'پرداخت نشده';
-                        if (amountPaid >= totalAmount) paymentStatus = 'پرداخت شده';
-                        else if (amountPaid > 0) paymentStatus = 'قسمتی پرداخت شده';
-
-                        const newOrder: Order = {
-                            id: Date.now(),
-                            type: 'sale',
-                            orderNumber: '', // Will be generated by handleSaveOrder
-                            customerName: customerName,
-                            orderDate: new Date().toISOString().split('T')[0],
-                            items: orderItems,
-                            extraCharges: [],
-                            totalAmount: totalAmount,
-                            amountPaid: amountPaid,
-                            status: 'ارسال شده',
-                            paymentStatus: paymentStatus,
-                        };
-
-                        handleSaveOrder(newOrder);
-                        await postResult('SUCCESS', `فاکتور برای ${customerName} با موفقیت در سیستم ثبت شد.`);
-
-                    } catch (error: any) {
-                        console.error("Error processing CREATE_QUICK_SALE command:", error.message);
-                        await postResult('ERROR', `خطا در پردازش فرمان: ${error.message}`);
-                    }
-                    break;
+                if (error) {
+                    console.error('Heartbeat error:', error);
                 }
-                    
-                default:
-                    console.warn("Unknown command type received:", command.type);
+            } catch (error) {
+                console.error('Heartbeat exception:', error);
             }
         };
 
-        const channel: RealtimeChannel = supabase
-            .channel('public:commands')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'commands' }, handleNewCommand)
-            .subscribe((status, err) => {
-                if (status === 'SUBSCRIBED') {
-                    console.log('Connected to command channel.');
-                }
-                if (err) {
-                    console.error('Command channel error:', err);
-                }
-            });
+        // Update status immediately on going online
+        updateStatus();
 
+        // Then update every minute
+        heartbeatInterval = window.setInterval(updateStatus, 60000); // 60 seconds
+
+        // Cleanup on component unmount or if dependencies change
         return () => {
-            supabase.removeChannel(channel);
+            clearInterval(heartbeatInterval);
         };
-    }, [currentUser, licenseInfo, drugs, handleSaveOrder]);
-    
+    }, [isOnlineMode, licenseInfo]);
+
     // RENDER LOGIC
     // ==========================================================
 
     if (isRemoteMode) {
-        return <RemoteControl addToast={addToast} users={users} orders={orders} customers={customers} drugs={drugs} />;
+        return <RemoteControl addToast={addToast} />;
     }
 
     // Loading Screen
@@ -1960,6 +1894,8 @@ const App: React.FC = () => {
                 onPurgeData={()=>{}}
                 documentSettings={documentSettings} onSetDocumentSettings={setDocumentSettings}
                 rolePermissions={rolePermissions} onSetRolePermissions={setRolePermissions}
+                isOnlineMode={isOnlineMode}
+                onSetIsOnlineMode={setIsOnlineMode}
                 hasUnsavedChanges={false} addToast={addToast} showConfirmation={showConfirmation} currentUser={currentUser}
                 />;
             default: return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={[]} />;
