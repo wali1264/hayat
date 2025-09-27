@@ -817,6 +817,14 @@ const App: React.FC = () => {
         setConfirmationModal(null);
     };
 
+    // --- NEW: SYNC QUEUE HELPER ---
+    const addToSyncQueue = (action: Omit<SyncAction, 'id'>) => {
+        const newAction: SyncAction = {
+            ...action,
+            id: `${action.table}-${Date.now()}-${Math.random()}`
+        };
+        setSyncQueue(prev => [...prev, newAction]);
+    };
     
     // --- NEW AUTH & USER MANAGEMENT LOGIC ---
     const handleLogin = (username: string, password_raw: string) => {
@@ -904,6 +912,7 @@ const App: React.FC = () => {
     };
 
     const handleSaveUser = (userToSave: Omit<User, 'lastLogin'>) => {
+        let userToSaveWithPassword = { ...userToSave };
         setUsers(prev => {
             const exists = prev.some(u => u.id === userToSave.id);
             if (exists) {
@@ -913,24 +922,33 @@ const App: React.FC = () => {
                         if (userToSave.password) {
                             updatedUser.password = userToSave.password;
                         }
+                        userToSaveWithPassword = updatedUser;
                         return updatedUser;
                     }
                     return u;
                 });
             } else {
-                return [{ ...userToSave, lastLogin: 'هرگز وارد نشده' }, ...prev];
+                 const newUser = { ...userToSave, lastLogin: 'هرگز وارد نشده' };
+                 userToSaveWithPassword = newUser;
+                 return [newUser, ...prev];
             }
         });
+        addToSyncQueue({ type: 'UPSERT', table: 'users', payload: userToSaveWithPassword });
         addToast(`کاربر ${userToSave.username} با موفقیت ذخیره شد.`, 'success');
     };
 
     const handlePasswordReset = (username: string, newPass: string) => {
+         let updatedUser: User | null = null;
          setUsers(prev => prev.map(u => {
             if (u.username === username) {
-                return { ...u, password: newPass };
+                updatedUser = { ...u, password: newPass };
+                return updatedUser;
             }
             return u;
         }));
+        if(updatedUser) {
+            addToSyncQueue({ type: 'UPSERT', table: 'users', payload: updatedUser });
+        }
         addToast(`رمز عبور کاربر ${username} با موفقیت تغییر کرد.`, 'success');
     };
     
@@ -1029,6 +1047,12 @@ const App: React.FC = () => {
         };
 
         setTrash(prev => [trashItem, ...prev]);
+        addToSyncQueue({ type: 'UPSERT', table: 'trash', payload: trashItem });
+
+        const tableMap = {
+            customer: 'customers', supplier: 'suppliers', order: 'orders',
+            purchaseBill: 'purchase_bills', drug: 'drugs', expense: 'expenses', user: 'users'
+        };
 
         switch (itemType) {
             case 'customer':
@@ -1055,6 +1079,11 @@ const App: React.FC = () => {
                  setUsers(prev => prev.filter(u => u.id !== (itemData as User).id));
                  break;
         }
+        
+        const tableName = tableMap[itemType];
+        if (tableName) {
+            addToSyncQueue({ type: 'DELETE', table: tableName, match: { id: (itemData as any).id } });
+        }
         addToast("آیتم به سطل زباله منتقل شد.", "info");
     };
     
@@ -1072,6 +1101,7 @@ const App: React.FC = () => {
         let tempDrugs = JSON.parse(JSON.stringify(drugs));
         // If it's a sale, add stock back. If it's a return, deduct stock.
         const multiplier = order.type === 'sale' ? 1 : -1;
+        let changedDrugs: Drug[] = [];
 
         for (const item of (order.items || [])) {
             if (!item.batchAllocations) continue;
@@ -1090,9 +1120,11 @@ const App: React.FC = () => {
                         });
                     }
                 }
+                changedDrugs.push(drugToUpdate);
             }
         }
         setDrugs(tempDrugs);
+        changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: d }));
         handleSoftDelete('order', order);
     };
 
@@ -1120,6 +1152,7 @@ const App: React.FC = () => {
 
         // Revert stock changes before soft deleting
         if (billToDelete.status === 'دریافت شده') {
+            let changedDrugs: Drug[] = [];
             setMainWarehouseDrugs(currentWarehouse => {
                 let updatedWarehouse = JSON.parse(JSON.stringify(currentWarehouse));
                 for (const item of billToDelete.items) {
@@ -1134,9 +1167,11 @@ const App: React.FC = () => {
                     } else { // purchase_return
                         batch.quantity += totalUnits; // Revert return: increase stock
                     }
+                    changedDrugs.push(drug);
                 }
                 return updatedWarehouse;
             });
+            changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: d }));
         }
         handleSoftDelete('purchaseBill', billToDelete);
     };
@@ -1162,10 +1197,22 @@ const App: React.FC = () => {
     };
     
     const handleRestoreItem = (item: TrashItem) => {
+        const tableMap = {
+            customer: 'customers', supplier: 'suppliers', order: 'orders',
+            purchaseBill: 'purchase_bills', drug: 'drugs', expense: 'expenses', user: 'users'
+        };
+        const tableName = tableMap[item.itemType];
+        
+        if (tableName) {
+             addToSyncQueue({ type: 'UPSERT', table: tableName, payload: item.data });
+        }
+        addToSyncQueue({ type: 'DELETE', table: 'trash', match: { id: item.id } });
+        
         if (item.itemType === 'order') {
             const orderToRestore = item.data as Order;
             const multiplier = orderToRestore.type === 'sale' ? -1 : 1;
             let tempDrugs = JSON.parse(JSON.stringify(drugs));
+            let changedDrugs: Drug[] = [];
             for (const orderItem of (orderToRestore.items || [])) {
                 if (!orderItem.batchAllocations) continue;
                 const drugToUpdate = tempDrugs.find(d => d.id === orderItem.drugId);
@@ -1178,9 +1225,11 @@ const App: React.FC = () => {
                             drugToUpdate.batches.push({ ...allocation });
                         }
                     }
+                    changedDrugs.push(drugToUpdate);
                 }
             }
             setDrugs(tempDrugs);
+            changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: d }));
             setOrders(prev => [...prev, orderToRestore].sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()));
         } else {
              switch (item.itemType) {
@@ -1189,6 +1238,7 @@ const App: React.FC = () => {
                 case 'purchaseBill':
                     const billToRestore = item.data as PurchaseBill;
                     if (billToRestore.status === 'دریافت شده') {
+                        let changedDrugs: Drug[] = [];
                         setMainWarehouseDrugs(currentWarehouse => {
                             let updatedWarehouse = JSON.parse(JSON.stringify(currentWarehouse));
                             if (billToRestore.type === 'purchase') {
@@ -1208,11 +1258,14 @@ const App: React.FC = () => {
                                         } else {
                                             drug.batches.push({ lotNumber: billItem.lotNumber, quantity: totalUnits, expiryDate: billItem.expiryDate, productionDate: billItem.productionDate, purchasePrice: costOfGoods / totalUnits });
                                         }
+                                        changedDrugs.push(drug);
                                     } else {
                                         const drugInfo = [...drugs, ...mainWarehouseDrugs].find(d => d.id === billItem.drugId);
                                         if (drugInfo) {
                                             const { batches, ...baseDrugInfo } = drugInfo;
-                                            updatedWarehouse.push({ ...baseDrugInfo, batches: [{ lotNumber: billItem.lotNumber, quantity: totalUnits, expiryDate: billItem.expiryDate, productionDate: billItem.productionDate, purchasePrice: costOfGoods / totalUnits }]});
+                                            const newDrug = { ...baseDrugInfo, batches: [{ lotNumber: billItem.lotNumber, quantity: totalUnits, expiryDate: billItem.expiryDate, productionDate: billItem.productionDate, purchasePrice: costOfGoods / totalUnits }]};
+                                            updatedWarehouse.push(newDrug);
+                                            changedDrugs.push(newDrug);
                                         }
                                     }
                                 });
@@ -1224,17 +1277,24 @@ const App: React.FC = () => {
                                         if (batch) {
                                             batch.quantity -= billItem.quantity;
                                         }
+                                        changedDrugs.push(drug);
                                     }
                                 });
                             }
                             return updatedWarehouse;
                         });
+                        changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: d }));
                     }
                     setPurchaseBills(prev => [...prev, billToRestore].sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()));
                     break;
                 case 'drug': 
-                    setDrugs(prev => [...prev, item.data as Drug]);
-                    setMainWarehouseDrugs(prev => [...prev, item.data as Drug]);
+                    const restoredDrug = item.data as Drug;
+                    // Restore to both, assuming it existed in both conceptually
+                    setDrugs(prev => [...prev, restoredDrug]);
+                    setMainWarehouseDrugs(prev => [...prev, restoredDrug]);
+                    // Let's be more specific with sync
+                    addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: restoredDrug });
+                    addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: restoredDrug });
                     break;
                 case 'expense': setExpenses(prev => [...prev, item.data as Expense]); break;
                 case 'user': setUsers(prev => [...prev, item.data as User]); break;
@@ -1248,13 +1308,16 @@ const App: React.FC = () => {
     const handleDeletePermanently = (id: string) => {
         showConfirmation('حذف دائمی', 'آیا مطمئنید؟ این عمل غیرقابل بازگشت است.', () => {
             setTrash(prev => prev.filter(t => t.id !== id));
+            addToSyncQueue({ type: 'DELETE', table: 'trash', match: { id } });
             addToast('آیتم برای همیشه حذف شد.', 'info');
         });
     };
 
     const handleEmptyTrash = () => {
         showConfirmation('خالی کردن سطل زباله', 'آیا مطمئنید؟ تمام آیتم‌های موجود در سطل زباله برای همیشه حذف خواهند شد.', () => {
+            const idsToDelete = trash.map(item => item.id);
             setTrash([]);
+            idsToDelete.forEach(id => addToSyncQueue({ type: 'DELETE', table: 'trash', match: { id } }));
             addToast('سطل زباله با موفقیت خالی شد.', 'success');
         });
     };
@@ -1285,10 +1348,12 @@ const App: React.FC = () => {
         };
     
         setInventoryWriteOffs(prev => [newWriteOff, ...prev]);
+        addToSyncQueue({ type: 'UPSERT', table: 'inventory_write_offs', payload: newWriteOff });
     
+        let updatedDrug: Drug | null = null;
         setDrugs(prevDrugs => prevDrugs.map(d => {
             if (d.id === drugId) {
-                return {
+                updatedDrug = {
                     ...d,
                     batches: d.batches.map(b => {
                         if (b.lotNumber === lotNumber) {
@@ -1297,15 +1362,21 @@ const App: React.FC = () => {
                         return b;
                     })
                 };
+                return updatedDrug;
             }
             return d;
         }));
+        
+        if (updatedDrug) {
+            addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: updatedDrug });
+        }
     
         addToast(`تعداد ${quantity} از محصول ${drug.name} به عنوان ضایعات ثبت شد.`, 'success');
     };
 
     const handleSavePurchaseBill = (bill: PurchaseBill) => {
         const originalBill = purchaseBills.find(b => b.id === bill.id);
+        const changedDrugs: Drug[] = [];
     
         setMainWarehouseDrugs(currentWarehouse => {
             let updatedWarehouse = JSON.parse(JSON.stringify(currentWarehouse));
@@ -1325,6 +1396,7 @@ const App: React.FC = () => {
                     } else { // purchase_return
                         batch.quantity += totalUnits; // Revert return: increase stock
                     }
+                     if (!changedDrugs.some(d => d.id === drug.id)) changedDrugs.push(drug);
                 }
             }
     
@@ -1352,12 +1424,15 @@ const App: React.FC = () => {
                                 const costPerUnitInBaseCurrency = costOfGoodsInBaseCurrency / totalUnits;
                                 drug.batches.push({ lotNumber: item.lotNumber, quantity: totalUnits, expiryDate: item.expiryDate, productionDate: item.productionDate, purchasePrice: costPerUnitInBaseCurrency });
                             }
+                            if (!changedDrugs.some(d => d.id === drug.id)) changedDrugs.push(drug);
                         } else {
                             const drugInfo = [...drugs, ...mainWarehouseDrugs].find(d => d.id === item.drugId);
                             if (drugInfo) {
                                 const { batches, ...baseDrugInfo } = drugInfo;
                                 const costPerUnitInBaseCurrency = costOfGoodsInBaseCurrency / totalUnits;
-                                updatedWarehouse.push({ ...baseDrugInfo, batches: [{ lotNumber: item.lotNumber, quantity: totalUnits, expiryDate: item.expiryDate, productionDate: item.productionDate, purchasePrice: costPerUnitInBaseCurrency }]});
+                                const newDrug = { ...baseDrugInfo, batches: [{ lotNumber: item.lotNumber, quantity: totalUnits, expiryDate: item.expiryDate, productionDate: item.productionDate, purchasePrice: costPerUnitInBaseCurrency }]};
+                                updatedWarehouse.push(newDrug);
+                                if (!changedDrugs.some(d => d.id === newDrug.id)) changedDrugs.push(newDrug);
                             }
                         }
                     }
@@ -1369,12 +1444,15 @@ const App: React.FC = () => {
                         if (batch) {
                             batch.quantity -= item.quantity;
                         }
+                         if (!changedDrugs.some(d => d.id === drug.id)) changedDrugs.push(drug);
                     }
                  }
             }
     
             return updatedWarehouse;
         });
+        
+        changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: d }));
     
         setPurchaseBills(prev => {
             const exists = prev.some(b => b.id === bill.id);
@@ -1383,6 +1461,7 @@ const App: React.FC = () => {
             }
             return [bill, ...prev];
         });
+        addToSyncQueue({ type: 'UPSERT', table: 'purchase_bills', payload: bill });
         addToast(`فاکتور ${bill.billNumber} با موفقیت ذخیره شد.`, 'success');
     };
 
@@ -1395,6 +1474,7 @@ const App: React.FC = () => {
             date: new Date().toISOString(),
         };
         setStockRequisitions(prev => [newRequisition, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        addToSyncQueue({ type: 'UPSERT', table: 'stock_requisitions', payload: newRequisition });
         addToast('درخواست جدید با موفقیت ثبت و به انبار اصلی ارسال شد.', 'success');
     };
 
@@ -1403,6 +1483,7 @@ const App: React.FC = () => {
         
         const updatedMainWarehouse = JSON.parse(JSON.stringify(mainWarehouseDrugs));
         const updatedSalesWarehouse = JSON.parse(JSON.stringify(drugs));
+        const changedDrugs: Drug[] = [];
 
         for (const fulfilledItem of fulfilledItems) {
             if (fulfilledItem.quantityFulfilled <= 0) continue;
@@ -1447,14 +1528,20 @@ const App: React.FC = () => {
                     salesDrug.batches.push({ ...batch, quantity: amountFromThisBatch });
                 }
             }
+            changedDrugs.push(mainDrug, salesDrug);
         }
         
         if (success) {
             setMainWarehouseDrugs(updatedMainWarehouse);
             setDrugs(updatedSalesWarehouse);
-            setStockRequisitions(prev =>
-                prev.map(r => r.id === requisition.id ? { ...r, status: 'تکمیل شده', fulfilledBy, items: fulfilledItems } : r)
-            );
+            const updatedRequisition = { ...requisition, status: 'تکمیل شده' as const, fulfilledBy, items: fulfilledItems };
+            setStockRequisitions(prev => prev.map(r => r.id === requisition.id ? updatedRequisition : r) );
+            
+            changedDrugs.forEach(d => {
+                addToSyncQueue({ type: 'UPSERT', table: updatedMainWarehouse.some(mwd => mwd.id === d.id) ? 'main_warehouse_drugs' : 'drugs', payload: d });
+            });
+            addToSyncQueue({ type: 'UPSERT', table: 'stock_requisitions', payload: updatedRequisition });
+            
             addToast(`درخواست #${requisition.id} با موفقیت تکمیل شد.`, 'success');
         }
     };
@@ -1472,6 +1559,7 @@ const App: React.FC = () => {
     
         let tempDrugs = JSON.parse(JSON.stringify(drugs));
         const isEditMode = orders.some(o => o.id === order.id);
+        const changedDrugs: Drug[] = [];
 
         if (isEditMode) {
             const originalOrder = orders.find(o => o.id === order.id);
@@ -1493,6 +1581,7 @@ const App: React.FC = () => {
                                 });
                             }
                         }
+                         if (!changedDrugs.some(d => d.id === drugToUpdate.id)) changedDrugs.push(drugToUpdate);
                     }
                 }
             }
@@ -1543,6 +1632,7 @@ const App: React.FC = () => {
     
                     quantityToDeduct -= quantityFromThisBatch;
                 }
+                 if (!changedDrugs.some(d => d.id === drug.id)) changedDrugs.push(drug);
             }
     
             if (!stockSufficient) {
@@ -1570,19 +1660,25 @@ const App: React.FC = () => {
                              });
                          }
                     }
+                     if (!changedDrugs.some(d => d.id === drugToUpdate.id)) changedDrugs.push(drugToUpdate);
                 }
             }
              setDrugs(tempDrugs);
         }
+        
+        changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: d }));
+
+        const finalOrderData = isEditMode ? order : { ...order, orderNumber: `${order.type === 'sale_return' ? 'SR' : 'SO'}-${new Date().getFullYear()}-${(orders.length + 1).toString().padStart(4, '0')}` };
 
         setOrders(prev => {
             if (isEditMode) {
-                return prev.map(o => o.id === order.id ? order : o);
+                return prev.map(o => o.id === order.id ? finalOrderData : o);
             }
-            const newOrderNumber = `${order.type === 'sale_return' ? 'SR' : 'SO'}-${new Date().getFullYear()}-${(prev.length + 1).toString().padStart(4, '0')}`;
-            return [{...order, orderNumber: newOrderNumber}, ...prev];
+            return [finalOrderData, ...prev];
         });
-        addToast(`سفارش ${order.orderNumber || ''} با موفقیت ذخیره شد.`, 'success');
+        
+        addToSyncQueue({ type: 'UPSERT', table: 'orders', payload: finalOrderData });
+        addToast(`سفارش ${finalOrderData.orderNumber || ''} با موفقیت ذخیره شد.`, 'success');
     }
 
     const pageTitles: { [key: string]: string } = {
@@ -1592,15 +1688,18 @@ const App: React.FC = () => {
     };
 
     const handleSaveDrug = (drug: Omit<Drug, 'batches'>) => {
+        const newDrugData = { ...drug, batches: [] };
         const updateLogic = (prev: Drug[]) => {
              const exists = prev.some(d => d.id === drug.id);
             if (exists) {
                 return prev.map(d => d.id === drug.id ? { ...d, ...drug } : d);
             }
-             return [...prev, { ...drug, batches: [] }];
+             return [...prev, newDrugData];
         };
         setDrugs(updateLogic);
         setMainWarehouseDrugs(updateLogic);
+        addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: newDrugData });
+        addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: newDrugData });
         addToast(`محصول ${drug.name} با موفقیت ذخیره شد.`, 'success');
     };
 
@@ -1615,6 +1714,8 @@ const App: React.FC = () => {
         const newDrugEntry = { ...drug, batches: [] };
         setDrugs(prev => [...prev, newDrugEntry]);
         setMainWarehouseDrugs(prev => [...prev, newDrugEntry]);
+        addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: newDrugEntry });
+        addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: newDrugEntry });
         addToast(`محصول ${drug.name} با موفقیت تعریف شد.`, 'success');
         setIsQuickAddDrugModalOpen(false);
     };
@@ -1761,7 +1862,7 @@ const App: React.FC = () => {
 
     const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
-    // --- NEW: Online Mode Real-time Sync Effect (Phase 1) ---
+    // --- REFACTORED: Online Mode Real-time Sync Effect ---
     useEffect(() => {
         // If offline or no license, ensure we are disconnected.
         if (!isOnlineMode || !licenseInfo) {
@@ -1772,15 +1873,53 @@ const App: React.FC = () => {
             }
             return;
         }
+
+        const processSyncQueue = async () => {
+            if (isSyncing || syncQueue.length === 0) return;
+        
+            setIsSyncing(true);
+            addToast(`در حال همگام‌سازی ${syncQueue.length} عملیات آفلاین...`, 'info');
+        
+            const queueToProcess = [...syncQueue];
+            const remainingActions: SyncAction[] = [];
+        
+            for (const action of queueToProcess) {
+                try {
+                    const payloadWithLicense = action.payload ? { ...action.payload, license_id: licenseInfo.id } : undefined;
+                    let query;
+                    switch (action.type) {
+                        case 'UPSERT':
+                            query = supabase.from(action.table).upsert(payloadWithLicense);
+                            break;
+                        case 'DELETE':
+                            query = supabase.from(action.table).delete().match(action.match);
+                            break;
+                    }
+                    const { error } = await query;
+                    if (error) throw error;
+                } catch (error) {
+                    addToast(`همگام‌سازی عملیات برای جدول ${action.table} با خطا مواجه شد.`, 'error');
+                    console.error("Sync error:", error);
+                    remainingActions.push(action); // Keep failed action for retry
+                }
+            }
+            
+            setSyncQueue(remainingActions); // Update queue with only failed/remaining actions
+            if (remainingActions.length === 0 && queueToProcess.length > 0) {
+                 addToast('همگام‌سازی عملیات آفلاین با موفقیت انجام شد.', 'success');
+            }
+            setIsSyncing(false);
+        };
     
-        // If online, setup connection and listeners.
         const setupOnlineMode = async () => {
-            if (realtimeChannelRef.current) return; // Already connected
-    
-            addToast("در حال اتصال به سرور و همگام‌سازی...", "info");
+            if (realtimeChannelRef.current) return;
     
             try {
-                // --- 1. Fetch initial data ---
+                // --- 1. PUSH: Process local changes first ---
+                await processSyncQueue();
+
+                // --- 2. PULL: Fetch initial data after pushing ---
+                addToast("در حال دریافت آخرین اطلاعات از سرور...", "info");
                 const licenseFilter = { column: 'license_id', value: licenseInfo.id };
     
                 const fetchTable = async (tableName, setState) => {
@@ -1821,59 +1960,58 @@ const App: React.FC = () => {
     
                 addToast("همگام‌سازی اولیه با موفقیت انجام شد.", "success");
     
+                // --- 3. SUBSCRIBE: Setup real-time listeners ---
+                const handleArrayUpdate = (payload: any, setState: React.Dispatch<React.SetStateAction<any[]>>) => {
+                    if (payload.eventType === 'INSERT') {
+                        setState(prev => [...prev.filter(item => item.id !== payload.new.id), payload.new]);
+                    } else if (payload.eventType === 'UPDATE') {
+                        setState(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
+                    } else if (payload.eventType === 'DELETE') {
+                        setState(prev => prev.filter(item => item.id !== payload.old.id));
+                    }
+                };
+        
+                const handleSingletonUpdate = (payload: any, setState: React.Dispatch<React.SetStateAction<any>>) => {
+                    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                         const { id, license_id, ...actualData } = payload.new;
+                         setState(actualData);
+                    }
+                };
+        
+                const channel = supabase.channel(`public-tables-license-${licenseInfo.id}`);
+                channel
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'drugs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setDrugs))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'main_warehouse_drugs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setMainWarehouseDrugs))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'customers', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setCustomers))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setOrders))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setExpenses))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setSuppliers))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_bills', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setPurchaseBills))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_requisitions', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setStockRequisitions))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_write_offs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setInventoryWriteOffs))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'trash', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setTrash))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'checkneh_invoices', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setChecknehInvoices))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'users', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setUsers))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'company_info', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setCompanyInfo))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'document_settings', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setDocumentSettings))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'alert_settings', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setAlertSettings))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'role_permissions', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setRolePermissions))
+                    .subscribe((status, err) => {
+                        if (status === 'SUBSCRIBED') {
+                            addToast("اتصال لحظه‌ای با سرور برقرار شد.", "info");
+                        }
+                        if (err) {
+                            addToast(`خطای اتصال لحظه‌ای: ${err.message}`, 'error');
+                        }
+                    });
+        
+                realtimeChannelRef.current = channel;
+
             } catch (error) {
-                console.error("Online mode initial fetch failed:", error);
-                addToast(`خطا در همگام‌سازی اولیه: ${error.message}. بازگشت به حالت آفلاین.`, 'error');
+                console.error("Online mode setup failed:", error);
+                addToast(`خطا در همگام‌سازی: ${error.message}. بازگشت به حالت آفلاین.`, 'error');
                 setIsOnlineMode(false);
-                return;
             }
-    
-            // --- 2. Setup real-time listeners ---
-            const handleArrayUpdate = (payload: any, setState: React.Dispatch<React.SetStateAction<any[]>>) => {
-                if (payload.eventType === 'INSERT') {
-                    setState(prev => [...prev.filter(item => item.id !== payload.new.id), payload.new]);
-                } else if (payload.eventType === 'UPDATE') {
-                    setState(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
-                } else if (payload.eventType === 'DELETE') {
-                    setState(prev => prev.filter(item => item.id !== payload.old.id));
-                }
-            };
-    
-            const handleSingletonUpdate = (payload: any, setState: React.Dispatch<React.SetStateAction<any>>) => {
-                if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-                     const { id, license_id, ...actualData } = payload.new;
-                     setState(actualData);
-                }
-            };
-    
-            const channel = supabase.channel(`public-tables-license-${licenseInfo.id}`);
-            channel
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'drugs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setDrugs))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'main_warehouse_drugs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setMainWarehouseDrugs))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'customers', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setCustomers))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setOrders))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setExpenses))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setSuppliers))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_bills', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setPurchaseBills))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_requisitions', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setStockRequisitions))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_write_offs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setInventoryWriteOffs))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'trash', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setTrash))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'checkneh_invoices', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setChecknehInvoices))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'users', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setUsers))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'company_info', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setCompanyInfo))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'document_settings', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setDocumentSettings))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'alert_settings', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setAlertSettings))
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'role_permissions', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setRolePermissions))
-                .subscribe((status, err) => {
-                    if (status === 'SUBSCRIBED') {
-                        addToast("اتصال لحظه‌ای با سرور برقرار شد.", "info");
-                    }
-                    if (err) {
-                        addToast(`خطای اتصال لحظه‌ای: ${err.message}`, 'error');
-                    }
-                });
-    
-            realtimeChannelRef.current = channel;
         };
     
         setupOnlineMode();
@@ -1886,7 +2024,7 @@ const App: React.FC = () => {
         };
     }, [isOnlineMode, licenseInfo]);
 
-    // --- NEW: OFFLINE QUEUE PROCESSOR ---
+    // --- NEW: OFFLINE QUEUE PROCESSOR (Runs whenever online and queue has items) ---
     useEffect(() => {
         const processQueue = async () => {
             if (!isOnlineMode || isSyncing || syncQueue.length === 0 || !licenseInfo) {
@@ -1894,10 +2032,10 @@ const App: React.FC = () => {
             }
     
             setIsSyncing(true);
-            addToast(`در حال همگام‌سازی ${syncQueue.length} عملیات آفلاین...`, 'info');
+            addToast(`در حال همگام‌سازی ${syncQueue.length} عملیات جدید...`, 'info');
     
             const queueToProcess = [...syncQueue]; // Create a copy to process
-            let failed = false;
+            const remainingActions: SyncAction[] = [];
     
             for (const action of queueToProcess) {
                 try {
@@ -1919,29 +2057,24 @@ const App: React.FC = () => {
                     }
                     
                     const { error } = await query;
-    
-                    if (error) {
-                        throw error;
-                    } else {
-                        // On success, remove the action from the original queue
-                        setSyncQueue(prev => prev.filter(item => item.id !== action.id));
-                    }
+                    if (error) throw error;
                 } catch (error) {
                     addToast(`همگام‌سازی عملیات برای جدول ${action.table} با خطا مواجه شد.`, 'error');
                     console.error("Sync error:", error);
-                    failed = true;
-                    break; // Stop processing on first error
+                    remainingActions.push(action);
+                    break; 
                 }
             }
     
-            if (!failed && queueToProcess.length > 0) {
+            setSyncQueue(remainingActions);
+            if (remainingActions.length === 0 && queueToProcess.length > 0) {
                  addToast('همگام‌سازی با موفقیت انجام شد.', 'success');
             }
             setIsSyncing(false);
         };
     
         processQueue();
-    }, [isOnlineMode, syncQueue, licenseInfo]);
+    }, [isOnlineMode, syncQueue]);
 
 
     // RENDER LOGIC
@@ -1991,42 +2124,41 @@ const App: React.FC = () => {
     const renderActiveComponent = () => {
         const effectiveUser = isRemoteView ? remoteUser : currentUser;
         if (!effectiveUser) return null;
+        const commonProps = {
+            currentUser: effectiveUser,
+            addToast: addToast,
+            companyInfo: companyInfo,
+            documentSettings: documentSettings
+        };
         switch(activeItem) {
             case 'dashboard': return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
-            case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={handleDeleteDrug} onWriteOff={handleWriteOff} onSaveRequisition={handleSaveRequisition} currentUser={effectiveUser} rolePermissions={rolePermissions} addToast={addToast} onTraceLotNumber={handleTraceLotNumber} />;
-            case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={effectiveUser} rolePermissions={rolePermissions} documentSettings={documentSettings} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
-            case 'customers': return <Customers customers={customers} onSave={(c) => setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev])} onDelete={handleDeleteCustomer} currentUser={effectiveUser} rolePermissions={rolePermissions} addToast={addToast} onViewLedger={handleViewLedger} />;
-            case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev])} onDelete={handleDeleteSupplier} currentUser={effectiveUser} />;
-            case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={effectiveUser} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
-            case 'finance': return <Accounting orders={orders} expenses={expenses} onSave={(e) => setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev])} onDelete={handleDeleteExpense} currentUser={effectiveUser} />;
-            case 'reports': return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} companyInfo={companyInfo} documentSettings={documentSettings} lotNumberToTrace={lotNumberToTrace} />;
+            case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={handleDeleteDrug} onWriteOff={handleWriteOff} onSaveRequisition={handleSaveRequisition} rolePermissions={rolePermissions} onTraceLotNumber={handleTraceLotNumber} {...commonProps} />;
+            case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} onSave={handleSaveOrder} onDelete={handleDeleteOrder} rolePermissions={rolePermissions} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} {...commonProps} />;
+            case 'customers': return <Customers customers={customers} onSave={(c) => { setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'customers', payload: c }); }} onDelete={handleDeleteCustomer} rolePermissions={rolePermissions} onViewLedger={handleViewLedger} {...commonProps} />;
+            case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => { setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'suppliers', payload: s }); }} onDelete={handleDeleteSupplier} {...commonProps} />;
+            case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} {...commonProps} />;
+            case 'finance': return <Accounting orders={orders} expenses={expenses} onSave={(e) => { setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'expenses', payload: e }); }} onDelete={handleDeleteExpense} {...commonProps} />;
+            case 'reports': return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} lotNumberToTrace={lotNumberToTrace} {...commonProps} />;
             case 'fulfillment': return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} />;
-            case 'customer_accounts': return <CustomerAccounts customers={customers} orders={orders} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} preselectedCustomerId={preselectedCustomerId} />;
-            case 'supplier_accounts': return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} />;
-            case 'main_warehouse': return <MainWarehouse 
-                mainWarehouseDrugs={mainWarehouseDrugs} 
-                stockRequisitions={stockRequisitions} 
-                onFulfillRequisition={(req, items, user) => handleFulfillRequisition(req, items, user)} 
-                currentUser={effectiveUser} 
-                addToast={addToast} 
-                companyInfo={companyInfo} 
-                documentSettings={documentSettings} 
-                />;
+            case 'customer_accounts': return <CustomerAccounts customers={customers} orders={orders} preselectedCustomerId={preselectedCustomerId} {...commonProps} />;
+            case 'supplier_accounts': return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} {...commonProps} />;
+            case 'main_warehouse': return <MainWarehouse mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onFulfillRequisition={(req, items, user) => handleFulfillRequisition(req, items, user)} {...commonProps} />;
             case 'recycle_bin': return <RecycleBin trashItems={trash} onRestore={handleRestoreItem} onDelete={handleDeletePermanently} onEmptyTrash={handleEmptyTrash} />;
-            case 'checkneh': return <Checkneh customers={customers} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} showConfirmation={showConfirmation} invoices={checknehInvoices} setInvoices={setChecknehInvoices} />;
-            case 'alerts': return <Alerts settings={alertSettings} setSettings={setAlertSettings} customers={customers} />;
+            case 'checkneh': return <Checkneh customers={customers} showConfirmation={showConfirmation} invoices={checknehInvoices} setInvoices={setChecknehInvoices} {...commonProps} />;
+            case 'alerts': return <Alerts settings={alertSettings} setSettings={(setter) => { const newSettings = typeof setter === 'function' ? setter(alertSettings) : setter; setAlertSettings(newSettings); addToSyncQueue({ type: 'UPSERT', table: 'alert_settings', payload: newSettings }); }} customers={customers} />;
             case 'settings': return <Settings 
-                companyInfo={companyInfo} onSetCompanyInfo={setCompanyInfo} 
                 users={users} onSaveUser={handleSaveUser} onDeleteUser={handleDeleteUser} onPasswordReset={handlePasswordReset}
+                onSetCompanyInfo={(info) => { setCompanyInfo(info); addToSyncQueue({ type: 'UPSERT', table: 'company_info', payload: info }); }}
+                onSetDocumentSettings={(settings) => { setDocumentSettings(settings); addToSyncQueue({ type: 'UPSERT', table: 'document_settings', payload: settings }); }}
+                onSetRolePermissions={(permissions) => { setRolePermissions(permissions); addToSyncQueue({ type: 'UPSERT', table: 'role_permissions', payload: permissions }); }}
                 backupKey={null} onBackupKeyChange={()=>{}} 
                 onBackupLocal={handleBackupLocal} 
                 onRestoreLocal={handleRestoreLocal} 
                 onPurgeData={()=>{}}
-                documentSettings={documentSettings} onSetDocumentSettings={setDocumentSettings}
-                rolePermissions={rolePermissions} onSetRolePermissions={setRolePermissions}
                 isOnlineMode={isOnlineMode}
                 onSetIsOnlineMode={setIsOnlineMode}
-                hasUnsavedChanges={false} addToast={addToast} showConfirmation={showConfirmation} currentUser={effectiveUser}
+                hasUnsavedChanges={false} showConfirmation={showConfirmation} 
+                {...commonProps} rolePermissions={rolePermissions} 
                 />;
             default: return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={[]} />;
         }
