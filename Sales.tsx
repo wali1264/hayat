@@ -513,9 +513,9 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                         <CloseIcon />
                     </button>
                 </header>
-                <main className="flex-1 overflow-hidden flex flex-row">
+                <main className="flex-1 overflow-hidden flex flex-col lg:flex-row">
                     {/* LEFT PANEL: PRODUCT CATALOG */}
-                    <div className="w-1/3 border-l p-4 flex flex-col bg-gray-50">
+                    <div className="w-full lg:w-1/3 border-l p-4 flex flex-col bg-gray-50">
                         <h4 className="font-bold text-lg text-gray-800 mb-4">کاتالوگ محصولات</h4>
                         <div className="flex gap-2 mb-4">
                             <input 
@@ -550,7 +550,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                         </div>
                     </div>
                     {/* RIGHT PANEL: ORDER FORM */}
-                    <div className="w-2/3 overflow-y-auto p-6">
+                    <div className="w-full lg:w-2/3 overflow-y-auto p-6">
                         <form id="order-modal-form" onSubmit={handleSubmit} className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>

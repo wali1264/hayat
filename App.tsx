@@ -1,9 +1,8 @@
-
-
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { createClient, SupabaseClient, Session, RealtimeChannel } from '@supabase/supabase-js';
+// FIX: Import Supabase types with `import type` to resolve module export errors where `Session` and `RealtimeChannel` were not found.
+import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient, Session, RealtimeChannel } from '@supabase/supabase-js';
 import Inventory, { Drug, Batch, WriteOffReason, DrugModal } from './Inventory';
 import Sales, { Order, OrderItem, ExtraCharge, BatchAllocation } from './Sales';
 import Customers, { Customer } from './Customers';
@@ -21,7 +20,6 @@ import Checkneh, { ChecknehInvoice } from './Checkneh';
 import Alerts, { AlertSettings } from './Alerts';
 import MainWarehouse from './MainWarehouse';
 import Login from './Login';
-import RemoteControl from './RemoteControl';
 
 
 //=========== SUPABASE CLIENT ===========//
@@ -56,6 +54,8 @@ const ChecknehIcon = ({ className }: { className?: string }) => <Icon path="M9 5
 const CloudSyncIcon = ({ className }: { className?: string }) => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a4 4 0 01-4-4V9a4 4 0 014-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V16a4 4 0 01-4 4z" className={className} />;
 const AlertIcon = ({ className }: { className?: string }) => <Icon path="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" className={className} />;
 const LockIcon = ({ className }: { className?: string }) => <Icon path="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" className={className} />;
+const WifiOffIcon = ({ className }: { className?: string }) => <Icon path="M18.364 5.636a9 9 0 010 12.728M12 18h.01M4.929 4.929a12.003 12.003 0 0114.142 0M1 1l22 22M8.465 8.465a5 5 0 017.07 0" className={className}/>;
+const PlusCircleIcon = ({ className }: { className?: string }) => <Icon path="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" className={className} />;
 
 
 const LogoIcon = () => (
@@ -203,7 +203,7 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
 // It remains here as a reference for the navigation items but is not used for action-level security.
 const basePermissions = {
     'مدیر کل': ['dashboard', 'main_warehouse', 'inventory', 'sales', 'fulfillment', 'customers', 'customer_accounts', 'suppliers', 'purchasing', 'supplier_accounts', 'finance', 'reports', 'checkneh', 'alerts', 'settings', 'recycle_bin'],
-    'فروشنده': ['dashboard', 'sales', 'customers', 'customer_accounts'],
+    'فروشنده': ['dashboard', 'sales', 'customers', 'customer_accounts', 'reports', 'inventory'],
     'انباردار': ['dashboard', 'main_warehouse', 'inventory', 'fulfillment', 'suppliers', 'purchasing'],
     'حسابدار': ['dashboard', 'customer_accounts', 'supplier_accounts', 'finance', 'reports'],
 };
@@ -321,6 +321,14 @@ export type InternalTransfer = {
     transferredBy: string; 
 };
 
+// --- NEW OFFLINE QUEUE TYPES ---
+type SyncAction = {
+    id: string;
+    type: 'UPSERT' | 'DELETE';
+    table: string;
+    payload?: any; // For UPSERT/INSERT
+    match?: any; // For DELETE
+};
 
 //=========== COMPONENTS ===========//
 type NavItemProps = {
@@ -371,9 +379,13 @@ const navItems = [
 ];
 
 const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout, pendingRequisitionCount }) => {
-    const allowedNavItems = navItems.filter(item => basePermissions[userRole].includes(item.id));
-    const canAccessSettings = basePermissions[userRole].includes('settings');
-    const canAccessRecycleBin = basePermissions[userRole].includes('recycle_bin');
+    const allowedNavItems = navItems.filter(item => {
+        // Handle remote users who might not have a role in the basePermissions map
+        const permissions = basePermissions[userRole] || [];
+        return permissions.includes(item.id);
+    });
+    const canAccessSettings = (basePermissions[userRole] || []).includes('settings');
+    const canAccessRecycleBin = (basePermissions[userRole] || []).includes('recycle_bin');
 
     return (
         <aside className="w-64 bg-teal-800 text-white flex flex-col shadow-2xl flex-shrink-0">
@@ -422,6 +434,30 @@ const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout, pendingRequisi
         </aside>
     );
 };
+
+// --- NEW: Bottom Navigation for Mobile/Remote View ---
+const BottomNav = ({ activeItem, setActiveItem, userRole }) => {
+    const allowedNavItems = navItems.filter(item => {
+        const permissions = basePermissions[userRole] || [];
+        return permissions.includes(item.id);
+    });
+
+    return (
+        <nav className="fixed bottom-0 left-0 right-0 h-16 bg-white shadow-lg flex justify-around border-t z-50">
+            {allowedNavItems.slice(0, 5).map(item => ( // Show first 5 items
+                <button
+                    key={item.id}
+                    onClick={() => setActiveItem(item.id)}
+                    className={`flex flex-col items-center justify-center w-full transition-colors ${activeItem === item.id ? 'text-teal-600' : 'text-gray-500'}`}
+                >
+                    {React.cloneElement(item.icon, { className: 'w-6 h-6 mb-1' })}
+                    <span className="text-xs font-semibold">{item.label}</span>
+                </button>
+            ))}
+        </nav>
+    );
+};
+
 
 // --- ALERTS TYPES & COMPONENTS ---
 export type ActiveAlert = {
@@ -502,44 +538,16 @@ const Header = ({ title, currentUser, alerts, onNavigate }) => (
     </header>
 );
 
-//=========== HAYAT AI ASSISTANT ===========//
-type Message = {
-    sender: 'user' | 'ai';
-    text: string;
-};
-
-type HayatAssistantProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    messages: Message[];
-};
-
-const HayatAssistant: React.FC<HayatAssistantProps> = ({ isOpen, onClose, messages }) => {
-    if (!isOpen) return null;
-    return (
-        <div className="fixed bottom-24 right-8 z-[100] w-96 bg-white rounded-xl shadow-2xl flex flex-col border">
-            <header className="p-4 border-b flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                    <SparklesIcon className="w-6 h-6 text-teal-500" />
-                    <h3 className="font-bold text-gray-800">دستیار هوشمند حیات</h3>
-                </div>
-                <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100">
-                    <CloseIcon className="w-5 h-5 text-gray-500"/>
-                </button>
-            </header>
-            <main className="p-4 h-80 overflow-y-auto bg-gray-50">
-                {messages.map((msg, i) => (
-                    <div key={i} className={`mb-3 p-3 rounded-xl max-w-[85%] ${msg.sender === 'user' ? 'bg-teal-500 text-white ml-auto' : 'bg-gray-200 text-gray-800 mr-auto'}`}>
-                        {msg.text}
-                    </div>
-                ))}
-            </main>
-            <footer className="p-4 border-t">
-                <input type="text" placeholder="پیام خود را بنویسید..." className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" />
-            </footer>
+// --- NEW: System Offline Banner for Remote Users ---
+const SystemOfflineBanner = () => (
+    <div className="fixed top-0 left-0 right-0 bg-red-600 text-white p-2 text-center text-sm font-semibold z-[1000]">
+        <div className="flex items-center justify-center gap-2">
+            <WifiOffIcon className="w-5 h-5" />
+            <span>اتصال با سیستم مرکزی قطع است. شما در حالت فقط خواندنی (Read-only) هستید.</span>
         </div>
-    );
-};
+    </div>
+);
+
 
 //=========== LICENSE SYSTEM TYPES AND HELPERS ===========//
 type LicenseStatus = 'LOADING' | 'NEEDS_ACTIVATION' | 'NEEDS_VALIDATION' | 'INVALID' | 'VALID';
@@ -569,11 +577,8 @@ function getOrCreateMachineId(): string {
 //=========== MAIN APP COMPONENT ===========//
 const App: React.FC = () => {
     // --- Remote Control View ---
-    // This logic checks the URL for a `?view=remote` parameter.
-    // If present, it renders the RemoteControl component instead of the main app.
-    // This avoids 404 errors by using query parameters instead of direct file paths.
     const urlParams = new URLSearchParams(window.location.search);
-    const isRemoteMode = urlParams.get('view') === 'remote';
+    const isRemoteView = urlParams.get('view') === 'remote';
 
     const [toasts, setToasts] = useState<Toast[]>([]);
     const addToast = (message: string, type: ToastType = 'info') => {
@@ -683,6 +688,11 @@ const App: React.FC = () => {
 
 
     useEffect(() => {
+        if (isRemoteView) {
+            setLicenseStatus('VALID'); // Bypass local license check for remote view
+            return;
+        }
+
         const checkLicenseOnStartup = async () => {
             if (!licenseInfo) {
                 setLicenseStatus('NEEDS_ACTIVATION');
@@ -731,7 +741,7 @@ const App: React.FC = () => {
         };
 
         checkLicenseOnStartup();
-    }, [licenseInfo]);
+    }, [licenseInfo, isRemoteView]);
 
     const handleActivationSuccess = (newLicenseInfo: LicenseInfo) => {
         setLicenseInfo(newLicenseInfo);
@@ -771,9 +781,18 @@ const App: React.FC = () => {
     });
     const [rolePermissions, setRolePermissions] = usePersistentState<RolePermissions>('hayat_rolePermissions', initialRolePermissions);
     const [isOnlineMode, setIsOnlineMode] = usePersistentState<boolean>('hayat_isOnlineMode', false);
+    
+    // --- NEW: OFFLINE SYNC QUEUE ---
+    const [syncQueue, setSyncQueue] = usePersistentState<SyncAction[]>('hayat_syncQueue', []);
+    const [isSyncing, setIsSyncing] = useState(false);
+
 
     // --- NEW AUTHENTICATION STATE ---
     const [currentUser, setCurrentUser] = usePersistentState<User | null>('hayat_currentUser', null);
+    const [remoteUser, setRemoteUser] = useState<User | null>(null);
+    const [remoteLicenseId, setRemoteLicenseId] = useState<number | null>(null);
+    const [isSystemOnline, setIsSystemOnline] = useState<boolean | null>(null);
+
     
     // --- NEW CONFIRMATION MODAL STATE ---
     const [confirmationModal, setConfirmationModal] = useState<{
@@ -824,6 +843,66 @@ const App: React.FC = () => {
         setCurrentUser(null);
     };
 
+    const handleRemoteLogout = () => {
+        addToast("شما از ریموت کنترل خارج شدید.", "info");
+        setRemoteUser(null);
+        setRemoteLicenseId(null);
+        setIsSystemOnline(null);
+        // Do NOT clear the main data states here, as they are now shared.
+    };
+    
+    const handleRemoteLogin = async (companyUsername: string, user: User) => {
+        addToast("در حال اتصال...", "info");
+        try {
+            const { data: licenseData, error: licenseError } = await supabase
+                .from('licenses')
+                .select('id')
+                .eq('username', companyUsername)
+                .single();
+            
+            if (licenseError || !licenseData) {
+                throw new Error("نام کاربری شرکت یافت نشد.");
+            }
+            
+            const { data: backupData, error: backupError } = await supabase
+                .from('backups')
+                .select('backup_data')
+                .eq('license_id', licenseData.id)
+                .single();
+
+            if (backupError || !backupData || !backupData.backup_data) {
+                throw new Error("اطلاعات شرکت یافت نشد. لطفاً از برنامه اصلی یک پشتیبان آنلاین تهیه کنید.");
+            }
+
+            const backup = backupData.backup_data;
+
+            // Restore all states from backup
+            setDrugs(backup.drugs || []);
+            setMainWarehouseDrugs(backup.mainWarehouseDrugs || []);
+            setCustomers(backup.customers || []);
+            setOrders(backup.orders || []);
+            setExpenses(backup.expenses || []);
+            setSuppliers(backup.suppliers || []);
+            setPurchaseBills(backup.purchaseBills || []);
+            setStockRequisitions(backup.stockRequisitions || []);
+            setInventoryWriteOffs(backup.inventoryWriteOffs || []);
+            setTrash(backup.trash || []);
+            setChecknehInvoices(backup.checknehInvoices || []);
+            setUsers(backup.users || initialMockUsers);
+            setCompanyInfo(backup.companyInfo || { name: 'شفاخانه حیات', address: 'کابل, افغانستان', phone: '+93 78 123 4567', logo: null });
+            setDocumentSettings(backup.documentSettings || { logoPosition: 'right', accentColor: '#0d9488', backgroundImage: null });
+            setAlertSettings(backup.alertSettings || { expiry: { enabled: true, months: 6 }, lowStock: { enabled: true, quantity: 50 }, customerDebt: { enabled: true, limits: {} }, totalDebt: { enabled: false, threshold: 1000000 } });
+            setRolePermissions(backup.rolePermissions || initialRolePermissions);
+            
+            setRemoteLicenseId(licenseData.id);
+            setRemoteUser(user);
+            addToast(`خوش آمدید، ${user.username}!`, 'success');
+
+        } catch (error: any) {
+            addToast(error.message || 'خطا در ورود.', 'error');
+        }
+    };
+
     const handleSaveUser = (userToSave: Omit<User, 'lastLogin'>) => {
         setUsers(prev => {
             const exists = prev.some(u => u.id === userToSave.id);
@@ -855,165 +934,6 @@ const App: React.FC = () => {
         addToast(`رمز عبور کاربر ${username} با موفقیت تغییر کرد.`, 'success');
     };
     
-    // --- NEW: ONLINE BACKUP & RESTORE ---
-    const handleBackupOnline = async () => {
-        if (!licenseInfo) {
-            addToast("برای پشتیبان‌گیری آنلاین ابتدا باید برنامه را فعال کنید.", 'error');
-            return false;
-        }
-
-        addToast("در حال آماده‌سازی و آپلود نسخه پشتیبان...", 'info');
-
-        const backupData = {
-            drugs, mainWarehouseDrugs, customers, orders, expenses, suppliers,
-            purchaseBills, stockRequisitions, inventoryWriteOffs, trash, users,
-            companyInfo, documentSettings, alertSettings, rolePermissions,
-            checknehInvoices,
-            backupVersion: 1, 
-        };
-
-        try {
-            // FIX: Replace upsert with a more robust select-then-update/insert logic
-            const { data: existingBackup, error: selectError } = await supabase
-                .from('backups')
-                .select('license_id')
-                .eq('license_id', licenseInfo.id)
-                .maybeSingle();
-
-            if (selectError) throw selectError;
-
-            let RpcError;
-
-            if (existingBackup) {
-                // If backup exists, update it
-                const { error: updateError } = await supabase
-                    .from('backups')
-                    .update({
-                        backup_data: backupData,
-                        created_at: new Date().toISOString(),
-                    })
-                    .eq('license_id', licenseInfo.id);
-                RpcError = updateError;
-            } else {
-                // If it doesn't exist, insert a new one
-                const { error: insertError } = await supabase
-                    .from('backups')
-                    .insert({
-                        license_id: licenseInfo.id,
-                        backup_data: backupData,
-                    });
-                RpcError = insertError;
-            }
-            
-            if (RpcError) throw RpcError;
-
-            addToast("نسخه پشتیبان با موفقیت در فضای ابری ذخیره شد.", 'success');
-            return true;
-        } catch (error: any) {
-            console.error("Online backup failed:", error);
-
-            let errorMessage = "یک خطای ناشناخته رخ داد.";
-            
-            if (error instanceof Error) {
-                errorMessage = error.message;
-            } else if (error && typeof error === 'object') {
-                if (typeof error.message === 'string' && error.message) {
-                    errorMessage = error.message;
-                } else if (typeof error.details === 'string' && error.details) {
-                    errorMessage = error.details;
-                } else {
-                    errorMessage = "پاسخ نامعتبر از سرور دریافت شد.";
-                }
-            } else if (typeof error === 'string' && error) {
-                errorMessage = error;
-            }
-
-            if (errorMessage.toLowerCase().includes('fetch')) {
-                 errorMessage = "خطا در ارتباط با سرور. لطفاً اتصال اینترنت خود را بررسی کنید.";
-            } else if (errorMessage.includes('security policy')) {
-                errorMessage = "خطای دسترسی امنیتی. لطفا با پشتیبانی تماس بگیرید.";
-            }
-
-            addToast(`خطا در پشتیبان‌گیری آنلاین: ${errorMessage}`, 'error');
-            return false;
-        }
-    };
-
-    const handleRestoreOnline = () => {
-        showConfirmation(
-            'بازیابی اطلاعات از فضای ابری',
-            <p>آیا مطمئنید؟ <strong className="text-red-600">تمام اطلاعات فعلی شما با آخرین نسخه پشتیبان آنلاین جایگزین خواهد شد.</strong> این عمل غیرقابل بازگشت است.</p>,
-            async () => {
-                if (!licenseInfo) {
-                    addToast("اطلاعات لایسنس برای بازیابی یافت نشد.", 'error');
-                    return;
-                }
-                
-                addToast("در حال دریافت و بازیابی اطلاعات...", 'info');
-
-                try {
-                    const { data, error } = await supabase
-                        .from('backups')
-                        .select('backup_data')
-                        .eq('license_id', licenseInfo.id)
-                        .single();
-
-                    if (error) throw error;
-                    if (!data || !data.backup_data) throw new Error("هیچ نسخه پشتیبانی برای این لایسنس یافت نشد.");
-                    
-                    const restoredData = data.backup_data;
-                    
-                    setDrugs(restoredData.drugs || []);
-                    setMainWarehouseDrugs(restoredData.mainWarehouseDrugs || []);
-                    setCustomers(restoredData.customers || []);
-                    setOrders(restoredData.orders || []);
-                    setExpenses(restoredData.expenses || []);
-                    setSuppliers(restoredData.suppliers || []);
-                    setPurchaseBills(restoredData.purchaseBills || []);
-                    setStockRequisitions(restoredData.stockRequisitions || []);
-                    setInventoryWriteOffs(restoredData.inventoryWriteOffs || []);
-                    setTrash(restoredData.trash || []);
-                    setUsers(restoredData.users || initialMockUsers);
-                    setCompanyInfo(restoredData.companyInfo || { name: 'شفاخانه حیات', address: 'کابل, افغانستان', phone: '+93 78 123 4567', logo: null });
-                    setDocumentSettings(restoredData.documentSettings || { logoPosition: 'right', accentColor: '#0d9488', backgroundImage: null });
-                    setAlertSettings(restoredData.alertSettings || { expiry: { enabled: true, months: 6 }, lowStock: { enabled: true, quantity: 50 }, customerDebt: { enabled: true, limits: {} }, totalDebt: { enabled: false, threshold: 1000000 } });
-                    setRolePermissions(restoredData.rolePermissions || initialRolePermissions);
-                    setChecknehInvoices(restoredData.checknehInvoices || []);
-
-                    addToast("اطلاعات با موفقیت از فضای ابری بازیابی شد.", 'success');
-                    setTimeout(() => window.location.reload(), 1000);
-
-                } catch (error: any) {
-                     console.error("Online restore failed:", error);
-
-                     let errorMessage = "یک خطای ناشناخته رخ داد.";
-            
-                     if (error instanceof Error) {
-                         errorMessage = error.message;
-                     } else if (error && typeof error === 'object') {
-                         if (typeof error.message === 'string' && error.message) {
-                             errorMessage = error.message;
-                         } else if (typeof error.details === 'string' && error.details) {
-                             errorMessage = error.details;
-                         } else {
-                             errorMessage = "پاسخ نامعتبر از سرور دریافت شد.";
-                         }
-                     } else if (typeof error === 'string' && error) {
-                         errorMessage = error;
-                     }
-         
-                     if (errorMessage.toLowerCase().includes('fetch')) {
-                          errorMessage = "خطا در ارتباط با سرور. لطفاً اتصال اینترنت خود را بررسی کنید.";
-                     } else if (errorMessage.includes('PGRST116') || errorMessage.includes(' یافت نشد')) { 
-                          errorMessage = "هیچ نسخه پشتیبانی برای این لایسنس یافت نشد.";
-                     }
-
-                     addToast(`خطا در بازیابی اطلاعات: ${errorMessage}`, 'error');
-                }
-            }
-        );
-    };
-
     // --- NEW: LOCAL BACKUP & RESTORE ---
     const handleBackupLocal = () => {
         addToast("در حال آماده‌سازی فایل پشتیبان...", 'info');
@@ -1808,15 +1728,227 @@ const App: React.FC = () => {
         };
     }, [isOnlineMode, licenseInfo]);
 
+    // --- NEW: Heartbeat Check for Remote Users ---
+    useEffect(() => {
+        if (!isRemoteView || !remoteLicenseId) return;
+
+        const checkStatus = async () => {
+            const { data, error } = await supabase
+                .from('company_status')
+                .select('last_seen_at')
+                .eq('license_id', remoteLicenseId)
+                .single();
+
+            if (error || !data) {
+                console.error("Remote heartbeat check failed:", error);
+                setIsSystemOnline(false);
+                return;
+            }
+            
+            const lastSeen = new Date(data.last_seen_at).getTime();
+            const now = new Date().getTime();
+            const minutesAgo = (now - lastSeen) / (1000 * 60);
+
+            setIsSystemOnline(minutesAgo < 2); // Consider online if seen within the last 2 minutes
+        };
+
+        checkStatus(); // Check immediately
+        const interval = setInterval(checkStatus, 30000); // And every 30 seconds
+        
+        return () => clearInterval(interval); // Cleanup interval
+    }, [isRemoteView, remoteLicenseId]);
+
+
+    const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
+
+    // --- NEW: Online Mode Real-time Sync Effect (Phase 1) ---
+    useEffect(() => {
+        // If offline or no license, ensure we are disconnected.
+        if (!isOnlineMode || !licenseInfo) {
+            if (realtimeChannelRef.current) {
+                supabase.removeChannel(realtimeChannelRef.current)
+                    .then(() => addToast("ارتباط با سرور قطع شد. شما در حالت آفلاین هستید.", "info"));
+                realtimeChannelRef.current = null;
+            }
+            return;
+        }
+    
+        // If online, setup connection and listeners.
+        const setupOnlineMode = async () => {
+            if (realtimeChannelRef.current) return; // Already connected
+    
+            addToast("در حال اتصال به سرور و همگام‌سازی...", "info");
+    
+            try {
+                // --- 1. Fetch initial data ---
+                const licenseFilter = { column: 'license_id', value: licenseInfo.id };
+    
+                const fetchTable = async (tableName, setState) => {
+                    const { data, error } = await supabase.from(tableName).select('*').eq(licenseFilter.column, licenseFilter.value);
+                    if (error) throw new Error(`Failed to fetch ${tableName}: ${error.message}`);
+                    setState(data || []);
+                };
+                
+                const fetchSingleton = async (tableName, setState, defaultValue) => {
+                    const { data, error } = await supabase.from(tableName).select('*').eq(licenseFilter.column, licenseFilter.value).maybeSingle();
+                    if (error) throw new Error(`Failed to fetch ${tableName}: ${error.message}`);
+                    if (data) {
+                        const { id, license_id, ...actualData } = data;
+                        setState(actualData);
+                    } else {
+                        setState(defaultValue);
+                    }
+                };
+    
+                await Promise.all([
+                    fetchTable('drugs', setDrugs),
+                    fetchTable('main_warehouse_drugs', setMainWarehouseDrugs),
+                    fetchTable('customers', setCustomers),
+                    fetchTable('orders', setOrders),
+                    fetchTable('expenses', setExpenses),
+                    fetchTable('suppliers', setSuppliers),
+                    fetchTable('purchase_bills', setPurchaseBills),
+                    fetchTable('stock_requisitions', setStockRequisitions),
+                    fetchTable('inventory_write_offs', setInventoryWriteOffs),
+                    fetchTable('trash', setTrash),
+                    fetchTable('checkneh_invoices', setChecknehInvoices),
+                    fetchTable('users', setUsers),
+                    fetchSingleton('company_info', setCompanyInfo, { name: 'شفاخانه حیات', address: 'کابل, افغانستان', phone: '+93 78 123 4567', logo: null }),
+                    fetchSingleton('document_settings', setDocumentSettings, { logoPosition: 'right', accentColor: '#0d9488', backgroundImage: null }),
+                    fetchSingleton('alert_settings', setAlertSettings, { expiry: { enabled: true, months: 6 }, lowStock: { enabled: true, quantity: 50 }, customerDebt: { enabled: true, limits: {} }, totalDebt: { enabled: false, threshold: 1000000 } }),
+                    fetchSingleton('role_permissions', setRolePermissions, initialRolePermissions),
+                ]);
+    
+                addToast("همگام‌سازی اولیه با موفقیت انجام شد.", "success");
+    
+            } catch (error) {
+                console.error("Online mode initial fetch failed:", error);
+                addToast(`خطا در همگام‌سازی اولیه: ${error.message}. بازگشت به حالت آفلاین.`, 'error');
+                setIsOnlineMode(false);
+                return;
+            }
+    
+            // --- 2. Setup real-time listeners ---
+            const handleArrayUpdate = (payload: any, setState: React.Dispatch<React.SetStateAction<any[]>>) => {
+                if (payload.eventType === 'INSERT') {
+                    setState(prev => [...prev.filter(item => item.id !== payload.new.id), payload.new]);
+                } else if (payload.eventType === 'UPDATE') {
+                    setState(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
+                } else if (payload.eventType === 'DELETE') {
+                    setState(prev => prev.filter(item => item.id !== payload.old.id));
+                }
+            };
+    
+            const handleSingletonUpdate = (payload: any, setState: React.Dispatch<React.SetStateAction<any>>) => {
+                if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                     const { id, license_id, ...actualData } = payload.new;
+                     setState(actualData);
+                }
+            };
+    
+            const channel = supabase.channel(`public-tables-license-${licenseInfo.id}`);
+            channel
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'drugs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setDrugs))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'main_warehouse_drugs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setMainWarehouseDrugs))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'customers', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setCustomers))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setOrders))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setExpenses))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setSuppliers))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_bills', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setPurchaseBills))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_requisitions', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setStockRequisitions))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_write_offs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setInventoryWriteOffs))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'trash', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setTrash))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'checkneh_invoices', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setChecknehInvoices))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'users', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setUsers))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'company_info', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setCompanyInfo))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'document_settings', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setDocumentSettings))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'alert_settings', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setAlertSettings))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'role_permissions', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setRolePermissions))
+                .subscribe((status, err) => {
+                    if (status === 'SUBSCRIBED') {
+                        addToast("اتصال لحظه‌ای با سرور برقرار شد.", "info");
+                    }
+                    if (err) {
+                        addToast(`خطای اتصال لحظه‌ای: ${err.message}`, 'error');
+                    }
+                });
+    
+            realtimeChannelRef.current = channel;
+        };
+    
+        setupOnlineMode();
+    
+        return () => {
+            if (realtimeChannelRef.current) {
+                supabase.removeChannel(realtimeChannelRef.current);
+                realtimeChannelRef.current = null;
+            }
+        };
+    }, [isOnlineMode, licenseInfo]);
+
+    // --- NEW: OFFLINE QUEUE PROCESSOR ---
+    useEffect(() => {
+        const processQueue = async () => {
+            if (!isOnlineMode || isSyncing || syncQueue.length === 0 || !licenseInfo) {
+                return;
+            }
+    
+            setIsSyncing(true);
+            addToast(`در حال همگام‌سازی ${syncQueue.length} عملیات آفلاین...`, 'info');
+    
+            const queueToProcess = [...syncQueue]; // Create a copy to process
+            let failed = false;
+    
+            for (const action of queueToProcess) {
+                try {
+                    // Add license_id to payload for upsert/insert
+                    const payloadWithLicense = action.payload ? (
+                        Array.isArray(action.payload)
+                            ? action.payload.map(p => ({ ...p, license_id: licenseInfo.id }))
+                            : { ...action.payload, license_id: licenseInfo.id }
+                    ) : undefined;
+    
+                    let query;
+                    switch (action.type) {
+                        case 'UPSERT':
+                            query = supabase.from(action.table).upsert(payloadWithLicense);
+                            break;
+                        case 'DELETE':
+                            query = supabase.from(action.table).delete().match(action.match);
+                            break;
+                    }
+                    
+                    const { error } = await query;
+    
+                    if (error) {
+                        throw error;
+                    } else {
+                        // On success, remove the action from the original queue
+                        setSyncQueue(prev => prev.filter(item => item.id !== action.id));
+                    }
+                } catch (error) {
+                    addToast(`همگام‌سازی عملیات برای جدول ${action.table} با خطا مواجه شد.`, 'error');
+                    console.error("Sync error:", error);
+                    failed = true;
+                    break; // Stop processing on first error
+                }
+            }
+    
+            if (!failed && queueToProcess.length > 0) {
+                 addToast('همگام‌سازی با موفقیت انجام شد.', 'success');
+            }
+            setIsSyncing(false);
+        };
+    
+        processQueue();
+    }, [isOnlineMode, syncQueue, licenseInfo]);
+
+
     // RENDER LOGIC
     // ==========================================================
 
-    if (isRemoteMode) {
-        return <RemoteControl addToast={addToast} />;
-    }
-
     // Loading Screen
-    if (licenseStatus === 'LOADING') {
+    if (licenseStatus === 'LOADING' && !isRemoteView) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-100">
                 <p>در حال بارگذاری...</p>
@@ -1825,7 +1957,7 @@ const App: React.FC = () => {
     }
     
     // License Screens
-    if (licenseStatus === 'NEEDS_ACTIVATION') {
+    if (licenseStatus === 'NEEDS_ACTIVATION' && !isRemoteView) {
         return (
             <>
                 <LicenseAuthScreen onActivationSuccess={handleActivationSuccess} addToast={addToast} showConfirmation={showConfirmation} />
@@ -1842,7 +1974,7 @@ const App: React.FC = () => {
         );
     }
 
-     if (licenseStatus === 'NEEDS_VALIDATION') {
+     if (licenseStatus === 'NEEDS_VALIDATION' && !isRemoteView) {
         return (
              <>
                 <UpdateRequiredScreen onValidate={validateLicense} />
@@ -1851,21 +1983,22 @@ const App: React.FC = () => {
         );
     }
     
-    if (licenseStatus === 'INVALID') {
+    if (licenseStatus === 'INVALID' && !isRemoteView) {
         return <InvalidLicenseScreen />;
     }
 
     // Main App Screens (License is VALID)
     const renderActiveComponent = () => {
-        if (!currentUser) return null;
+        const effectiveUser = isRemoteView ? remoteUser : currentUser;
+        if (!effectiveUser) return null;
         switch(activeItem) {
             case 'dashboard': return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
-            case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={handleDeleteDrug} onWriteOff={handleWriteOff} onSaveRequisition={handleSaveRequisition} currentUser={currentUser} rolePermissions={rolePermissions} addToast={addToast} onTraceLotNumber={handleTraceLotNumber} />;
-            case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={currentUser} rolePermissions={rolePermissions} documentSettings={documentSettings} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
-            case 'customers': return <Customers customers={customers} onSave={(c) => setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev])} onDelete={handleDeleteCustomer} currentUser={currentUser} rolePermissions={rolePermissions} addToast={addToast} onViewLedger={handleViewLedger} />;
-            case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev])} onDelete={handleDeleteSupplier} currentUser={currentUser} />;
-            case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={currentUser} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
-            case 'finance': return <Accounting orders={orders} expenses={expenses} onSave={(e) => setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev])} onDelete={handleDeleteExpense} currentUser={currentUser} />;
+            case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={handleDeleteDrug} onWriteOff={handleWriteOff} onSaveRequisition={handleSaveRequisition} currentUser={effectiveUser} rolePermissions={rolePermissions} addToast={addToast} onTraceLotNumber={handleTraceLotNumber} />;
+            case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} companyInfo={companyInfo} onSave={handleSaveOrder} onDelete={handleDeleteOrder} currentUser={effectiveUser} rolePermissions={rolePermissions} documentSettings={documentSettings} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
+            case 'customers': return <Customers customers={customers} onSave={(c) => setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev])} onDelete={handleDeleteCustomer} currentUser={effectiveUser} rolePermissions={rolePermissions} addToast={addToast} onViewLedger={handleViewLedger} />;
+            case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev])} onDelete={handleDeleteSupplier} currentUser={effectiveUser} />;
+            case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} currentUser={effectiveUser} addToast={addToast} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} />;
+            case 'finance': return <Accounting orders={orders} expenses={expenses} onSave={(e) => setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev])} onDelete={handleDeleteExpense} currentUser={effectiveUser} />;
             case 'reports': return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} companyInfo={companyInfo} documentSettings={documentSettings} lotNumberToTrace={lotNumberToTrace} />;
             case 'fulfillment': return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} />;
             case 'customer_accounts': return <CustomerAccounts customers={customers} orders={orders} companyInfo={companyInfo} documentSettings={documentSettings} addToast={addToast} preselectedCustomerId={preselectedCustomerId} />;
@@ -1874,7 +2007,7 @@ const App: React.FC = () => {
                 mainWarehouseDrugs={mainWarehouseDrugs} 
                 stockRequisitions={stockRequisitions} 
                 onFulfillRequisition={(req, items, user) => handleFulfillRequisition(req, items, user)} 
-                currentUser={currentUser} 
+                currentUser={effectiveUser} 
                 addToast={addToast} 
                 companyInfo={companyInfo} 
                 documentSettings={documentSettings} 
@@ -1886,23 +2019,20 @@ const App: React.FC = () => {
                 companyInfo={companyInfo} onSetCompanyInfo={setCompanyInfo} 
                 users={users} onSaveUser={handleSaveUser} onDeleteUser={handleDeleteUser} onPasswordReset={handlePasswordReset}
                 backupKey={null} onBackupKeyChange={()=>{}} 
-                supabase={supabase} licenseId={licenseInfo?.id || null}
                 onBackupLocal={handleBackupLocal} 
                 onRestoreLocal={handleRestoreLocal} 
-                onBackupOnline={handleBackupOnline} 
-                onRestoreOnline={handleRestoreOnline} 
                 onPurgeData={()=>{}}
                 documentSettings={documentSettings} onSetDocumentSettings={setDocumentSettings}
                 rolePermissions={rolePermissions} onSetRolePermissions={setRolePermissions}
                 isOnlineMode={isOnlineMode}
                 onSetIsOnlineMode={setIsOnlineMode}
-                hasUnsavedChanges={false} addToast={addToast} showConfirmation={showConfirmation} currentUser={currentUser}
+                hasUnsavedChanges={false} addToast={addToast} showConfirmation={showConfirmation} currentUser={effectiveUser}
                 />;
             default: return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={[]} />;
         }
     };
 
-    if (!currentUser) {
+    if (!isRemoteView && !currentUser) {
         return (
             <>
                 <Login onLogin={handleLogin} />
@@ -1910,19 +2040,47 @@ const App: React.FC = () => {
             </>
         );
     }
+    
+     if (isRemoteView && !remoteUser) {
+        return (
+            <>
+                <RemoteLogin onLogin={handleRemoteLogin} addToast={addToast} />
+                <ToastContainer toasts={toasts} setToasts={setToasts} />
+            </>
+        )
+    }
+
+    const effectiveUser = isRemoteView ? remoteUser : currentUser;
+    if (!effectiveUser) {
+         return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-100">
+                <p>در حال بارگذاری کاربر...</p>
+            </div>
+        );
+    }
+
 
     return (
         <div className="flex h-screen bg-gray-100" dir="rtl">
-            <Sidebar 
-                activeItem={activeItem} 
-                setActiveItem={setActiveItem} 
-                userRole={currentUser.role} 
-                onLogout={handleLogout} 
-                pendingRequisitionCount={pendingRequisitionCount}
-            />
+            {isRemoteView ? (
+                 <BottomNav 
+                    activeItem={activeItem} 
+                    setActiveItem={setActiveItem} 
+                    userRole={effectiveUser.role} 
+                />
+            ) : (
+                <Sidebar 
+                    activeItem={activeItem} 
+                    setActiveItem={setActiveItem} 
+                    userRole={effectiveUser.role} 
+                    onLogout={isRemoteView ? handleRemoteLogout : handleLogout} 
+                    pendingRequisitionCount={pendingRequisitionCount}
+                />
+            )}
             <main className="flex-1 flex flex-col overflow-hidden">
-                <Header title={pageTitles[activeItem] || 'داشبورد'} currentUser={currentUser} alerts={activeAlerts} onNavigate={setActiveItem}/>
-                <div className="flex-1 overflow-y-auto">
+                {!isRemoteView && <Header title={pageTitles[activeItem] || 'داشبورد'} currentUser={effectiveUser} alerts={activeAlerts} onNavigate={setActiveItem}/>}
+                 {isRemoteView && isSystemOnline === false && <SystemOfflineBanner />}
+                <div className={`flex-1 overflow-y-auto ${isRemoteView ? 'pb-16' : ''}`}>
                     {renderActiveComponent()}
                 </div>
             </main>
@@ -1983,6 +2141,7 @@ const ActivationScreen = ({ onSwitchToLogin, onActivationSuccess, addToast }) =>
 
         try {
             // 1. Create Supabase User
+            // FIX: Corrected Supabase user creation method from `signUpWithPassword` to `signUp` as per Supabase JS v2 API.
             const { data: authData, error: signUpError } = await supabase.auth.signUp({
                 email: `${username}@example.com`,
                 password: password,
@@ -2104,6 +2263,7 @@ const TransferLoginScreen = ({ onSwitchToActivate, onTransferSuccess, addToast, 
         setIsLoading(true);
         try {
             // 1. Sign in to validate credentials
+            // FIX: Corrected Supabase sign-in method from `signIn` to `signInWithPassword` as per Supabase JS v2 API.
             const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
                 email: `${username}@example.com`,
                 password: password,
@@ -2224,5 +2384,91 @@ const InvalidLicenseScreen = () => (
         </div>
     </div>
 );
+
+// FIX: Moved RemoteLogin component here from RemoteControl.tsx to be accessible by App.tsx
+export const RemoteLogin = ({ onLogin, addToast }: { onLogin: (companyUsername: string, user: User) => void; addToast: (message: string, type?: 'success' | 'error' | 'info') => void; }) => {
+    const [companyUsername, setCompanyUsername] = useState('');
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        addToast("در حال اعتبارسنجی شرکت...", "info");
+        try {
+            // 1. Find the company by its unique username
+            const { data: licenseData, error: licenseError } = await supabase
+                .from('licenses')
+                .select('id, user_id')
+                .eq('username', companyUsername)
+                .single();
+            
+            if (licenseError || !licenseData) {
+                throw new Error("نام کاربری شرکت یافت نشد.");
+            }
+            
+            addToast("در حال دریافت اطلاعات کاربران...", "info");
+
+            // 2. Fetch the latest backup data which contains the users array
+            const { data: backupData, error: backupError } = await supabase
+                .from('backups')
+                .select('backup_data')
+                .eq('license_id', licenseData.id)
+                .single();
+
+            if (backupError || !backupData || !backupData.backup_data || !Array.isArray(backupData.backup_data.users)) {
+                throw new Error("اطلاعات کاربران شرکت یافت نشد. لطفاً از برنامه اصلی یک پشتیبان آنلاین تهیه کنید.");
+            }
+
+            // 3. Authenticate the user against the fetched users array
+            const users: User[] = backupData.backup_data.users;
+            const user = users.find(u => u.username === username && u.password === password);
+
+            if (user) {
+                onLogin(companyUsername, user); // Pass both company and user info up
+            } else {
+                addToast('نام کاربری یا رمز عبور کارمند اشتباه است.', 'error');
+            }
+
+        } catch (error: any) {
+            addToast(error.message || 'خطا در ورود.', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+            <div className="w-full max-w-sm p-8 space-y-6 bg-white rounded-2xl shadow-xl">
+                <div className="text-center">
+                    <h1 className="text-2xl font-bold text-teal-800">ورود به ریموت کنترل</h1>
+                    <p className="mt-2 text-sm text-gray-500">اطلاعات شرکت و کاربر را وارد کنید</p>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <input type="text" value={companyUsername} onChange={(e) => setCompanyUsername(e.target.value)}
+                            placeholder="نام کاربری شرکت" required autoFocus
+                            className="w-full px-4 py-3 border rounded-lg" />
+                    </div>
+                    <div>
+                        <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+                            placeholder="نام کاربری شما" required
+                            className="w-full px-4 py-3 border rounded-lg" />
+                    </div>
+                    <div>
+                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                            placeholder="رمز عبور شما" required
+                            className="w-full px-4 py-3 border rounded-lg" />
+                    </div>
+                    <button type="submit" disabled={isLoading} className="w-full py-3 bg-teal-600 text-white font-bold rounded-lg hover:bg-teal-700 disabled:bg-teal-400">
+                        {isLoading ? 'در حال بررسی...' : 'ورود'}
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
 
 export default App;

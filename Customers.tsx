@@ -212,7 +212,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
     });
 
     return (
-        <div className="p-8">
+        <div className="p-4 md:p-8">
              {(permissions.canCreateCustomer || permissions.canEditCustomer) && <CustomerModal 
                 isOpen={isModalOpen} 
                 onClose={handleCloseModal} 
@@ -264,13 +264,13 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
                     <table className="w-full text-right">
                         <thead className="bg-gray-50 border-b-2 border-gray-200">
                             <tr>
-                                <th className="p-4 text-sm font-semibold text-gray-600">نام مشتری</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600">مسئول</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600">شماره تماس</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600">آدرس</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600">تاریخ ثبت</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600">وضعیت</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600">عملیات</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">نام مشتری</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600 hidden md:table-cell">مسئول</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">شماره تماس</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600 hidden lg:table-cell">آدرس</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600 hidden md:table-cell">تاریخ ثبت</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">وضعیت</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">عملیات</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
@@ -285,21 +285,21 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
                                     const status = getStatusStyle(customer.status);
                                     return (
                                         <tr key={customer.id} className="hover:bg-gray-50">
-                                            <td className="p-4 text-gray-800 font-medium">{customer.name}</td>
-                                            <td className="p-4 text-gray-500">{customer.manager}</td>
-                                            <td className="p-4 text-gray-500">{customer.phone}</td>
-                                            <td className="p-4 text-gray-500 truncate max-w-xs">{customer.address}</td>
-                                            <td className="p-4 whitespace-nowrap text-gray-500 text-sm">
+                                            <td className="p-2 md:p-4 text-sm md:text-base text-gray-800 font-medium">{customer.name}</td>
+                                            <td className="p-2 md:p-4 text-sm text-gray-500 hidden md:table-cell">{customer.manager}</td>
+                                            <td className="p-2 md:p-4 text-sm text-gray-500">{customer.phone}</td>
+                                            <td className="p-2 md:p-4 text-sm text-gray-500 truncate max-w-xs hidden lg:table-cell">{customer.address}</td>
+                                            <td className="p-2 md:p-4 whitespace-nowrap text-gray-500 text-sm hidden md:table-cell">
                                                 {new Date(customer.registrationDate).toLocaleDateString('fa-IR')}
                                                 <div className="font-mono text-xs text-gray-400">{formatGregorianForDisplay(customer.registrationDate)}</div>
                                             </td>
-                                            <td className="p-4">
+                                            <td className="p-2 md:p-4">
                                                 <span className={`px-3 py-1 text-xs font-bold rounded-full ${status.bg} ${status.text}`}>
                                                     {customer.status}
                                                 </span>
                                             </td>
-                                            <td className="p-4">
-                                                <div className="flex items-center space-x-2 space-x-reverse">
+                                            <td className="p-2 md:p-4">
+                                                <div className="flex items-center space-x-1 space-x-reverse md:space-x-2">
                                                     <button onClick={() => onViewLedger(customer.id)} title="صورت حساب" className="text-teal-600 hover:text-teal-800 p-1"><AccountStatementIcon /></button>
                                                     {permissions.canEditCustomer && (
                                                         <button onClick={() => handleOpenEditModal(customer)} className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>

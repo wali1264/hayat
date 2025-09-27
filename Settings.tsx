@@ -1,6 +1,4 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { SupabaseClient } from '@supabase/supabase-js';
 
 //=========== ICONS ===========//
 const Icon = ({ path, className = "w-5 h-5" }) => (
@@ -511,91 +509,23 @@ const RoleManagementSection = ({ permissions, setPermissions, addToast }) => {
 };
 
 
-const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, onBackupOnline, onRestoreOnline, supabase, licenseId, hasUnsavedChanges, addToast }) => {
+const BackupAndRestoreSection = ({ onBackupLocal, onRestoreLocal, addToast }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [onlineBackup, setOnlineBackup] = useState<{ id: string, created_at: string } | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isUploading, setIsUploading] = useState(false);
-
-    const fetchBackup = async () => {
-        setIsLoading(true);
-        try {
-            if (!licenseId) return;
-            const { data, error } = await supabase
-                .from('backups')
-                .select('id, created_at')
-                .eq('license_id', licenseId)
-                .single();
-            if (error && error.code !== 'PGRST116') throw error; // Ignore "exactly one row" error
-            setOnlineBackup(data || null);
-        } catch (error: any) {
-            console.error("Error fetching backup:", error);
-            addToast(`خطا در دریافت اطلاعات پشتیبان: ${error.message}`, 'error');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchBackup();
-    }, [licenseId, supabase]);
-    
-    const handleCreateOnlineBackup = async () => {
-        setIsUploading(true);
-        const success = await onBackupOnline();
-        if (success) {
-            await fetchBackup(); // Refresh the backup info
-        }
-        setIsUploading(false);
-    };
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Local Backup */}
-            <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
-                <h4 className="font-bold text-lg">پشتیبان‌گیری محلی</h4>
-                <p className="text-sm text-gray-600">یک فایل از تمام اطلاعات برنامه روی کامپیوتر شما ذخیره می‌شود. این فایل برای بازیابی در آینده ضروری است.</p>
-                <button onClick={onBackupLocal} className="relative w-full flex items-center justify-center gap-2 py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                    {hasUnsavedChanges && (
-                        <span className="absolute top-2 right-2 flex h-3 w-3" title="تغییرات ذخیره نشده وجود دارد">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                        </span>
-                    )}
+        <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+            <h4 className="font-bold text-lg">پشتیبان‌گیری و بازیابی محلی</h4>
+            <p className="text-sm text-gray-600">
+                یک فایل از تمام اطلاعات برنامه روی کامپیوتر شما ذخیره می‌شود. این قابلیت برای جابجایی داده‌ها یا به عنوان یک نسخه پشتیبان آفلاین کاربرد دارد.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button onClick={onBackupLocal} className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
                     <DownloadIcon /> تهیه نسخه پشتیبان
                 </button>
                 <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition">
                     <UploadIcon /> بازیابی از فایل
                 </button>
                 <input type="file" ref={fileInputRef} onChange={onRestoreLocal} className="hidden" accept=".json" />
-            </div>
-            {/* Online Backup */}
-            <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
-                 <div className="flex justify-between items-center">
-                    <h4 className="font-bold text-lg">پشتیبان‌گیری ابری</h4>
-                    <button onClick={fetchBackup} title="بارگذاری مجدد" className="p-1 text-gray-500 hover:text-gray-800"><RefreshIcon /></button>
-                </div>
-                <p className="text-sm text-gray-600">یک نسخه امن از اطلاعات شما در فضای ابری ذخیره می‌شود تا از هر سیستمی قابل دسترس باشد.</p>
-                <button onClick={handleCreateOnlineBackup} disabled={isUploading} className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition disabled:bg-teal-400 disabled:cursor-not-allowed">
-                    {isUploading ? (
-                        <svg className="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                    ) : <CloudUploadIcon />}
-                    <span>{isUploading ? 'در حال آپلود...' : 'ایجاد / به‌روزرسانی پشتیبان آنلاین'}</span>
-                </button>
-                <div className="space-y-2 pt-2 border-t">
-                     <h5 className="font-semibold text-sm">وضعیت پشتیبان ابری:</h5>
-                     {isLoading ? <p className="text-sm">در حال بارگذاری...</p> : (
-                         onlineBackup ? (
-                            <div className="flex justify-between items-center text-sm py-1">
-                                <span>آخرین پشتیبان: {new Date(onlineBackup.created_at).toLocaleString('fa-IR')}</span>
-                                <button onClick={() => onRestoreOnline()} className="font-semibold text-blue-600 hover:underline">بازیابی</button>
-                            </div>
-                         ) : <p className="text-sm text-gray-500">هیچ نسخه پشتیبان آنلاینی یافت نشد.</p>
-                     )}
-                </div>
             </div>
         </div>
     );
@@ -757,12 +687,8 @@ type SettingsProps = {
     onPasswordReset: (username: string, newPass: string) => void;
     backupKey: string | null;
     onBackupKeyChange: (newKey: string) => void;
-    supabase: SupabaseClient;
-    licenseId: number | null;
     onBackupLocal: () => void;
     onRestoreLocal: (event: React.ChangeEvent<HTMLInputElement>) => void;
-    onBackupOnline: () => Promise<boolean>;
-    onRestoreOnline: () => void;
     onPurgeData: (startDate: string, endDate: string) => void;
     documentSettings: DocumentSettings;
     onSetDocumentSettings: (settings: DocumentSettings) => void;
@@ -811,11 +737,6 @@ const Settings: React.FC<SettingsProps> = (props) => {
                 <BackupAndRestoreSection 
                     onBackupLocal={props.onBackupLocal}
                     onRestoreLocal={props.onRestoreLocal}
-                    onBackupOnline={props.onBackupOnline}
-                    onRestoreOnline={props.onRestoreOnline}
-                    supabase={props.supabase}
-                    licenseId={props.licenseId}
-                    hasUnsavedChanges={props.hasUnsavedChanges}
                     addToast={props.addToast}
                 />
             </SettingsCard>

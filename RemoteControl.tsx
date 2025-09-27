@@ -1,9 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
+// FIX: Removed `SupabaseClient` and `RealtimeChannel` as they are not used in this file and caused an export error.
+import { createClient } from '@supabase/supabase-js';
 import { Order, OrderStatus, PaymentStatus, OrderItem } from './Sales';
 import { Customer } from './Customers';
 import { User } from './Settings';
 import { Drug } from './Inventory';
+// FIX: Import `RemoteLogin` from App.tsx where it is now defined and exported.
+import { RemoteLogin } from './App';
 
 
 // Declare global libraries
@@ -13,7 +16,7 @@ declare var Chart: any;
 //=========== SUPABASE CLIENT ===========//
 const supabaseUrl = 'https://uqokruakwmqfynszaine.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxb2tydWFrd21xZnluc3phaW5lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0ODg5ODYsImV4cCI6MjA3MzA2NDk4Nn0.6hAotsw9GStdteP4NWcqvFmjCq8_81Y9IpGVkJx2dT0';
-const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 //=========== ICONS ===========//
 const Icon = ({ path, className = "w-6 h-6" }: { path: string, className?: string | null }) => (
@@ -150,91 +153,6 @@ const MobileShell = ({ currentUser, onLogout, activeView, setActiveView, childre
                     ))}
                 </nav>
             </footer>
-        </div>
-    );
-};
-
-// --- NEW: Standalone Login Screen for Remote ---
-const RemoteLogin = ({ onLogin, addToast }: { onLogin: (companyUsername: string, user: User) => void; addToast: (message: string, type?: 'success' | 'error' | 'info') => void; }) => {
-    const [companyUsername, setCompanyUsername] = useState('');
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsLoading(true);
-        addToast("در حال اعتبارسنجی شرکت...", "info");
-        try {
-            // 1. Find the company by its unique username
-            const { data: licenseData, error: licenseError } = await supabase
-                .from('licenses')
-                .select('id, user_id')
-                .eq('username', companyUsername)
-                .single();
-            
-            if (licenseError || !licenseData) {
-                throw new Error("نام کاربری شرکت یافت نشد.");
-            }
-            
-            addToast("در حال دریافت اطلاعات کاربران...", "info");
-
-            // 2. Fetch the latest backup data which contains the users array
-            const { data: backupData, error: backupError } = await supabase
-                .from('backups')
-                .select('backup_data')
-                .eq('license_id', licenseData.id)
-                .single();
-
-            if (backupError || !backupData || !backupData.backup_data || !Array.isArray(backupData.backup_data.users)) {
-                throw new Error("اطلاعات کاربران شرکت یافت نشد. لطفاً از برنامه اصلی یک پشتیبان آنلاین تهیه کنید.");
-            }
-
-            // 3. Authenticate the user against the fetched users array
-            const users: User[] = backupData.backup_data.users;
-            const user = users.find(u => u.username === username && u.password === password);
-
-            if (user) {
-                onLogin(companyUsername, user); // Pass both company and user info up
-            } else {
-                addToast('نام کاربری یا رمز عبور کارمند اشتباه است.', 'error');
-            }
-
-        } catch (error: any) {
-            addToast(error.message || 'خطا در ورود.', 'error');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
-            <div className="w-full max-w-sm p-8 space-y-6 bg-white rounded-2xl shadow-xl">
-                <div className="text-center">
-                    <h1 className="text-2xl font-bold text-teal-800">ورود به ریموت کنترل</h1>
-                    <p className="mt-2 text-sm text-gray-500">اطلاعات شرکت و کاربر را وارد کنید</p>
-                </div>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <input type="text" value={companyUsername} onChange={(e) => setCompanyUsername(e.target.value)}
-                            placeholder="نام کاربری شرکت" required autoFocus
-                            className="w-full px-4 py-3 border rounded-lg" />
-                    </div>
-                    <div>
-                        <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-                            placeholder="نام کاربری شما" required
-                            className="w-full px-4 py-3 border rounded-lg" />
-                    </div>
-                    <div>
-                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                            placeholder="رمز عبور شما" required
-                            className="w-full px-4 py-3 border rounded-lg" />
-                    </div>
-                    <button type="submit" disabled={isLoading} className="w-full py-3 bg-teal-600 text-white font-bold rounded-lg hover:bg-teal-700 disabled:bg-teal-400">
-                        {isLoading ? 'در حال بررسی...' : 'ورود'}
-                    </button>
-                </form>
-            </div>
         </div>
     );
 };
