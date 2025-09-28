@@ -274,17 +274,42 @@ const RemoteControl = ({ addToast }: {
         addToast("شما از ریموت کنترل خارج شدید.", "info");
     };
     
-    const handleLogin = async (companyUsername: string, user: User) => {
+    // FIX: Corrected the function signature and implementation to match the 'onLogin' prop of the RemoteLogin component.
+    const handleLogin = async (companyUsername: string, username: string, password_raw: string) => {
+        addToast("در حال اتصال...", "info");
         try {
-            const { data: licenseData } = await supabase
-                .from('licenses').select('id').eq('username', companyUsername).single();
-            if (!licenseData) throw new Error();
+            const { data: licenseData, error: licenseError } = await supabase
+                .from('licenses')
+                .select('id')
+                .eq('username', companyUsername)
+                .single();
+            
+            if (licenseError || !licenseData) {
+                throw new Error("نام کاربری شرکت یافت نشد.");
+            }
+            
+            const { data: usersData, error: usersError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('license_id', licenseData.id);
 
+            if (usersError) {
+                throw new Error("خطا در دریافت لیست کاربران.");
+            }
+
+            const userToLogin = usersData.find(u => u.username === username && u.password === password_raw);
+
+            if (!userToLogin) {
+                throw new Error('نام کاربری یا رمز عبور کارمند اشتباه است.');
+            }
+
+            // Authentication successful
             setLicenseId(licenseData.id);
-            setRemoteUser(user);
-            addToast(`خوش آمدید، ${user.username}!`, 'success');
-        } catch {
-             addToast('خطا در دریافت شناسه شرکت.', 'error');
+            setRemoteUser(userToLogin);
+            addToast(`خوش آمدید، ${userToLogin.username}!`, 'success');
+
+        } catch (error: any) {
+            addToast(error.message || 'خطا در ورود.', 'error');
         }
     };
 

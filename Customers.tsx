@@ -63,9 +63,10 @@ type CustomerModalProps = {
     onSave: (customer: Customer) => void;
     initialData: Customer | null;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    isReadOnly?: boolean;
 };
 
-const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
+const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, initialData, addToast, isReadOnly }) => {
     const [customer, setCustomer] = useState({
         name: '', manager: '', phone: '', address: '', status: 'فعال' as CustomerStatus
     });
@@ -101,7 +102,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, 
         onClose();
     };
 
-    const inputStyles = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition-shadow";
+    const inputStyles = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition-shadow disabled:bg-gray-100";
     const labelStyles = "block text-gray-700 text-sm font-bold mb-2";
 
     return (
@@ -112,21 +113,21 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
                             <label htmlFor="name" className={labelStyles}>نام مشتری</label>
-                            <input type="text" name="name" id="name" value={customer.name} onChange={handleChange} className={inputStyles} required autoFocus />
+                            <input type="text" name="name" id="name" value={customer.name} onChange={handleChange} className={inputStyles} required autoFocus disabled={isReadOnly} />
                         </div>
                         <div>
                             <label htmlFor="manager" className={labelStyles}>نام مسئول</label>
-                            <input type="text" name="manager" id="manager" value={customer.manager} onChange={handleChange} className={inputStyles} />
+                            <input type="text" name="manager" id="manager" value={customer.manager} onChange={handleChange} className={inputStyles} disabled={isReadOnly} />
                         </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                          <div>
                             <label htmlFor="phone" className={labelStyles}>شماره تماس</label>
-                            <input type="tel" name="phone" id="phone" value={customer.phone} onChange={handleChange} className={inputStyles} required />
+                            <input type="tel" name="phone" id="phone" value={customer.phone} onChange={handleChange} className={inputStyles} required disabled={isReadOnly} />
                         </div>
                         <div>
                             <label htmlFor="status" className={labelStyles}>وضعیت</label>
-                            <select name="status" id="status" value={customer.status} onChange={handleChange} className={inputStyles}>
+                            <select name="status" id="status" value={customer.status} onChange={handleChange} className={inputStyles} disabled={isReadOnly}>
                                 <option value="فعال">فعال</option>
                                 <option value="غیرفعال">غیرفعال</option>
                             </select>
@@ -134,11 +135,11 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, 
                     </div>
                      <div className="mb-6">
                         <label htmlFor="address" className={labelStyles}>آدرس</label>
-                        <textarea name="address" id="address" value={customer.address} onChange={handleChange} className={`${inputStyles} h-24 resize-none`}></textarea>
+                        <textarea name="address" id="address" value={customer.address} onChange={handleChange} className={`${inputStyles} h-24 resize-none`} disabled={isReadOnly}></textarea>
                     </div>
                     <div className="flex justify-end space-x-4 space-x-reverse pt-4 border-t border-gray-200">
                         <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold">انصراف</button>
-                        <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold shadow-md">
+                        <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold shadow-md disabled:bg-teal-400" disabled={isReadOnly}>
                            {isEditMode ? 'ذخیره تغییرات' : 'ذخیره مشتری'}
                         </button>
                     </div>
@@ -157,14 +158,18 @@ type CustomersProps = {
     rolePermissions: RolePermissions;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     onViewLedger: (customerId: number) => void;
+    isRemoteView?: boolean;
+    isSystemOnline?: boolean;
 };
 
-const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, currentUser, rolePermissions, addToast, onViewLedger }) => {
+const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, currentUser, rolePermissions, addToast, onViewLedger, isRemoteView, isSystemOnline }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     
+    const isReadOnly = isRemoteView && !isSystemOnline;
+
     const permissions = useMemo(() => {
         if (currentUser.role === 'مدیر کل') {
             return {
@@ -219,6 +224,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
                 onSave={onSave}
                 initialData={editingCustomer}
                 addToast={addToast}
+                isReadOnly={isReadOnly}
             />}
             <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
                 <div>
@@ -251,7 +257,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
                         </select>
                     </div>
                     {permissions.canCreateCustomer && (
-                        <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md">
+                        <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md disabled:bg-teal-400" disabled={isReadOnly}>
                             <PlusIcon />
                             <span className="mr-2">افزودن مشتری جدید</span>
                         </button>
@@ -302,10 +308,10 @@ const Customers: React.FC<CustomersProps> = ({ customers, onSave, onDelete, curr
                                                 <div className="flex items-center space-x-1 space-x-reverse md:space-x-2">
                                                     <button onClick={() => onViewLedger(customer.id)} title="صورت حساب" className="text-teal-600 hover:text-teal-800 p-1"><AccountStatementIcon /></button>
                                                     {permissions.canEditCustomer && (
-                                                        <button onClick={() => handleOpenEditModal(customer)} className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>
+                                                        <button onClick={() => handleOpenEditModal(customer)} className="text-blue-500 hover:text-blue-700 p-1 disabled:opacity-50" disabled={isReadOnly}><EditIcon /></button>
                                                     )}
                                                     {permissions.canDeleteCustomer && (
-                                                        <button onClick={() => handleDeleteCustomer(customer.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
+                                                        <button onClick={() => handleDeleteCustomer(customer.id)} className="text-red-500 hover:text-red-700 p-1 disabled:opacity-50" disabled={isReadOnly}><TrashIcon /></button>
                                                     )}
                                                 </div>
                                             </td>

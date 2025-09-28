@@ -437,10 +437,15 @@ const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout, pendingRequisi
 
 // --- NEW: Bottom Navigation for Mobile/Remote View ---
 const BottomNav = ({ activeItem, setActiveItem, userRole }) => {
-    const allowedNavItems = navItems.filter(item => {
-        const permissions = basePermissions[userRole] || [];
-        return permissions.includes(item.id);
-    });
+    // Remote users have a more focused set of tools
+    const remoteAllowedIds = ['dashboard', 'inventory', 'sales', 'customers', 'customer_accounts', 'reports'];
+
+    const allowedNavItems = navItems
+        .filter(item => remoteAllowedIds.includes(item.id))
+        .filter(item => {
+            const permissions = basePermissions[userRole] || [];
+            return permissions.includes(item.id);
+        });
 
     return (
         <nav className="fixed bottom-0 left-0 right-0 h-16 bg-white shadow-lg flex justify-around border-t z-50">
@@ -856,15 +861,16 @@ const App: React.FC = () => {
         setRemoteUser(null);
         setRemoteLicenseId(null);
         setIsSystemOnline(null);
-        // Do NOT clear the main data states here, as they are now shared.
+        // Turn off online mode for the remote client
+        setIsOnlineMode(false);
     };
     
-    const handleRemoteLogin = async (companyUsername: string, user: User) => {
+    const handleRemoteLogin = async (companyUsername: string, username: string, password_raw: string) => {
         addToast("در حال اتصال...", "info");
         try {
             const { data: licenseData, error: licenseError } = await supabase
                 .from('licenses')
-                .select('id')
+                .select('id, user_id, machine_id')
                 .eq('username', companyUsername)
                 .single();
             
@@ -872,39 +878,29 @@ const App: React.FC = () => {
                 throw new Error("نام کاربری شرکت یافت نشد.");
             }
             
-            const { data: backupData, error: backupError } = await supabase
-                .from('backups')
-                .select('backup_data')
-                .eq('license_id', licenseData.id)
-                .single();
+            const { data: usersData, error: usersError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('license_id', licenseData.id);
 
-            if (backupError || !backupData || !backupData.backup_data) {
-                throw new Error("اطلاعات شرکت یافت نشد. لطفاً از برنامه اصلی یک پشتیبان آنلاین تهیه کنید.");
+            if (usersError) throw new Error("خطا در دریافت لیست کاربران.");
+
+            const userToLogin = usersData.find(u => u.username === username && u.password === password_raw);
+
+            if (!userToLogin) {
+                throw new Error('نام کاربری یا رمز عبور کارمند اشتباه است.');
             }
 
-            const backup = backupData.backup_data;
-
-            // Restore all states from backup
-            setDrugs(backup.drugs || []);
-            setMainWarehouseDrugs(backup.mainWarehouseDrugs || []);
-            setCustomers(backup.customers || []);
-            setOrders(backup.orders || []);
-            setExpenses(backup.expenses || []);
-            setSuppliers(backup.suppliers || []);
-            setPurchaseBills(backup.purchaseBills || []);
-            setStockRequisitions(backup.stockRequisitions || []);
-            setInventoryWriteOffs(backup.inventoryWriteOffs || []);
-            setTrash(backup.trash || []);
-            setChecknehInvoices(backup.checknehInvoices || []);
-            setUsers(backup.users || initialMockUsers);
-            setCompanyInfo(backup.companyInfo || { name: 'شفاخانه حیات', address: 'کابل, افغانستان', phone: '+93 78 123 4567', logo: null });
-            setDocumentSettings(backup.documentSettings || { logoPosition: 'right', accentColor: '#0d9488', backgroundImage: null });
-            setAlertSettings(backup.alertSettings || { expiry: { enabled: true, months: 6 }, lowStock: { enabled: true, quantity: 50 }, customerDebt: { enabled: true, limits: {} }, totalDebt: { enabled: false, threshold: 1000000 } });
-            setRolePermissions(backup.rolePermissions || initialRolePermissions);
-            
+            // Authentication successful
             setRemoteLicenseId(licenseData.id);
-            setRemoteUser(user);
-            addToast(`خوش آمدید، ${user.username}!`, 'success');
+            setRemoteUser(userToLogin);
+            
+            // Set licenseInfo and trigger online mode, which will fetch all data
+            // Session object is not critical here as Supabase RLS will use the anon key
+            setLicenseInfo({ id: licenseData.id, user_id: licenseData.user_id, machine_id: licenseData.machine_id, session: null! });
+            setIsOnlineMode(true);
+            
+            addToast(`خوش آمدید، ${userToLogin.username}! در حال همگام‌سازی...`, 'success');
 
         } catch (error: any) {
             addToast(error.message || 'خطا در ورود.', 'error');
@@ -2128,8 +2124,15 @@ const App: React.FC = () => {
             currentUser: effectiveUser,
             addToast: addToast,
             companyInfo: companyInfo,
-            documentSettings: documentSettings
+            documentSettings: documentSettings,
+            isRemoteView: isRemoteView,
+            isSystemOnline: isSystemOnline,
         };
+
+        if (isRemoteView && ['settings', 'recycle_bin', 'checkneh', 'main_warehouse', 'purchasing', 'supplier_accounts', 'finance', 'fulfillment', 'alerts'].includes(activeItem)) {
+            return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
+        }
+
         switch(activeItem) {
             case 'dashboard': return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
             case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={handleDeleteDrug} onWriteOff={handleWriteOff} onSaveRequisition={handleSaveRequisition} rolePermissions={rolePermissions} onTraceLotNumber={handleTraceLotNumber} {...commonProps} />;
@@ -2139,11 +2142,11 @@ const App: React.FC = () => {
             case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} {...commonProps} />;
             case 'finance': return <Accounting orders={orders} expenses={expenses} onSave={(e) => { setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'expenses', payload: e }); }} onDelete={handleDeleteExpense} {...commonProps} />;
             case 'reports': return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} lotNumberToTrace={lotNumberToTrace} {...commonProps} />;
-            case 'fulfillment': return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} />;
+            case 'fulfillment': return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} {...commonProps} />;
             case 'customer_accounts': return <CustomerAccounts customers={customers} orders={orders} preselectedCustomerId={preselectedCustomerId} {...commonProps} />;
             case 'supplier_accounts': return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} {...commonProps} />;
             case 'main_warehouse': return <MainWarehouse mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onFulfillRequisition={(req, items, user) => handleFulfillRequisition(req, items, user)} {...commonProps} />;
-            case 'recycle_bin': return <RecycleBin trashItems={trash} onRestore={handleRestoreItem} onDelete={handleDeletePermanently} onEmptyTrash={handleEmptyTrash} />;
+            case 'recycle_bin': return <RecycleBin trashItems={trash} onRestore={handleRestoreItem} onDelete={handleDeletePermanently} onEmptyTrash={handleEmptyTrash} {...commonProps} />;
             case 'checkneh': return <Checkneh customers={customers} showConfirmation={showConfirmation} invoices={checknehInvoices} setInvoices={setChecknehInvoices} {...commonProps} />;
             case 'alerts': return <Alerts settings={alertSettings} setSettings={(setter) => { const newSettings = typeof setter === 'function' ? setter(alertSettings) : setter; setAlertSettings(newSettings); addToSyncQueue({ type: 'UPSERT', table: 'alert_settings', payload: newSettings }); }} customers={customers} />;
             case 'settings': return <Settings 
@@ -2518,7 +2521,7 @@ const InvalidLicenseScreen = () => (
 );
 
 // FIX: Moved RemoteLogin component here from RemoteControl.tsx to be accessible by App.tsx
-export const RemoteLogin = ({ onLogin, addToast }: { onLogin: (companyUsername: string, user: User) => void; addToast: (message: string, type?: 'success' | 'error' | 'info') => void; }) => {
+export const RemoteLogin = ({ onLogin, addToast }: { onLogin: (companyUsername: string, username: string, password_raw: string) => void; addToast: (message: string, type?: 'success' | 'error' | 'info') => void; }) => {
     const [companyUsername, setCompanyUsername] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -2526,48 +2529,10 @@ export const RemoteLogin = ({ onLogin, addToast }: { onLogin: (companyUsername: 
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!companyUsername || !username || !password) return;
         setIsLoading(true);
-        addToast("در حال اعتبارسنجی شرکت...", "info");
-        try {
-            // 1. Find the company by its unique username
-            const { data: licenseData, error: licenseError } = await supabase
-                .from('licenses')
-                .select('id, user_id')
-                .eq('username', companyUsername)
-                .single();
-            
-            if (licenseError || !licenseData) {
-                throw new Error("نام کاربری شرکت یافت نشد.");
-            }
-            
-            addToast("در حال دریافت اطلاعات کاربران...", "info");
-
-            // 2. Fetch the latest backup data which contains the users array
-            const { data: backupData, error: backupError } = await supabase
-                .from('backups')
-                .select('backup_data')
-                .eq('license_id', licenseData.id)
-                .single();
-
-            if (backupError || !backupData || !backupData.backup_data || !Array.isArray(backupData.backup_data.users)) {
-                throw new Error("اطلاعات کاربران شرکت یافت نشد. لطفاً از برنامه اصلی یک پشتیبان آنلاین تهیه کنید.");
-            }
-
-            // 3. Authenticate the user against the fetched users array
-            const users: User[] = backupData.backup_data.users;
-            const user = users.find(u => u.username === username && u.password === password);
-
-            if (user) {
-                onLogin(companyUsername, user); // Pass both company and user info up
-            } else {
-                addToast('نام کاربری یا رمز عبور کارمند اشتباه است.', 'error');
-            }
-
-        } catch (error: any) {
-            addToast(error.message || 'خطا در ورود.', 'error');
-        } finally {
-            setIsLoading(false);
-        }
+        await onLogin(companyUsername, username, password);
+        setIsLoading(false);
     };
 
     return (

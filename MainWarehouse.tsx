@@ -40,9 +40,10 @@ type FulfillmentModalProps = {
     requisition: StockRequisition | null;
     mainWarehouseDrugs: Drug[];
     onConfirmFulfillment: (requisition: StockRequisition, fulfilledItems: StockRequisitionItem[]) => void;
+    isReadOnly?: boolean;
 };
 
-const FulfillmentModal: React.FC<FulfillmentModalProps> = ({ isOpen, onClose, requisition, mainWarehouseDrugs, onConfirmFulfillment }) => {
+const FulfillmentModal: React.FC<FulfillmentModalProps> = ({ isOpen, onClose, requisition, mainWarehouseDrugs, onConfirmFulfillment, isReadOnly }) => {
     const [fulfilledItems, setFulfilledItems] = useState<StockRequisitionItem[]>([]);
 
     useEffect(() => {
@@ -100,6 +101,7 @@ const FulfillmentModal: React.FC<FulfillmentModalProps> = ({ isOpen, onClose, re
                                                 max={maxQuantity}
                                                 min="0"
                                                 className="w-24 text-center p-1 border rounded-md focus:ring-2 focus:ring-teal-500"
+                                                disabled={isReadOnly}
                                             />
                                         </td>
                                     </tr>
@@ -110,7 +112,7 @@ const FulfillmentModal: React.FC<FulfillmentModalProps> = ({ isOpen, onClose, re
                 </div>
                  <div className="flex justify-end space-x-4 space-x-reverse pt-6 mt-4 border-t">
                     <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 font-semibold">انصراف</button>
-                    <button type="button" onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold shadow-md">تایید و انتقال موجودی</button>
+                    <button type="button" onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold shadow-md disabled:bg-teal-400" disabled={isReadOnly}>تایید و انتقال موجودی</button>
                 </div>
             </div>
         </div>
@@ -202,187 +204,127 @@ type MainWarehouseProps = {
     documentSettings: DocumentSettings;
 };
 
-type Tab = 'stock' | 'requests';
-
 const MainWarehouse: React.FC<MainWarehouseProps> = ({ mainWarehouseDrugs, stockRequisitions, onFulfillRequisition, currentUser, addToast, companyInfo, documentSettings }) => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isFulfillmentModalOpen, setIsFulfillmentModalOpen] = useState(false);
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-    const [requisitionToPrint, setRequisitionToPrint] = useState<StockRequisition | null>(null);
     const [selectedRequisition, setSelectedRequisition] = useState<StockRequisition | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [activeTab, setActiveTab] = useState<Tab>('requests');
+    const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
 
-    const handleOpenFulfillmentModal = (req: StockRequisition) => {
-        setSelectedRequisition(req);
-        setIsModalOpen(true);
-    };
-    
-    const handleOpenPrintModal = (req: StockRequisition) => {
-        setRequisitionToPrint(req);
-        setIsPrintModalOpen(true);
+    const handleOpenModal = (requisition: StockRequisition) => {
+        setSelectedRequisition(requisition);
+        setIsFulfillmentModalOpen(true);
     };
 
     const handleConfirmFulfillment = (requisition: StockRequisition, fulfilledItems: StockRequisitionItem[]) => {
         onFulfillRequisition(requisition, fulfilledItems, currentUser.username);
     };
 
-    const filteredDrugs = useMemo(() => {
-        return mainWarehouseDrugs.filter(drug =>
-            drug.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (drug.code && drug.code.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
-    }, [mainWarehouseDrugs, searchTerm]);
+    const handlePrint = (requisition: StockRequisition) => {
+        // We need to simulate the fulfillment to get the fulfilledBy name for printing
+        const updatedReq = { ...requisition, fulfilledBy: currentUser.username };
+        setSelectedRequisition(updatedReq);
+        setIsPrintModalOpen(true);
+    };
 
-    const pendingRequisitions = useMemo(() => {
-        return stockRequisitions
-            .filter(r => r.status === 'در انتظار')
-            .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    }, [stockRequisitions]);
-    
-    const completedRequisitions = useMemo(() => {
-        return stockRequisitions
-            .filter(r => r.status !== 'در انتظار')
-            .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const { pending, completed } = useMemo(() => {
+        const pending: StockRequisition[] = [];
+        const completed: StockRequisition[] = [];
+        stockRequisitions.forEach(req => {
+            if (req.status === 'در انتظار') {
+                pending.push(req);
+            } else {
+                completed.push(req);
+            }
+        });
+        return { pending, completed };
     }, [stockRequisitions]);
 
-    const TabButton = ({ tabId, children }: { tabId: Tab, children: React.ReactNode }) => (
-        <button 
+    const TabButton = ({ tabId, children, count }) => (
+        <button
             onClick={() => setActiveTab(tabId)}
-            className={`px-4 py-2 text-lg font-semibold rounded-t-lg border-b-4 transition-colors ${activeTab === tabId ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+            className={`relative px-4 py-2 font-semibold rounded-t-lg transition-colors ${activeTab === tabId ? 'bg-white text-teal-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
         >
             {children}
+            {count > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full">{count}</span>
+            )}
         </button>
     );
 
     return (
-        <div className="p-8 space-y-8">
-            <FulfillmentModal 
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
+        <div className="p-8">
+            <FulfillmentModal
+                isOpen={isFulfillmentModalOpen}
+                onClose={() => setIsFulfillmentModalOpen(false)}
                 requisition={selectedRequisition}
                 mainWarehouseDrugs={mainWarehouseDrugs}
                 onConfirmFulfillment={handleConfirmFulfillment}
             />
-             <PrintPreviewModal
+            <PrintPreviewModal 
                 isOpen={isPrintModalOpen}
                 onClose={() => setIsPrintModalOpen(false)}
-                requisition={requisitionToPrint}
+                requisition={selectedRequisition}
                 companyInfo={companyInfo}
                 documentSettings={documentSettings}
             />
-
-            <div>
-                <h2 className="text-2xl font-bold text-gray-800">انبار اصلی</h2>
-                <p className="text-gray-500">موجودی کلان و مدیریت انتقالات داخلی</p>
-            </div>
-            
-            <div className="border-b border-gray-200">
-                <nav className="flex -mb-px">
-                    <TabButton tabId="requests">درخواست‌های انتقال ({pendingRequisitions.length})</TabButton>
-                    <TabButton tabId="stock">موجودی انبار</TabButton>
-                </nav>
+            <div className="mb-8">
+                <h2 className="text-3xl font-bold text-gray-800">انبار اصلی</h2>
+                <p className="text-gray-500 mt-2">مدیریت درخواست‌های کالا از انبار فروش و انتقال موجودی.</p>
             </div>
 
-            {activeTab === 'requests' && (
-                 <div className="bg-white rounded-xl shadow-lg p-6">
-                    <h3 className="font-bold text-lg mb-4">درخواست‌های کالا در انتظار تایید</h3>
-                    {pendingRequisitions.length === 0 ? (
-                        <p className="text-center text-gray-500 py-8">هیچ درخواست جدیدی وجود ندارد.</p>
-                    ) : (
-                        <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                            {pendingRequisitions.map(req => (
-                                <div key={req.id} className="border rounded-lg p-4 bg-gray-50">
-                                    <div className="flex justify-between items-center">
-                                        <div>
-                                            <p className="font-bold">درخواست #{req.id} - <span className="font-normal text-gray-600">از طرف {req.requestedBy}</span></p>
-                                            <p className="text-sm text-gray-500">{new Date(req.date).toLocaleString('fa-IR')}</p>
-                                        </div>
-                                        <button onClick={() => handleOpenFulfillmentModal(req)} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 shadow-md font-semibold">
-                                            <FulfillIcon /> <span className="mr-2">بررسی و تکمیل</span>
-                                        </button>
-                                    </div>
-                                    <ul className="mt-3 list-disc list-inside text-sm space-y-1">
-                                        {req.items.map(item => <li key={item.drugId}>{item.drugName}: <span className="font-semibold">{formatQuantity(item.quantityRequested, mainWarehouseDrugs.find(d => d.id === item.drugId)?.unitsPerCarton, mainWarehouseDrugs.find(d => d.id === item.drugId)?.cartonSize)}</span></li>)}
-                                    </ul>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                
-                <div className="mt-8">
-                    <h3 className="font-bold text-lg mb-4">تاریخچه درخواست‌ها</h3>
-                     {completedRequisitions.length === 0 ? (
-                        <p className="text-center text-gray-500 py-8">هیچ درخواست تکمیل شده‌ای وجود ندارد.</p>
-                    ) : (
-                         <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                            {completedRequisitions.map(req => (
-                                <div key={req.id} className={`border rounded-lg p-4 ${req.status === 'تکمیل شده' ? 'bg-green-50' : 'bg-red-50'}`}>
-                                    <div className="flex justify-between items-center">
-                                        <div>
-                                            <p className="font-bold">درخواست #{req.id} - <span className={`font-semibold ${req.status === 'تکمیل شده' ? 'text-green-700' : 'text-red-700'}`}>{req.status}</span></p>
-                                            <p className="text-sm text-gray-500">{new Date(req.date).toLocaleString('fa-IR')}</p>
-                                        </div>
-                                        {req.status === 'تکمیل شده' &&
-                                        <button onClick={() => handleOpenPrintModal(req)} className="flex items-center bg-gray-600 text-white px-3 py-1 rounded-lg hover:bg-gray-700 text-sm font-semibold">
-                                            <PrintIcon /> <span className="mr-2">چاپ حواله</span>
-                                        </button>}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-                </div>
-            )}
+            <div className="flex border-b mb-6">
+                <TabButton tabId="pending" count={pending.length}>درخواست‌های در انتظار</TabButton>
+                <TabButton tabId="completed" count={0}>تاریخچه درخواست‌ها</TabButton>
+            </div>
             
-            {activeTab === 'stock' && (
-                 <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-                    <div className="p-4 bg-gray-50 flex justify-between items-center">
-                        <h3 className="font-bold text-lg">لیست موجودی انبار اصلی</h3>
-                        <div className="relative">
-                            <input
-                                type="text"
-                                placeholder="جستجوی دارو..."
-                                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                               <SearchIcon />
-                            </div>
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto max-h-[60vh]">
-                        <table className="w-full text-right">
-                            <thead className="bg-gray-100 border-b-2 border-gray-200 sticky top-0">
-                                <tr>
-                                    <th className="p-4 text-sm font-semibold text-gray-600">نام دارو</th>
-                                    <th className="p-4 text-sm font-semibold text-gray-600">کمپانی</th>
-                                    <th className="p-4 text-sm font-semibold text-gray-600">تعداد موجود</th>
-                                    <th className="p-4 text-sm font-semibold text-gray-600">نزدیک‌ترین انقضا</th>
+             <div className="bg-white rounded-xl shadow-lg p-6">
+                 <h3 className="text-xl font-bold text-gray-800 mb-4">
+                     {activeTab === 'pending' ? `لیست درخواست‌های در انتظار (${pending.length})` : 'تاریخچه درخواست‌های تکمیل شده'}
+                 </h3>
+                 <div className="max-h-[60vh] overflow-y-auto">
+                    <table className="w-full text-right">
+                        <thead className="bg-gray-50 border-b-2">
+                            <tr>
+                                <th className="p-4">#</th>
+                                <th className="p-4">تاریخ</th>
+                                <th className="p-4">درخواست‌کننده</th>
+                                <th className="p-4">اقلام</th>
+                                <th className="p-4">وضعیت</th>
+                                <th className="p-4">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                            {(activeTab === 'pending' ? pending : completed).map(req => (
+                                <tr key={req.id}>
+                                    <td className="p-4">{req.id}</td>
+                                    <td className="p-4">{new Date(req.date).toLocaleDateString('fa-IR')}</td>
+                                    <td className="p-4">{req.requestedBy}</td>
+                                    <td className="p-4 text-xs">{req.items.map(i => i.drugName).join(', ')}</td>
+                                    <td className="p-4">
+                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${req.status === 'در انتظار' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{req.status}</span>
+                                    </td>
+                                    <td className="p-4">
+                                        <div className="flex items-center gap-2">
+                                        {req.status === 'در انتظار' ? (
+                                            <button onClick={() => handleOpenModal(req)} className="flex items-center text-green-600 hover:text-green-800 font-semibold text-sm">
+                                                <FulfillIcon /> <span className="mr-1">تکمیل درخواست</span>
+                                            </button>
+                                        ) : (
+                                            <button onClick={() => handlePrint(req)} className="flex items-center text-blue-600 hover:text-blue-800 font-semibold text-sm">
+                                                <PrintIcon /> <span className="mr-1">چاپ حواله</span>
+                                            </button>
+                                        )}
+                                        </div>
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                                {filteredDrugs.map(drug => {
-                                    const totalQuantity = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
-                                    const earliestExpiry = drug.batches.filter(b => b.quantity > 0).map(b => b.expiryDate).sort()[0];
-                                    return (
-                                    <tr key={drug.id} className="hover:bg-gray-50">
-                                        <td className="p-4 text-gray-800 font-medium">{drug.name}</td>
-                                        <td className="p-4 text-gray-500">{drug.manufacturer}</td>
-                                        <td className="p-4 text-gray-800 font-semibold">
-                                            {formatQuantity(totalQuantity, drug.unitsPerCarton, drug.cartonSize)}
-                                        </td>
-                                        <td className="p-4 text-gray-500">{earliestExpiry ? new Date(earliestExpiry).toLocaleDateString('fa-IR') : '-'}</td>
-                                    </tr>
-                                )})}
-                            </tbody>
-                        </table>
-                    </div>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
-            )}
+            </div>
         </div>
     );
 };
 
+// FIX: Add default export for the MainWarehouse component
 export default MainWarehouse;

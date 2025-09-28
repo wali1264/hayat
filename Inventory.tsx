@@ -317,9 +317,10 @@ type DrugModalProps = {
     onSave: (drug: Omit<Drug, 'batches'>) => void;
     initialData: Omit<Drug, 'batches'> | null;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    isReadOnly?: boolean;
 };
 
-export const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData, addToast }) => {
+export const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, initialData, addToast, isReadOnly }) => {
     const defaultState = { name: '', barcode: '', code: '', manufacturer: '', unitsPerCarton: '', cartonSize: '', price: '', discountPercentage: '0', category: 'سایر' };
     const [drug, setDrug] = useState(defaultState);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -401,60 +402,60 @@ export const DrugModal: React.FC<DrugModalProps> = ({ isOpen, onClose, onSave, i
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                              <div>
                                 <label htmlFor="name" className={labelStyles}>نام محصول (ضروری)</label>
-                                <input type="text" name="name" id="name" value={drug.name} onChange={handleChange} className={inputStyles} required autoFocus />
+                                <input type="text" name="name" id="name" value={drug.name} onChange={handleChange} className={inputStyles} required autoFocus disabled={isReadOnly} />
                             </div>
                             <div>
                                <label htmlFor="manufacturer" className={labelStyles}>کمپانی</label>
-                               <input type="text" name="manufacturer" id="manufacturer" value={drug.manufacturer} onChange={handleChange} className={inputStyles} />
+                               <input type="text" name="manufacturer" id="manufacturer" value={drug.manufacturer} onChange={handleChange} className={inputStyles} disabled={isReadOnly} />
                             </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div>
                                 <label htmlFor="category" className={labelStyles}>دسته‌بندی</label>
-                                <select name="category" id="category" value={drug.category} onChange={handleChange} className={inputStyles}>
+                                <select name="category" id="category" value={drug.category} onChange={handleChange} className={inputStyles} disabled={isReadOnly}>
                                     {drugCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                                 </select>
                             </div>
                              <div>
                                 <label htmlFor="code" className={labelStyles}>کد محصول</label>
-                                <input type="text" name="code" id="code" value={drug.code} onChange={handleChange} className={inputStyles} />
+                                <input type="text" name="code" id="code" value={drug.code} onChange={handleChange} className={inputStyles} disabled={isReadOnly} />
                             </div>
                         </div>
                         
                         <div className="mb-4">
                             <label htmlFor="barcode" className={labelStyles}>بارکد / QR Code</label>
                             <div className="flex gap-2">
-                                 <input type="text" name="barcode" id="barcode" value={drug.barcode} onChange={handleChange} className={inputStyles} />
-                                 <button type="button" title="اسکن با دوربین" onClick={() => setIsScannerOpen(true)} className="p-2 border rounded-lg hover:bg-gray-100"><CameraIcon /></button>
+                                 <input type="text" name="barcode" id="barcode" value={drug.barcode} onChange={handleChange} className={inputStyles} disabled={isReadOnly} />
+                                 <button type="button" title="اسکن با دوربین" onClick={() => setIsScannerOpen(true)} className="p-2 border rounded-lg hover:bg-gray-100" disabled={isReadOnly}><CameraIcon /></button>
                             </div>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                              <div>
                                 <label htmlFor="price" className={labelStyles}>قیمت فروش (ضروری)</label>
-                                <input type="number" name="price" id="price" value={drug.price} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 150" />
+                                <input type="number" name="price" id="price" value={drug.price} onChange={handleChange} className={inputStyles} min="1" required placeholder="مثلا: 150" disabled={isReadOnly} />
                             </div>
                             <div>
                                 <label htmlFor="discountPercentage" className={labelStyles}>تخفیف (٪)</label>
-                                <input type="number" name="discountPercentage" id="discountPercentage" value={drug.discountPercentage} onChange={handleChange} className={inputStyles} min="0" max="100" placeholder="مثلا: 5"/>
+                                <input type="number" name="discountPercentage" id="discountPercentage" value={drug.discountPercentage} onChange={handleChange} className={inputStyles} min="0" max="100" placeholder="مثلا: 5" disabled={isReadOnly} />
                             </div>
                         </div>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 p-4 border rounded-lg bg-gray-50">
                              <div>
                                 <label htmlFor="unitsPerCarton" className={labelStyles}>تعداد واحد در کارتن <span className="font-normal text-gray-500">(کوچک)</span></label>
-                                <input type="number" name="unitsPerCarton" id="unitsPerCarton" value={drug.unitsPerCarton} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 100" />
+                                <input type="number" name="unitsPerCarton" id="unitsPerCarton" value={drug.unitsPerCarton} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 100" disabled={isReadOnly} />
                             </div>
                             <div>
                                 <label htmlFor="cartonSize" className={labelStyles}>تعداد کارتن کوچک در کارتن <span className="font-normal text-gray-500">(بزرگ)</span></label>
-                                <input type="number" name="cartonSize" id="cartonSize" value={drug.cartonSize} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 10" />
+                                <input type="number" name="cartonSize" id="cartonSize" value={drug.cartonSize} onChange={handleChange} className={inputStyles} min="1" placeholder="مثلا: 10" disabled={isReadOnly} />
                             </div>
                         </div>
                     </form>
                 </main>
                 <footer className="flex justify-end space-x-4 space-x-reverse p-8 pt-4 border-t border-gray-200 flex-shrink-0">
                     <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold transition-colors">انصراف</button>
-                    <button type="submit" form="drug-modal-form" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors shadow-md hover:shadow-lg">
+                    <button type="submit" form="drug-modal-form" className="px-6 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold transition-colors shadow-md hover:shadow-lg disabled:bg-teal-400 disabled:cursor-not-allowed" disabled={isReadOnly}>
                         {isEditMode ? 'ذخیره تغییرات' : 'ذخیره محصول'}
                     </button>
                 </footer>
@@ -470,9 +471,10 @@ type WriteOffModalProps = {
     onConfirm: (lotNumber: string, quantity: number, reason: WriteOffReason, notes: string) => void;
     drug: Drug | null;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    isReadOnly?: boolean;
 };
 
-const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfirm, drug, addToast }) => {
+const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfirm, drug, addToast, isReadOnly }) => {
     const [selectedLot, setSelectedLot] = useState('');
     const [quantity, setQuantity] = useState('');
     const [reason, setReason] = useState<WriteOffReason>('تاریخ گذشته');
@@ -520,7 +522,7 @@ const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfir
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-bold mb-2">انتخاب بچ/لات</label>
-                        <select value={selectedLot} onChange={e => setSelectedLot(e.target.value)} className="w-full p-2 border rounded-lg bg-white">
+                        <select value={selectedLot} onChange={e => setSelectedLot(e.target.value)} className="w-full p-2 border rounded-lg bg-white" disabled={isReadOnly}>
                             {drug.batches.filter(b => b.quantity > 0).map(b => (
                                 <option key={b.lotNumber} value={b.lotNumber}>
                                     لات: {b.lotNumber} (موجودی: {b.quantity}, انقضا: {new Date(b.expiryDate).toLocaleDateString('fa-IR')})
@@ -530,11 +532,11 @@ const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfir
                     </div>
                     <div>
                         <label className="block text-sm font-bold mb-2">تعداد ضایع شده (واحد)</label>
-                        <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={drug.batches.find(b => b.lotNumber === selectedLot)?.quantity} className="w-full p-2 border rounded-lg" required autoFocus />
+                        <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" max={drug.batches.find(b => b.lotNumber === selectedLot)?.quantity} className="w-full p-2 border rounded-lg" required autoFocus disabled={isReadOnly} />
                     </div>
                     <div>
                         <label className="block text-sm font-bold mb-2">دلیل</label>
-                        <select value={reason} onChange={e => setReason(e.target.value as WriteOffReason)} className="w-full p-2 border rounded-lg bg-white">
+                        <select value={reason} onChange={e => setReason(e.target.value as WriteOffReason)} className="w-full p-2 border rounded-lg bg-white" disabled={isReadOnly}>
                             <option value="تاریخ گذشته">تاریخ گذشته</option>
                             <option value="آسیب دیده">آسیب دیده</option>
                             <option value="مفقود شده">مفقود شده</option>
@@ -543,11 +545,11 @@ const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfir
                     </div>
                     <div>
                         <label className="block text-sm font-bold mb-2">توضیحات (اختیاری)</label>
-                        <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-2 border rounded-lg h-20 resize-none"></textarea>
+                        <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-2 border rounded-lg h-20 resize-none" disabled={isReadOnly}></textarea>
                     </div>
                     <div className="flex justify-end space-x-4 space-x-reverse pt-4 border-t">
                         <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 font-semibold">انصراف</button>
-                        <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold">ثبت ضایعات</button>
+                        <button type="submit" className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold disabled:bg-teal-400" disabled={isReadOnly}>ثبت ضایعات</button>
                     </div>
                 </form>
             </div>
@@ -561,9 +563,10 @@ type RequisitionModalProps = {
     onSave: (requisition: Omit<StockRequisition, 'id' | 'status' | 'requestedBy' | 'date'>) => void;
     mainWarehouseDrugs: Drug[];
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    isReadOnly?: boolean;
 };
 
-const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, onSave, mainWarehouseDrugs, addToast }) => {
+const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, onSave, mainWarehouseDrugs, addToast, isReadOnly }) => {
     const [items, setItems] = useState<Omit<StockRequisitionItem, 'quantityFulfilled'>[]>([]);
     const [notes, setNotes] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
@@ -644,7 +647,7 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
                     <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end p-4 border rounded-lg bg-gray-50">
                         <div className="md:col-span-2 relative" ref={searchWrapperRef}>
                             <label className="block text-sm font-bold mb-1">انتخاب دارو</label>
-                            <input type="text" placeholder="جستجو..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full p-2 border rounded-lg" />
+                            <input type="text" placeholder="جستجو..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full p-2 border rounded-lg" disabled={isReadOnly} />
                             {searchTerm && availableDrugs.length > 0 && (
                                 <div className="absolute top-full left-0 right-0 bg-white border shadow-lg mt-1 z-10 max-h-48 overflow-y-auto">
                                     {availableDrugs.map(drug => {
@@ -660,18 +663,18 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
                          <div className="grid grid-cols-3 gap-1 md:col-span-3">
                             <div>
                                 <label className="block text-sm font-bold mb-1">کارتن بزرگ</label>
-                                <input type="number" value={reqLarge} onChange={e => setReqLarge(e.target.value)} min="0" className="w-full p-2 border rounded-lg" placeholder="بزرگ" title="کارتن بزرگ" disabled={!selectedDrug?.cartonSize} />
+                                <input type="number" value={reqLarge} onChange={e => setReqLarge(e.target.value)} min="0" className="w-full p-2 border rounded-lg" placeholder="بزرگ" title="کارتن بزرگ" disabled={!selectedDrug?.cartonSize || isReadOnly} />
                             </div>
                             <div>
                                 <label className="block text-sm font-bold mb-1">کارتن کوچک</label>
-                                <input type="number" value={reqSmall} onChange={e => setReqSmall(e.target.value)} min="0" className="w-full p-2 border rounded-lg" placeholder="کوچک" title="کارتن کوچک" disabled={!selectedDrug?.unitsPerCarton} />
+                                <input type="number" value={reqSmall} onChange={e => setReqSmall(e.target.value)} min="0" className="w-full p-2 border rounded-lg" placeholder="کوچک" title="کارتن کوچک" disabled={!selectedDrug?.unitsPerCarton || isReadOnly} />
                             </div>
                             <div>
                                 <label className="block text-sm font-bold mb-1">عدد</label>
-                                <input type="number" value={reqUnit} onChange={e => setReqUnit(e.target.value)} min="0" className="w-full p-2 border rounded-lg" placeholder="عدد" title="عدد" disabled={!selectedDrug} />
+                                <input type="number" value={reqUnit} onChange={e => setReqUnit(e.target.value)} min="0" className="w-full p-2 border rounded-lg" placeholder="عدد" title="عدد" disabled={!selectedDrug || isReadOnly} />
                             </div>
                         </div>
-                        <button onClick={handleAddItem} className="w-full bg-teal-500 text-white p-2 rounded-lg hover:bg-teal-600 font-semibold h-10">افزودن</button>
+                        <button onClick={handleAddItem} className="w-full bg-teal-500 text-white p-2 rounded-lg hover:bg-teal-600 font-semibold h-10 disabled:bg-teal-300" disabled={isReadOnly}>افزودن</button>
                     </div>
 
                     <div className="max-h-48 overflow-y-auto border rounded-lg">
@@ -690,7 +693,7 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
                                     <tr key={item.drugId}>
                                         <td className="p-2">{item.drugName}</td>
                                         <td className="p-2">{formatQuantity(item.quantityRequested, drugInfo?.unitsPerCarton, drugInfo?.cartonSize)}</td>
-                                        <td className="p-2 text-center"><button onClick={() => handleRemoveItem(item.drugId)} className="text-red-500"><TrashIcon className="w-4 h-4" /></button></td>
+                                        <td className="p-2 text-center"><button onClick={() => handleRemoveItem(item.drugId)} className="text-red-500" disabled={isReadOnly}><TrashIcon className="w-4 h-4" /></button></td>
                                     </tr>
                                 )})}
                             </tbody>
@@ -698,12 +701,12 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({ isOpen, onClose, on
                     </div>
                      <div>
                         <label className="block text-sm font-bold mb-1">ملاحظات (اختیاری)</label>
-                        <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-2 border rounded-lg h-20 resize-none"></textarea>
+                        <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-2 border rounded-lg h-20 resize-none" disabled={isReadOnly}></textarea>
                     </div>
                 </div>
                  <div className="flex justify-end space-x-4 space-x-reverse pt-6 mt-4 border-t">
                     <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 font-semibold">انصراف</button>
-                    <button type="button" onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold shadow-md">ثبت و ارسال درخواست</button>
+                    <button type="button" onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-teal-600 text-white font-semibold shadow-md disabled:bg-teal-300" disabled={isReadOnly}>ثبت و ارسال درخواست</button>
                 </div>
             </div>
         </div>
@@ -724,11 +727,13 @@ type InventoryProps = {
     rolePermissions: RolePermissions;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     onTraceLotNumber: (lotNumber: string) => void;
+    isRemoteView?: boolean;
+    isSystemOnline?: boolean;
 };
 
 type Tab = 'stock' | 'requisitions';
 
-const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockRequisitions, onSaveDrug, onDelete, onWriteOff, onSaveRequisition, currentUser, rolePermissions, addToast, onTraceLotNumber }) => {
+const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockRequisitions, onSaveDrug, onDelete, onWriteOff, onSaveRequisition, currentUser, rolePermissions, addToast, onTraceLotNumber, isRemoteView, isSystemOnline }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isWriteOffModalOpen, setIsWriteOffModalOpen] = useState(false);
     const [isRequisitionModalOpen, setIsRequisitionModalOpen] = useState(false);
@@ -746,6 +751,8 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
     const [activeTab, setActiveTab] = useState<Tab>('stock');
     const [expandedDrugId, setExpandedDrugId] = useState<number | null>(null);
     
+    const isReadOnly = isRemoteView && !isSystemOnline;
+
     const permissions = useMemo(() => {
         if (currentUser.role === 'مدیر کل') {
             return {
@@ -891,6 +898,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                 onSave={onSaveDrug}
                 initialData={editingDrug}
                 addToast={addToast}
+                isReadOnly={isReadOnly}
             />}
             {permissions.canWriteOffStock && <WriteOffModal
                 isOpen={isWriteOffModalOpen}
@@ -898,6 +906,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                 drug={drugForWriteOff}
                 onConfirm={(lotNumber, quantity, reason, notes) => onWriteOff(drugForWriteOff!.id, lotNumber, quantity, reason, notes)}
                 addToast={addToast}
+                isReadOnly={isReadOnly}
             />}
             <RequisitionModal
                 isOpen={isRequisitionModalOpen}
@@ -905,6 +914,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                 onSave={onSaveRequisition}
                 mainWarehouseDrugs={mainWarehouseDrugs}
                 addToast={addToast}
+                isReadOnly={isReadOnly}
             />
             <BarcodeSheetModal
                 isOpen={isSheetModalOpen}
@@ -957,7 +967,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                         </select>
                     </div>
                     {permissions.canCreateDrug && (
-                        <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md">
+                        <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md disabled:bg-teal-400" disabled={isReadOnly}>
                             <PlusIcon />
                             <span className="mr-2">افزودن محصول جدید</span>
                         </button>
@@ -1048,9 +1058,9 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                                                 </td>
                                                 <td className="p-4 whitespace-nowrap">
                                                     <div className="flex items-center space-x-2 space-x-reverse">
-                                                        {permissions.canEditDrug && <button onClick={() => handleOpenEditModal(drug)} title="ویرایش" className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>}
-                                                        {permissions.canDeleteDrug && <button onClick={() => handleDeleteDrug(drug.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>}
-                                                        {permissions.canWriteOffStock && <button onClick={() => handleOpenWriteOffModal(drug)} title="ثبت ضایعات" className="text-yellow-600 hover:text-yellow-800 p-1"><WasteIcon /></button>}
+                                                        {permissions.canEditDrug && <button onClick={() => handleOpenEditModal(drug)} title="ویرایش" className="text-blue-500 hover:text-blue-700 p-1 disabled:opacity-50" disabled={isReadOnly}><EditIcon /></button>}
+                                                        {permissions.canDeleteDrug && <button onClick={() => handleDeleteDrug(drug.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1 disabled:opacity-50" disabled={isReadOnly}><TrashIcon /></button>}
+                                                        {permissions.canWriteOffStock && <button onClick={() => handleOpenWriteOffModal(drug)} title="ثبت ضایعات" className="text-yellow-600 hover:text-yellow-800 p-1 disabled:opacity-50" disabled={isReadOnly}><WasteIcon /></button>}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1069,7 +1079,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                 <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                     <div className="p-4 bg-gray-50 flex justify-between items-center">
                         <h3 className="font-bold text-lg">تاریخچه درخواست‌های کالا</h3>
-                         <button onClick={() => setIsRequisitionModalOpen(true)} className="flex items-center bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 transition-colors shadow-md">
+                         <button onClick={() => setIsRequisitionModalOpen(true)} className="flex items-center bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 transition-colors shadow-md disabled:bg-cyan-400" disabled={isReadOnly}>
                             <RequestIcon />
                             <span className="mr-2">ایجاد درخواست جدید</span>
                         </button>
