@@ -162,6 +162,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
     const [isSearchFocused, setIsSearchFocused] = useState(false);
     const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
     const addItemFormRef = useRef<HTMLFormElement>(null);
+    const itemsContainerRef = useRef<HTMLDivElement>(null);
 
     const isEditMode = mode === 'edit';
 
@@ -202,6 +203,12 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [addItemFormRef]);
 
+    useEffect(() => {
+        if (itemsContainerRef.current) {
+            itemsContainerRef.current.scrollTop = itemsContainerRef.current.scrollHeight;
+        }
+    }, [items]);
+
     if (!isOpen) return null;
 
     const handleInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -215,11 +222,41 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
         }
     };
     
+     const handleExpiryDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let value = e.target.value.replace(/\D/g, ''); // Remove all non-digits
+        if (value.length > 6) {
+            value = value.slice(0, 6); // MMYYYY format
+        }
+
+        if (value.length > 2) {
+            value = value.slice(0, 2) + ' / ' + value.slice(2);
+        }
+        
+        setAddExpiryDate(value);
+    };
+
     const handleAddItem = (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!selectedDrug || !addLotNumber || !addExpiryDate) {
-            addToast("لطفاً یک دارو را انتخاب کرده و شماره لات و تاریخ انقضا را وارد کنید.", "error");
+        const expiryParts = addExpiryDate.split(' / ');
+        if (expiryParts.length !== 2 || expiryParts[0].length !== 2 || expiryParts[1].length !== 4) {
+             addToast("فرمت تاریخ انقضا نامعتبر است. لطفا از فرمت ماه / سال (MM / YYYY) استفاده کنید.", "error");
+            return;
+        }
+        const month = parseInt(expiryParts[0], 10);
+        const year = parseInt(expiryParts[1], 10);
+
+        if (isNaN(month) || isNaN(year) || month < 1 || month > 12 || year < new Date().getFullYear() - 5 || year > 2100) {
+             addToast("تاریخ انقضای وارد شده نامعتبر است.", "error");
+            return;
+        }
+        
+        // Convert to last day of the month in YYYY-MM-DD format
+        const lastDayOfMonth = new Date(year, month, 0).getDate();
+        const isoExpiryDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
+        if (!selectedDrug || !addLotNumber) {
+            addToast("لطفاً یک دارو را انتخاب کرده و شماره لات را وارد کنید.", "error");
             return;
         }
 
@@ -238,7 +275,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
             return;
         }
         
-        setItems(prev => [...prev, { drugId: selectedDrug.id, drugName: selectedDrug.name, quantity: totalQuantity, purchasePrice: price, lotNumber: addLotNumber, expiryDate: addExpiryDate, bonusQuantity: Number(addBonus) || 0, discountPercentage: Number(addDiscount) || 0 }]);
+        setItems(prev => [...prev, { drugId: selectedDrug.id, drugName: selectedDrug.name, quantity: totalQuantity, purchasePrice: price, lotNumber: addLotNumber, expiryDate: isoExpiryDate, bonusQuantity: Number(addBonus) || 0, discountPercentage: Number(addDiscount) || 0 }]);
         
         // Reset inputs
         setDrugSearchTerm(''); setSelectedDrug(null); setAddLargeCarton(''); setAddSmallCarton(''); setAddUnit(''); setAddPrice(''); setIsSearchFocused(false); setAddLotNumber(''); setAddExpiryDate(''); setAddBonus(''); setAddDiscount('');
@@ -359,8 +396,8 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                                     <button type="button" onClick={onOpenQuickAddModal} className="px-3 bg-gray-200 text-gray-700 rounded-l-lg border border-l-0 border-gray-300 hover:bg-gray-300 font-bold" title="افزودن محصول جدید به سیستم">+</button>
                                 </div>
                             </div>
-                            <div><label className="text-xs font-semibold">شماره لات</label><input type="text" value={addLotNumber} onChange={e => setAddLotNumber(e.target.value)} className="w-full p-2 border rounded-lg mt-1" required/></div>
-                            <div><label className="text-xs font-semibold">تاریخ انقضا</label><input type="date" value={addExpiryDate} onChange={e => setAddExpiryDate(e.target.value)} className="w-full p-2 border rounded-lg mt-1" required/></div>
+                            <div className="lg:col-span-2"><label className="text-xs font-semibold">شماره لات</label><input type="text" value={addLotNumber} onChange={e => setAddLotNumber(e.target.value)} className="w-full p-2 border rounded-lg mt-1" required/></div>
+                            <div className="lg:col-span-2"><label className="text-xs font-semibold">تاریخ انقضا (ماه/سال)</label><input type="text" placeholder="ماه / سال" value={addExpiryDate} onChange={handleExpiryDateChange} className="w-full p-2 border rounded-lg mt-1 font-mono text-center" required/></div>
                             <div className="grid grid-cols-3 gap-1 lg:col-span-2">
                                 <div><label className="text-xs font-semibold">بزرگ</label><input type="number" value={addLargeCarton} onChange={e => setAddLargeCarton(e.target.value)} min="0" className="w-full p-2 border rounded-lg mt-1" disabled={!selectedDrug?.cartonSize || selectedDrug.cartonSize <= 1} /></div>
                                 <div><label className="text-xs font-semibold">کوچک</label><input type="number" value={addSmallCarton} onChange={e => setAddSmallCarton(e.target.value)} min="0" className="w-full p-2 border rounded-lg mt-1" disabled={!selectedDrug || !selectedDrug.unitsPerCarton || selectedDrug.unitsPerCarton <= 1} /></div>
@@ -368,12 +405,12 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
                             </div>
                              <div><label className="text-xs font-semibold">بونس</label><input type="number" value={addBonus} onChange={e => setAddBonus(e.target.value)} min="0" className="w-full p-2 border rounded-lg mt-1" /></div>
                              <div><label className="text-xs font-semibold">تخفیف (٪)</label><input type="number" value={addDiscount} onChange={e => setAddDiscount(e.target.value)} min="0" max="100" className="w-full p-2 border rounded-lg mt-1" /></div>
-                            <div><label className="text-xs font-semibold">قیمت ({billInfo.currency})</label><input type="number" value={addPrice} onChange={e => setAddPrice(e.target.value)} min="0.01" step="0.01" className="w-full p-2 border rounded-lg mt-1" required /></div>
-                            <div className="lg:col-span-2"><button type="submit" className="w-full bg-teal-500 text-white p-2 rounded-lg hover:bg-teal-600 h-10 flex items-center justify-center"><PlusIcon /> <span className="mr-2">افزودن قلم</span></button></div>
+                             <div><label className="text-xs font-semibold">قیمت ({billInfo.currency})</label><input type="number" value={addPrice} onChange={e => setAddPrice(e.target.value)} min="0.01" step="0.01" className="w-full p-2 border rounded-lg mt-1" required /></div>
+                             <div><button type="submit" className="w-full bg-teal-500 text-white p-2 rounded-lg hover:bg-teal-600 h-10 flex items-center justify-center"><PlusIcon /> <span className="mr-2 hidden lg:inline">افزودن</span></button></div>
                         </form>
                         )}
 
-                        <div className="max-h-48 overflow-y-auto">
+                        <div className="max-h-64 overflow-y-auto" ref={itemsContainerRef}>
                              {items.length > 0 && <table className="w-full text-sm">
                                 <thead className="text-right">
                                     <tr className="border-b">

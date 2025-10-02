@@ -176,7 +176,7 @@ const FinanceAndExpenses: React.FC<AccountingProps> = ({ orders, expenses, onSav
         expense.category.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const SummaryCard = ({ title, value, icon, colorClass }: { title: string, value: number, icon: JSX.Element, colorClass: string }) => (
+    const SummaryCard = ({ title, value, icon, colorClass }: { title: string, value: number, icon: React.ReactNode, colorClass: string }) => (
         <div className="bg-white p-6 rounded-xl shadow-lg flex items-center justify-between">
             <div>
                 <p className="text-sm font-medium text-gray-500">{title}</p>

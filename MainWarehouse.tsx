@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Drug, formatQuantity, Batch } from './Inventory';
+import React, { useState, useMemo } from 'react';
+import { Drug, formatQuantity, getStatus, getRowStyle, BatchDetailsRow, drugCategories } from './Inventory';
 import { User, CompanyInfo, DocumentSettings } from './Settings';
 import { StockRequisition, StockRequisitionItem } from './App';
 
 //=========== ICONS ===========//
-const Icon = ({ path, className = "w-5 h-5" }) => (
+const Icon = ({ path, className = "w-5 h-5" }: { path: string, className?: string }) => (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={path}></path>
     </svg>
@@ -17,6 +17,18 @@ const CloseIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
 );
 const SearchIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" className="w-5 h-5 text-gray-400" />;
 const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0 00-2 2v4a2 2 0 002 2h2m8 0v4H9v-4m4 0h-2" className="w-5 h-5"/>;
+const SortIcon = ({ direction }: { direction: 'ascending' | 'descending' | null }) => {
+    if (direction === null) {
+        return <Icon path="M8 9l4-4 4 4m0 6l-4 4-4-4" className="w-4 h-4 ml-2 text-gray-300 group-hover:text-gray-500" />;
+    }
+    if (direction === 'ascending') {
+        return <Icon path="M5 15l7-7 7 7" className="w-4 h-4 ml-2" />;
+    }
+    return <Icon path="M19 9l-7 7-7-7" className="w-4 h-4 ml-2" />;
+};
+const ChevronIcon = ({ isExpanded }: { isExpanded: boolean }) => (
+    <Icon path={isExpanded ? "M19 9l-7 7-7-7" : "M5 15l7-7 7 7"} className="w-4 h-4 text-gray-500" />
+);
 
 //=========== HELPERS ===========//
 const formatGregorianForDisplay = (dateStr: string): string => {
@@ -46,7 +58,7 @@ type FulfillmentModalProps = {
 const FulfillmentModal: React.FC<FulfillmentModalProps> = ({ isOpen, onClose, requisition, mainWarehouseDrugs, onConfirmFulfillment, isReadOnly }) => {
     const [fulfilledItems, setFulfilledItems] = useState<StockRequisitionItem[]>([]);
 
-    useEffect(() => {
+    React.useEffect(() => {
         if (requisition) {
             setFulfilledItems(requisition.items.map(item => ({ ...item, quantityFulfilled: item.quantityRequested })));
         }
@@ -202,13 +214,23 @@ type MainWarehouseProps = {
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     companyInfo: CompanyInfo;
     documentSettings: DocumentSettings;
+    onTraceLotNumber: (lotNumber: string) => void;
 };
 
-const MainWarehouse: React.FC<MainWarehouseProps> = ({ mainWarehouseDrugs, stockRequisitions, onFulfillRequisition, currentUser, addToast, companyInfo, documentSettings }) => {
+type Tab = 'stock' | 'requisitions';
+
+const MainWarehouse: React.FC<MainWarehouseProps> = ({ mainWarehouseDrugs, stockRequisitions, onFulfillRequisition, currentUser, addToast, companyInfo, documentSettings, onTraceLotNumber }) => {
     const [isFulfillmentModalOpen, setIsFulfillmentModalOpen] = useState(false);
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [selectedRequisition, setSelectedRequisition] = useState<StockRequisition | null>(null);
-    const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
+    const [activeTab, setActiveTab] = useState<Tab>('stock');
+    
+    // State for inventory view
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: 'ascending' | 'descending' }>({ key: null, direction: 'ascending' });
+    const [expandedDrugId, setExpandedDrugId] = useState<number | null>(null);
 
     const handleOpenModal = (requisition: StockRequisition) => {
         setSelectedRequisition(requisition);
@@ -220,7 +242,6 @@ const MainWarehouse: React.FC<MainWarehouseProps> = ({ mainWarehouseDrugs, stock
     };
 
     const handlePrint = (requisition: StockRequisition) => {
-        // We need to simulate the fulfillment to get the fulfilledBy name for printing
         const updatedReq = { ...requisition, fulfilledBy: currentUser.username };
         setSelectedRequisition(updatedReq);
         setIsPrintModalOpen(true);
@@ -239,92 +260,200 @@ const MainWarehouse: React.FC<MainWarehouseProps> = ({ mainWarehouseDrugs, stock
         return { pending, completed };
     }, [stockRequisitions]);
 
-    const TabButton = ({ tabId, children, count }) => (
+    // --- Inventory View Logic ---
+    const processedDrugs = useMemo(() => {
+        return mainWarehouseDrugs.map(drug => {
+            const totalQuantity = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
+            const earliestExpiry = drug.batches
+                .filter(b => b.quantity > 0)
+                .map(b => b.expiryDate)
+                .sort()[0] || null;
+            return { ...drug, totalQuantity, earliestExpiry };
+        });
+    }, [mainWarehouseDrugs]);
+
+    const filteredDrugs = useMemo(() => {
+        return processedDrugs.filter(drug => {
+            const searchTermMatch = searchTerm === '' ||
+                drug.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (drug.code && drug.code.toLowerCase().includes(searchTerm.toLowerCase()));
+            const statusMatch = statusFilter === 'all' || getStatus(drug).text === statusFilter;
+            const categoryMatch = categoryFilter === 'all' || drug.category === categoryFilter;
+            return searchTermMatch && statusMatch && categoryMatch;
+        });
+    }, [processedDrugs, searchTerm, statusFilter, categoryFilter]);
+
+    const sortedAndFilteredDrugs = useMemo(() => {
+        let sortableItems = [...filteredDrugs];
+        if (sortConfig.key !== null) {
+            sortableItems.sort((a, b) => {
+                const valA = a[sortConfig.key!];
+                const valB = b[sortConfig.key!];
+                if (valA < valB) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (valA > valB) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return sortableItems;
+    }, [filteredDrugs, sortConfig]);
+
+    const requestSort = (key: string) => {
+        let direction: 'ascending' | 'descending' = 'ascending';
+        if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+            direction = 'descending';
+        } else if (sortConfig.key === key && sortConfig.direction === 'descending') {
+            setSortConfig({ key: null, direction: 'ascending' });
+            return;
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const SortableHeader = ({ label, columnKey }: { label: string; columnKey: string }) => (
+        <th className="p-4 text-sm font-semibold text-gray-600 tracking-wider">
+            <button type="button" onClick={() => requestSort(columnKey)} className="flex items-center group focus:outline-none">
+                {label}
+                <SortIcon direction={sortConfig.key === columnKey ? sortConfig.direction : null} />
+            </button>
+        </th>
+    );
+
+    const TabButton = ({ tabId, children, count }: { tabId: Tab, children: React.ReactNode, count?: number }) => (
         <button
             onClick={() => setActiveTab(tabId)}
-            className={`relative px-4 py-2 font-semibold rounded-t-lg transition-colors ${activeTab === tabId ? 'bg-white text-teal-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+            className={`relative px-4 py-2 text-lg font-semibold rounded-t-lg border-b-4 transition-colors ${activeTab === tabId ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
         >
             {children}
-            {count > 0 && (
-                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full">{count}</span>
+            {count && count > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full animate-pulse">{count}</span>
             )}
         </button>
     );
 
     return (
         <div className="p-8">
-            <FulfillmentModal
-                isOpen={isFulfillmentModalOpen}
-                onClose={() => setIsFulfillmentModalOpen(false)}
-                requisition={selectedRequisition}
-                mainWarehouseDrugs={mainWarehouseDrugs}
-                onConfirmFulfillment={handleConfirmFulfillment}
-            />
-            <PrintPreviewModal 
-                isOpen={isPrintModalOpen}
-                onClose={() => setIsPrintModalOpen(false)}
-                requisition={selectedRequisition}
-                companyInfo={companyInfo}
-                documentSettings={documentSettings}
-            />
-            <div className="mb-8">
-                <h2 className="text-3xl font-bold text-gray-800">انبار اصلی</h2>
-                <p className="text-gray-500 mt-2">مدیریت درخواست‌های کالا از انبار فروش و انتقال موجودی.</p>
-            </div>
-
-            <div className="flex border-b mb-6">
-                <TabButton tabId="pending" count={pending.length}>درخواست‌های در انتظار</TabButton>
-                <TabButton tabId="completed" count={0}>تاریخچه درخواست‌ها</TabButton>
-            </div>
+            <FulfillmentModal isOpen={isFulfillmentModalOpen} onClose={() => setIsFulfillmentModalOpen(false)} requisition={selectedRequisition} mainWarehouseDrugs={mainWarehouseDrugs} onConfirmFulfillment={handleConfirmFulfillment} />
+            <PrintPreviewModal isOpen={isPrintModalOpen} onClose={() => setIsPrintModalOpen(false)} requisition={selectedRequisition} companyInfo={companyInfo} documentSettings={documentSettings} />
             
-             <div className="bg-white rounded-xl shadow-lg p-6">
-                 <h3 className="text-xl font-bold text-gray-800 mb-4">
-                     {activeTab === 'pending' ? `لیست درخواست‌های در انتظار (${pending.length})` : 'تاریخچه درخواست‌های تکمیل شده'}
-                 </h3>
-                 <div className="max-h-[60vh] overflow-y-auto">
-                    <table className="w-full text-right">
-                        <thead className="bg-gray-50 border-b-2">
-                            <tr>
-                                <th className="p-4">#</th>
-                                <th className="p-4">تاریخ</th>
-                                <th className="p-4">درخواست‌کننده</th>
-                                <th className="p-4">اقلام</th>
-                                <th className="p-4">وضعیت</th>
-                                <th className="p-4">عملیات</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                            {(activeTab === 'pending' ? pending : completed).map(req => (
-                                <tr key={req.id}>
-                                    <td className="p-4">{req.id}</td>
-                                    <td className="p-4">{new Date(req.date).toLocaleDateString('fa-IR')}</td>
-                                    <td className="p-4">{req.requestedBy}</td>
-                                    <td className="p-4 text-xs">{req.items.map(i => i.drugName).join(', ')}</td>
-                                    <td className="p-4">
-                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${req.status === 'در انتظار' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{req.status}</span>
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex items-center gap-2">
-                                        {req.status === 'در انتظار' ? (
-                                            <button onClick={() => handleOpenModal(req)} className="flex items-center text-green-600 hover:text-green-800 font-semibold text-sm">
-                                                <FulfillIcon /> <span className="mr-1">تکمیل درخواست</span>
-                                            </button>
-                                        ) : (
-                                            <button onClick={() => handlePrint(req)} className="flex items-center text-blue-600 hover:text-blue-800 font-semibold text-sm">
-                                                <PrintIcon /> <span className="mr-1">چاپ حواله</span>
-                                            </button>
-                                        )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+            <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
+                <div>
+                    <h2 className="text-3xl font-bold text-gray-800">انبار اصلی</h2>
+                    <p className="text-gray-500 mt-2">مدیریت موجودی مرکزی و پردازش درخواست‌های کالا.</p>
                 </div>
             </div>
+
+            <div className="border-b border-gray-200 mb-6">
+                <nav className="flex -mb-px">
+                    <TabButton tabId="stock">موجودی انبار</TabButton>
+                    <TabButton tabId="requisitions" count={pending.length}>درخواست‌های کالا</TabButton>
+                </nav>
+            </div>
+            
+            {activeTab === 'stock' && (
+                <div>
+                    <div className="flex justify-end items-center mb-4 flex-wrap gap-2">
+                        <div className="relative">
+                            <input type="text" placeholder="جستجوی محصول..." className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
+                        </div>
+                        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="pr-4 py-2 border border-gray-300 rounded-lg bg-white">
+                            <option value="all">همه دسته‌بندی‌ها</option>
+                            {drugCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                        </select>
+                        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="pr-4 py-2 border border-gray-300 rounded-lg bg-white">
+                            <option value="all">همه وضعیت‌ها</option>
+                            <option value="موجود">موجود</option>
+                            <option value="نزدیک به انقضا">نزدیک به انقضا</option>
+                            <option value="انقضا فوری">انقضا فوری</option>
+                            <option value="منقضی شده">منقضی شده</option>
+                            <option value="تمام شده">تمام شده</option>
+                        </select>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-right">
+                                <thead className="bg-gray-50 border-b-2 border-gray-200">
+                                    <tr>
+                                        <th className="p-4"></th>
+                                        <SortableHeader label="نام محصول" columnKey="name" />
+                                        <SortableHeader label="کمپانی" columnKey="manufacturer" />
+                                        <th className="p-4">کد محصول</th>
+                                        <SortableHeader label="موجودی کل" columnKey="totalQuantity" />
+                                        <SortableHeader label="نزدیک‌ترین انقضا" columnKey="earliestExpiry" />
+                                        <th className="p-4">وضعیت</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sortedAndFilteredDrugs.map(drug => {
+                                        const status = getStatus(drug);
+                                        const isExpanded = expandedDrugId === drug.id;
+                                        return (
+                                            <React.Fragment key={drug.id}>
+                                                <tr className={getRowStyle(status.text)}>
+                                                    <td className="p-2 text-center"><button onClick={() => setExpandedDrugId(isExpanded ? null : drug.id)} className="p-2 rounded-full hover:bg-gray-200"><ChevronIcon isExpanded={isExpanded} /></button></td>
+                                                    <td className="p-4 font-medium">{drug.name}</td>
+                                                    <td className="p-4 text-gray-500">{drug.manufacturer}</td>
+                                                    <td className="p-4 font-mono text-xs">{drug.code || '-'}</td>
+                                                    <td className="p-4 font-semibold">{formatQuantity(drug.totalQuantity, drug.unitsPerCarton, drug.cartonSize)}</td>
+                                                    <td className="p-4 font-mono">{drug.earliestExpiry ? formatGregorianForDisplay(drug.earliestExpiry) : '-'}</td>
+                                                    <td className="p-4"><span className={`px-3 py-1 text-xs font-bold rounded-full ${status.bg} ${status.color}`}>{status.text}</span></td>
+                                                </tr>
+                                                {isExpanded && <BatchDetailsRow drug={drug} colSpan={7} onTraceLotNumber={onTraceLotNumber} />}
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'requisitions' && (
+                <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-right">
+                            <thead className="bg-gray-50 border-b-2">
+                                <tr>
+                                    <th className="p-4">#</th>
+                                    <th className="p-4">تاریخ</th>
+                                    <th className="p-4">درخواست‌کننده</th>
+                                    <th className="p-4">اقلام</th>
+                                    <th className="p-4">وضعیت</th>
+                                    <th className="p-4">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {[...pending, ...completed].map(req => (
+                                    <tr key={req.id}>
+                                        <td className="p-4">{req.id}</td>
+                                        <td className="p-4">{new Date(req.date).toLocaleDateString('fa-IR')}</td>
+                                        <td className="p-4">{req.requestedBy}</td>
+                                        <td className="p-4 text-xs">{req.items.map(i => i.drugName).join(', ')}</td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 text-xs font-bold rounded-full ${req.status === 'در انتظار' ? 'bg-yellow-100 text-yellow-700' : (req.status === 'تکمیل شده' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700')}`}>{req.status}</span>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-2">
+                                            {req.status === 'در انتظار' ? (
+                                                <button onClick={() => handleOpenModal(req)} className="flex items-center text-green-600 hover:text-green-800 font-semibold text-sm">
+                                                    <FulfillIcon /> <span className="mr-1">تکمیل درخواست</span>
+                                                </button>
+                                            ) : (
+                                                <button onClick={() => handlePrint(req)} className="flex items-center text-blue-600 hover:text-blue-800 font-semibold text-sm">
+                                                    <PrintIcon /> <span className="mr-1">چاپ حواله</span>
+                                                </button>
+                                            )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
-// FIX: Add default export for the MainWarehouse component
 export default MainWarehouse;

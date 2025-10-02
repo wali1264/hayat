@@ -2145,7 +2145,7 @@ const App: React.FC = () => {
             case 'fulfillment': return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} {...commonProps} />;
             case 'customer_accounts': return <CustomerAccounts customers={customers} orders={orders} preselectedCustomerId={preselectedCustomerId} {...commonProps} />;
             case 'supplier_accounts': return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} {...commonProps} />;
-            case 'main_warehouse': return <MainWarehouse mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onFulfillRequisition={(req, items, user) => handleFulfillRequisition(req, items, user)} {...commonProps} />;
+            case 'main_warehouse': return <MainWarehouse mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onFulfillRequisition={(req, items, user) => handleFulfillRequisition(req, items, user)} onTraceLotNumber={handleTraceLotNumber} {...commonProps} />;
             case 'recycle_bin': return <RecycleBin trashItems={trash} onRestore={handleRestoreItem} onDelete={handleDeletePermanently} onEmptyTrash={handleEmptyTrash} {...commonProps} />;
             case 'checkneh': return <Checkneh customers={customers} showConfirmation={showConfirmation} invoices={checknehInvoices} setInvoices={setChecknehInvoices} {...commonProps} />;
             case 'alerts': return <Alerts settings={alertSettings} setSettings={(setter) => { const newSettings = typeof setter === 'function' ? setter(alertSettings) : setter; setAlertSettings(newSettings); addToSyncQueue({ type: 'UPSERT', table: 'alert_settings', payload: newSettings }); }} customers={customers} />;

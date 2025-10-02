@@ -27,7 +27,7 @@ const ExportIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a4 4 0 01-4-
 const PrintIcon = () => <Icon path="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H7a2 2 0 00-2 2v4a2 2 0 002 2h2m8 0v4H9v-4m4 0h-2" className="w-5 h-5"/>;
 const ExcelIcon = () => <Icon path="M4 6h16v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 13h1m3 0h1" className="w-5 h-5"/>;
 const TraceIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 4H4v6M14 20h6v-6" />;
-const BuilderIcon = () => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0 3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />;
+const BuilderIcon = () => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0 3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />;
 const ReturnReportIcon = () => <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z M9 15l-3-3m0 0l3-3m-3 3h6" />;
 
 
@@ -40,6 +40,20 @@ type GeneratedReport = {
     summary?: { label: string; value: string | number }[];
     isNumeric?: boolean[];
     printData?: any; // For complex print structures
+};
+
+const formatGregorianForDisplay = (dateStr: string): string => {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    } catch (e) {
+        return '';
+    }
 };
 
 //=========== SUB-COMPONENTS ===========//
@@ -424,6 +438,24 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
         return drugs.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
     };
 
+    const reportHeaders = ['نام محصول', 'شماره لات', 'تاریخ انقضا', 'تعداد موجود', 'قیمت خرید واحد', 'ارزش کل'];
+    const isNumericFlags = [false, true, false, false, true, true];
+
+    const generateBatchRows = (drugsToProcess: Drug[]) => {
+        return filterDrugs(drugsToProcess).flatMap(drug => 
+            drug.batches
+                .filter(batch => batch.quantity > 0)
+                .map(batch => [
+                    drug.name,
+                    batch.lotNumber,
+                    formatGregorianForDisplay(batch.expiryDate),
+                    formatQuantity(batch.quantity, drug.unitsPerCarton, drug.cartonSize),
+                    batch.purchasePrice,
+                    batch.quantity * batch.purchasePrice
+                ])
+        );
+    };
+
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -440,27 +472,17 @@ const InventoryReportView = ({ salesWarehouseDrugs, mainWarehouseDrugs }: { sale
                     <details open className="border rounded-lg">
                         <summary className="p-4 font-bold cursor-pointer bg-gray-50">انبار فروش</summary>
                          <DataTable
-                            headers={['نام محصول', 'تعداد موجود', 'قیمت خرید (میانگین)', 'ارزش کل']}
-                            rows={filterDrugs(salesWarehouseDrugs).map(d => {
-                                const totalQuantity = d.batches.reduce((sum, b) => sum + b.quantity, 0);
-                                const totalValue = d.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
-                                const avgPurchasePrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
-                                return [d.name, formatQuantity(totalQuantity, d.unitsPerCarton), avgPurchasePrice, totalValue];
-                            })}
-                            isNumeric={[false, false, true, true]}
+                            headers={reportHeaders}
+                            rows={generateBatchRows(salesWarehouseDrugs)}
+                            isNumeric={isNumericFlags}
                         />
                     </details>
                      <details className="border rounded-lg">
                         <summary className="p-4 font-bold cursor-pointer bg-gray-50">انبار اصلی</summary>
                          <DataTable
-                            headers={['نام محصول', 'تعداد موجود', 'قیمت خرید (میانگین)', 'ارزش کل']}
-                            rows={filterDrugs(mainWarehouseDrugs).map(d => {
-                                const totalQuantity = d.batches.reduce((sum, b) => sum + b.quantity, 0);
-                                const totalValue = d.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
-                                const avgPurchasePrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
-                                return [d.name, formatQuantity(totalQuantity, d.unitsPerCarton), avgPurchasePrice, totalValue];
-                            })}
-                            isNumeric={[false, false, true, true]}
+                            headers={reportHeaders}
+                            rows={generateBatchRows(mainWarehouseDrugs)}
+                            isNumeric={isNumericFlags}
                         />
                     </details>
                  </div>
@@ -573,7 +595,7 @@ const BatchTraceabilityView = ({ orders, purchaseBills, drugs, mainWarehouseDrug
                         {result.currentStock.length > 0 ? (
                              <DataTable 
                                 headers={['نام محصول', 'موجودی فعلی', 'تاریخ انقضا']}
-                                rows={result.currentStock.map(s => [s.drugName, s.quantity, new Date(s.expiryDate).toLocaleDateString('fa-IR')])}
+                                rows={result.currentStock.map(s => [s.drugName, s.quantity, formatGregorianForDisplay(s.expiryDate)])}
                             />
                         ) : <p>هیچ موجودی از این لات در انبارها یافت نشد.</p>}
                     </div>
@@ -1358,14 +1380,20 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                 return { title: `کاردکس کالا - ${selectedDrugForKardex.name}`, dateRange, headers, rows, kpis: ledgerData.kpis };
             }
             case 'inventory': {
-                const headers = ['نام محصول', 'تعداد موجود', 'قیمت خرید (میانگین)', 'ارزش کل'];
+                const headers = ['نام محصول', 'شماره لات', 'تاریخ انقضا', 'تعداد موجود', 'قیمت خرید واحد', 'ارزش کل'];
                 const processDrugs = (drugList: Drug[]) => {
-                    return drugList.map(d => {
-                        const totalQuantity = d.batches.reduce((sum, b) => sum + b.quantity, 0);
-                        const totalValue = d.batches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
-                        const avgPurchasePrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
-                        return [d.name, formatQuantity(totalQuantity, d.unitsPerCarton), avgPurchasePrice, totalValue];
-                    });
+                    return drugList.flatMap(drug => 
+                        drug.batches
+                            .filter(batch => batch.quantity > 0)
+                            .map(batch => [
+                                drug.name,
+                                batch.lotNumber,
+                                formatGregorianForDisplay(batch.expiryDate),
+                                formatQuantity(batch.quantity, drug.unitsPerCarton, drug.cartonSize),
+                                batch.purchasePrice,
+                                batch.quantity * batch.purchasePrice
+                            ])
+                    );
                 };
                 const salesData = processDrugs(drugs);
                 const mainData = processDrugs(mainWarehouseDrugs);
@@ -1599,7 +1627,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, drugs, mainWarehouseDrugs, cu
                          <div className="border rounded-lg p-4 page-break-inside-avoid">
                             <h4 className="font-bold mb-2 text-md">۳. موجودی فعلی</h4>
                             {result.currentStock.length > 0 ? (
-                                <DataTable headers={['نام محصول', 'موجودی', 'تاریخ انقضا']} rows={result.currentStock.map(s => [s.drugName, s.quantity, new Date(s.expiryDate).toLocaleDateString('fa-IR')])} />
+                                <DataTable headers={['نام محصول', 'موجودی', 'تاریخ انقضا']} rows={result.currentStock.map(s => [s.drugName, s.quantity, formatGregorianForDisplay(s.expiryDate)])} />
                             ) : <p>هیچ موجودی از این لات در انبارها یافت نشد.</p>}
                         </div>
                     </div>

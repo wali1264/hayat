@@ -80,6 +80,20 @@ export const drugCategories = ['آنتی‌بیوتیک', 'مسکن', 'ویتا�
 
 
 //=========== HELPERS ===========//
+const formatGregorianForDisplay = (dateStr: string): string => {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    } catch (e) {
+        return '';
+    }
+};
+
 export const formatQuantity = (totalUnits: number, unitsPerCarton?: number, cartonSize?: number) => {
     if (totalUnits === 0) return '0 عدد';
     if (!totalUnits || isNaN(totalUnits)) return '-';
@@ -115,7 +129,7 @@ export const formatQuantity = (totalUnits: number, unitsPerCarton?: number, cart
 };
 
 
-const getStatus = (drug: Drug) => {
+export const getStatus = (drug: Drug) => {
     const totalQuantity = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
     if (totalQuantity <= 0) return { text: 'تمام شده', color: 'text-gray-700', bg: 'bg-gray-200' };
 
@@ -139,7 +153,7 @@ const getStatus = (drug: Drug) => {
     return { text: 'موجود', color: 'text-green-800', bg: 'bg-green-200' };
 };
 
-const getRowStyle = (statusText: string) => {
+export const getRowStyle = (statusText: string) => {
     const baseStyle = 'transition-colors';
     switch (statusText) {
         case 'منقضی شده':
@@ -162,7 +176,7 @@ const getRequisitionStatusStyle = (status: StockRequisition['status']) => {
 };
 
 // --- NEW SUB-COMPONENT ---
-const BatchDetailsRow = ({ drug, colSpan, onTraceLotNumber }: { drug: Drug; colSpan: number; onTraceLotNumber: (lotNumber: string) => void; }) => (
+export const BatchDetailsRow = ({ drug, colSpan, onTraceLotNumber }: { drug: Drug; colSpan: number; onTraceLotNumber: (lotNumber: string) => void; }) => (
     <tr className="bg-teal-50">
         <td colSpan={colSpan} className="p-4">
             <h4 className="font-bold text-sm text-teal-800 mb-2">جزئیات بچ‌ها برای «{drug.name}»</h4>
@@ -185,7 +199,7 @@ const BatchDetailsRow = ({ drug, colSpan, onTraceLotNumber }: { drug: Drug; colS
                                 <tr key={batch.lotNumber}>
                                     <td className="p-2 font-mono">{batch.lotNumber}</td>
                                     <td className="p-2">{formatQuantity(batch.quantity, drug.unitsPerCarton, drug.cartonSize)}</td>
-                                    <td className="p-2">{new Date(batch.expiryDate).toLocaleDateString('fa-IR')}</td>
+                                    <td className="p-2 font-mono">{formatGregorianForDisplay(batch.expiryDate)}</td>
                                     <td className="p-2 font-mono">{Math.round(batch.purchasePrice).toLocaleString()}</td>
                                     <td className="p-2">
                                         <button onClick={() => onTraceLotNumber(batch.lotNumber)} title="ردیابی این لات" className="p-1 text-teal-600 hover:text-teal-800">
@@ -525,7 +539,7 @@ const WriteOffModal: React.FC<WriteOffModalProps> = ({ isOpen, onClose, onConfir
                         <select value={selectedLot} onChange={e => setSelectedLot(e.target.value)} className="w-full p-2 border rounded-lg bg-white" disabled={isReadOnly}>
                             {drug.batches.filter(b => b.quantity > 0).map(b => (
                                 <option key={b.lotNumber} value={b.lotNumber}>
-                                    لات: {b.lotNumber} (موجودی: {b.quantity}, انقضا: {new Date(b.expiryDate).toLocaleDateString('fa-IR')})
+                                    لات: {b.lotNumber} (موجودی: {b.quantity}, انقضا: {formatGregorianForDisplay(b.expiryDate)})
                                 </option>
                             ))}
                         </select>
@@ -1050,7 +1064,7 @@ const Inventory: React.FC<InventoryProps> = ({ drugs, mainWarehouseDrugs, stockR
                                                 <td className="p-4 whitespace-nowrap text-gray-800 font-semibold">
                                                     {formatQuantity(drug.totalQuantity, drug.unitsPerCarton, drug.cartonSize)}
                                                 </td>
-                                                <td className="p-4 whitespace-nowrap text-gray-500">{drug.earliestExpiry ? new Date(drug.earliestExpiry).toLocaleDateString('fa-IR') : '-'}</td>
+                                                <td className="p-4 whitespace-nowrap text-gray-500 font-mono">{drug.earliestExpiry ? formatGregorianForDisplay(drug.earliestExpiry) : '-'}</td>
                                                 <td className="p-4 whitespace-nowrap">
                                                     <span className={`px-3 py-1 text-xs font-bold rounded-full ${status.bg} ${status.color}`}>
                                                         {status.text}

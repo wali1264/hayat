@@ -1,18 +1,18 @@
 // Incrementing cache name for updates to trigger the 'activate' event.
-const CACHE_NAME = 'hayat-cache-v15';
+const CACHE_NAME = 'hayat-cache-v16';
 
 // List of essential files for the app shell to work offline.
-// This list is now corrected to only include static assets and third-party libraries.
-// The application's own built assets (like index-....js) will be cached at runtime.
+// CRITICAL FIX: Added '/index.tsx' to ensure the main application logic is pre-cached.
 const urlsToCache = [
   '/',
   '/index.html',
+  '/index.tsx', // This is the main application entry point that was missing.
   '/manifest.json',
   '/icon.png',
 
   // Third-party scripts and styles from index.html
   'https://cdn.tailwindcss.com',
-  'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap',
+  'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display.swap',
   'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js',
@@ -33,10 +33,10 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('SW Installing: Caching app shell.');
+        console.log('[SW] Installing: Caching app shell and core assets.');
         const promises = urlsToCache.map(urlToCache => {
             // Fetch with standard CORS mode to ensure we get a proper response.
-            return fetch(urlToCache)
+            return fetch(urlToCache, { mode: 'cors' }) // Use cors mode for resilience
                 .then(response => {
                     // Only cache successful responses (status 200-299).
                     if (!response.ok) {
@@ -45,6 +45,7 @@ self.addEventListener('install', (event) => {
                         // This prevents one failed resource from failing the entire install.
                         return; 
                     }
+                    console.log(`[SW] Successfully cached: ${urlToCache}`);
                     return cache.put(urlToCache, response);
                 })
                 .catch(err => console.error(`[SW] Fetch error for ${urlToCache}:`, err));
@@ -65,13 +66,13 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('SW Activating: Deleting old cache:', cacheName);
+            console.log('[SW] Activating: Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
     }).then(() => {
-      console.log('SW Activating: Claiming clients.');
+      console.log('[SW] Activating: Claiming clients.');
       return self.clients.claim();
     })
   );
