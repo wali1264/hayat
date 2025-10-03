@@ -82,11 +82,12 @@ const getRoleStyle = (role: UserRole) => {
     }
 };
 
-const ToggleSwitch = ({ enabled, onChange }: { enabled: boolean, onChange: () => void }) => (
+const ToggleSwitch = ({ enabled, onChange, disabled = false }: { enabled: boolean, onChange: () => void, disabled?: boolean }) => (
     <button
         type="button"
-        className={`${enabled ? 'bg-teal-600' : 'bg-gray-200'} relative inline-flex items-center h-6 rounded-full w-11 transition-colors`}
+        className={`${enabled ? 'bg-teal-600' : 'bg-gray-200'} relative inline-flex items-center h-6 rounded-full w-11 transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
         onClick={onChange}
+        disabled={disabled}
     >
         <span className={`${enabled ? 'translate-x-6' : 'translate-x-1'} inline-block w-4 h-4 transform bg-white rounded-full transition-transform`} />
     </button>
@@ -413,7 +414,6 @@ const UserManagementSection = ({ users, onSaveUser, onDeleteUser, onPasswordRese
     );
 };
 
-// --- NEW ROLE MANAGEMENT SECTION ---
 const RoleManagementSection = ({ permissions, setPermissions, addToast }) => {
     const [activeRole, setActiveRole] = useState<keyof RolePermissions>('فروشنده');
     const [localPermissions, setLocalPermissions] = useState(permissions);
@@ -462,7 +462,6 @@ const RoleManagementSection = ({ permissions, setPermissions, addToast }) => {
                 ))}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                 {/* Sales Permissions */}
                 <div>
                     <h4 className="font-bold mb-2">بخش فروش</h4>
                     <div className="space-y-2">
@@ -480,7 +479,6 @@ const RoleManagementSection = ({ permissions, setPermissions, addToast }) => {
                     </div>
                 </div>
 
-                {/* Customer Permissions */}
                 <div>
                     <h4 className="font-bold mb-2">بخش مشتریان</h4>
                     <div className="space-y-2">
@@ -490,8 +488,7 @@ const RoleManagementSection = ({ permissions, setPermissions, addToast }) => {
                     </div>
                 </div>
                 
-                 {/* Inventory Permissions */}
-                <div>
+                 <div>
                     <h4 className="font-bold mb-2">بخش انبار</h4>
                     <div className="space-y-2">
                          <PermissionToggle label="تعریف محصول جدید" isChecked={currentRolePermissions.canCreateDrug} onChange={() => handleToggleChange(activeRole, 'canCreateDrug')} />
@@ -662,16 +659,68 @@ const SecuritySettingsSection = ({ backupKey, onBackupKeyChange, addToast }) => 
     );
 }
 
-const OnlineModeSection = ({ isOnlineMode, onSetIsOnlineMode }: { isOnlineMode: boolean, onSetIsOnlineMode: (enabled: boolean) => void }) => {
+const NetworkModeSection = ({ 
+    isOnlineMode, onSetIsOnlineMode, 
+    isLocalNetworkMode, onSetIsLocalNetworkMode,
+    localServerUrl, onSetLocalServerUrl,
+    addToast
+}) => {
+
+    const handleOnlineToggle = () => {
+        if (!isOnlineMode) { // Turning on
+            if(isLocalNetworkMode) onSetIsLocalNetworkMode(false);
+            onSetIsOnlineMode(true);
+        } else { // Turning off
+            onSetIsOnlineMode(false);
+        }
+    };
+
+    const handleLocalToggle = () => {
+        if (!isLocalNetworkMode) { // Turning on
+            if (!localServerUrl) {
+                addToast('لطفاً ابتدا آدرس سرور محلی را وارد کنید.', 'error');
+                return;
+            }
+            if(isOnlineMode) onSetIsOnlineMode(false);
+            onSetIsLocalNetworkMode(true);
+        } else { // Turning off
+            onSetIsLocalNetworkMode(false);
+        }
+    };
+
     return (
-        <div className="flex items-center justify-between p-4 border rounded-lg bg-gray-50">
-            <div>
-                <p className="font-semibold text-gray-800">فعال‌سازی حالت همگام‌سازی آنلاین و ریموت</p>
-                <p className="text-sm text-gray-600 mt-1">
-                    با فعال‌سازی این حالت، برنامه به صورت لحظه‌ای با سرور همگام می‌شود و به سایر کاربران اجازه دسترسی از طریق ریموت را می‌دهد.
-                </p>
+        <div className="space-y-6">
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-gray-50">
+                <div>
+                    <p className="font-semibold text-gray-800">حالت آنلاین جهانی (Supabase)</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                        همگام‌سازی لحظه‌ای با سرور ابری و فعال‌سازی دسترسی ریموت.
+                    </p>
+                </div>
+                <ToggleSwitch enabled={isOnlineMode} onChange={handleOnlineToggle} />
             </div>
-            <ToggleSwitch enabled={isOnlineMode} onChange={() => onSetIsOnlineMode(!isOnlineMode)} />
+            <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="font-semibold text-gray-800">حالت شبکه داخلی (Local)</p>
+                        <p className="text-sm text-gray-600 mt-1">
+                            اتصال به سرور محلی برای کار تیمی در شبکه داخلی شرکت.
+                        </p>
+                    </div>
+                    <ToggleSwitch enabled={isLocalNetworkMode} onChange={handleLocalToggle} />
+                </div>
+                 <div>
+                    <label className="block text-sm font-bold mt-4 mb-1">آدرس سرور محلی</label>
+                    <input 
+                        type="text" 
+                        value={localServerUrl}
+                        onChange={(e) => onSetLocalServerUrl(e.target.value)}
+                        placeholder="http://192.168.1.4:4000"
+                        className="w-full p-2 border rounded-lg font-mono"
+                        disabled={isLocalNetworkMode}
+                    />
+                 </div>
+            </div>
         </div>
     );
 };
@@ -696,6 +745,10 @@ type SettingsProps = {
     onSetRolePermissions: (permissions: RolePermissions) => void;
     isOnlineMode: boolean;
     onSetIsOnlineMode: (enabled: boolean) => void;
+    isLocalNetworkMode: boolean;
+    onSetIsLocalNetworkMode: (enabled: boolean) => void;
+    localServerUrl: string;
+    onSetLocalServerUrl: (url: string) => void;
     hasUnsavedChanges: boolean;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     showConfirmation: (title: string, message: React.ReactNode, onConfirm: () => void) => void;
@@ -709,8 +762,13 @@ const Settings: React.FC<SettingsProps> = (props) => {
                 <CompanyInfoSection companyInfo={props.companyInfo} onSetCompanyInfo={props.onSetCompanyInfo} />
             </SettingsCard>
 
-            <SettingsCard title="حالت آنلاین و دسترسی ریموت" description="قابلیت‌های آنلاین و کار تیمی را فعال یا غیرفعال کنید.">
-                <OnlineModeSection isOnlineMode={props.isOnlineMode} onSetIsOnlineMode={props.onSetIsOnlineMode} />
+            <SettingsCard title="حالت شبکه و همگام‌سازی" description="قابلیت‌های آنلاین و کار تیمی را فعال یا غیرفعال کنید.">
+                <NetworkModeSection 
+                    isOnlineMode={props.isOnlineMode} onSetIsOnlineMode={props.onSetIsOnlineMode}
+                    isLocalNetworkMode={props.isLocalNetworkMode} onSetIsLocalNetworkMode={props.onSetIsLocalNetworkMode}
+                    localServerUrl={props.localServerUrl} onSetLocalServerUrl={props.onSetLocalServerUrl}
+                    addToast={props.addToast}
+                />
             </SettingsCard>
 
             <SettingsCard title="شخصی‌سازی فاکتور و گزارشات" description="ظاهر و چیدمان اسناد چاپی خود را مطابق با سلیقه و برند خود تنظیم کنید.">
