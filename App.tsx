@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
+// FIX: Import Supabase types with `import type` to resolve module export errors where `Session` and `RealtimeChannel` were not found.
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient, Session, RealtimeChannel } from '@supabase/supabase-js';
 import Inventory, { Drug, Batch, WriteOffReason, DrugModal } from './Inventory';
@@ -198,6 +199,8 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
 }
 
 //=========== PERMISSIONS & ROLES ===========//
+// The basePermissions map is now deprecated and will be replaced by the dynamic rolePermissions state.
+// It remains here as a reference for the navigation items but is not used for action-level security.
 const basePermissions = {
     'مدیر کل': ['dashboard', 'main_warehouse', 'inventory', 'sales', 'fulfillment', 'customers', 'customer_accounts', 'suppliers', 'purchasing', 'supplier_accounts', 'finance', 'reports', 'checkneh', 'alerts', 'settings', 'recycle_bin'],
     'فروشنده': ['dashboard', 'sales', 'customers', 'customer_accounts', 'reports', 'inventory'],
@@ -205,6 +208,7 @@ const basePermissions = {
     'حسابدار': ['dashboard', 'customer_accounts', 'supplier_accounts', 'finance', 'reports'],
 };
 
+// --- Default Granular Permissions ---
 const initialRolePermissions: RolePermissions = {
     'فروشنده': {
         canCreateSale: true,
@@ -286,15 +290,27 @@ export type StockRequisition = {
 
 
 //=========== MOCK DATA FOR DEMO ===========//
+// --- Sales Warehouse ---
 const initialMockDrugs: Drug[] = [];
+
+// --- Main Warehouse ---
 const initialMockMainWarehouseDrugs: Drug[] = [];
+
+
 const initialMockCustomers: Customer[] = [];
+
 const initialMockOrders: Order[] = [];
+
 const initialMockExpenses: Expense[] = [];
+
 const initialMockSuppliers: Supplier[] = [];
+
 const initialMockPurchaseBills: PurchaseBill[] = [];
+
+// --- Checkneh Mock Data (Will be managed by its own hook) ---
 const initialMockChecknehInvoices: ChecknehInvoice[] = [];
 
+// --- Internal Transfers Mock Data ---
 export type InternalTransfer = { 
     id: number; 
     date: string; 
@@ -305,12 +321,13 @@ export type InternalTransfer = {
     transferredBy: string; 
 };
 
+// --- NEW OFFLINE QUEUE TYPES ---
 type SyncAction = {
     id: string;
     type: 'UPSERT' | 'DELETE';
     table: string;
-    payload?: any; 
-    match?: any; 
+    payload?: any; // For UPSERT/INSERT
+    match?: any; // For DELETE
 };
 
 //=========== COMPONENTS ===========//
@@ -363,6 +380,7 @@ const navItems = [
 
 const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout, pendingRequisitionCount }) => {
     const allowedNavItems = navItems.filter(item => {
+        // Handle remote users who might not have a role in the basePermissions map
         const permissions = basePermissions[userRole] || [];
         return permissions.includes(item.id);
     });
@@ -417,7 +435,9 @@ const Sidebar = ({ activeItem, setActiveItem, userRole, onLogout, pendingRequisi
     );
 };
 
+// --- NEW: Bottom Navigation for Mobile/Remote View ---
 const BottomNav = ({ activeItem, setActiveItem, userRole }) => {
+    // Remote users have a more focused set of tools
     const remoteAllowedIds = ['dashboard', 'inventory', 'sales', 'customers', 'customer_accounts', 'reports'];
 
     const allowedNavItems = navItems
@@ -444,6 +464,7 @@ const BottomNav = ({ activeItem, setActiveItem, userRole }) => {
 };
 
 
+// --- ALERTS TYPES & COMPONENTS ---
 export type ActiveAlert = {
     id: string;
     type: 'expiry' | 'low-stock' | 'customer-debt' | 'total-debt';
@@ -522,6 +543,7 @@ const Header = ({ title, currentUser, alerts, onNavigate }) => (
     </header>
 );
 
+// --- NEW: System Offline Banner for Remote Users ---
 const SystemOfflineBanner = () => (
     <div className="fixed top-0 left-0 right-0 bg-red-600 text-white p-2 text-center text-sm font-semibold z-[1000]">
         <div className="flex items-center justify-center gap-2">
@@ -537,8 +559,8 @@ type LicenseStatus = 'LOADING' | 'NEEDS_ACTIVATION' | 'NEEDS_VALIDATION' | 'INVA
 type OnlineValidationResult = 'VALID' | 'INVALID_DEACTIVATED' | 'INVALID_MACHINE_ID' | 'NOT_FOUND' | 'NETWORK_ERROR';
 
 type LicenseInfo = {
-    id: number;
-    user_id: string; 
+    id: number; // Changed to number to match bigint
+    user_id: string; // This is the auth.users UUID
     machine_id: string;
     session: Session;
 };
@@ -559,6 +581,7 @@ function getOrCreateMachineId(): string {
 
 //=========== MAIN APP COMPONENT ===========//
 const App: React.FC = () => {
+    // --- Remote Control View ---
     const urlParams = new URLSearchParams(window.location.search);
     const isRemoteView = urlParams.get('view') === 'remote';
 
@@ -567,13 +590,16 @@ const App: React.FC = () => {
         setToasts(prev => [...prev, { id: Date.now(), message, type }]);
     };
     
+    // --- NEW: SERVICE WORKER UPDATE STATE ---
     const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
     const [newWorker, setNewWorker] = useState<ServiceWorker | null>(null);
 
+    // --- NEW LICENSE STATE MANAGEMENT ---
     const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>('LOADING');
     const [licenseInfo, setLicenseInfo] = usePersistentState<LicenseInfo | null>('hayat_license_info', null);
     const [lastCheck, setLastCheck] = usePersistentState<string | null>('hayat_last_license_check', null);
 
+    // --- NEW: SERVICE WORKER REGISTRATION & UPDATE HANDLING ---
     useEffect(() => {
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').then(registration => {
@@ -584,6 +610,7 @@ const App: React.FC = () => {
                         installingWorker.onstatechange = () => {
                             if (installingWorker.state === 'installed') {
                                 if (navigator.serviceWorker.controller) {
+                                    // New update is available
                                     setNewWorker(installingWorker);
                                     setIsUpdateAvailable(true);
                                 }
@@ -622,7 +649,7 @@ const App: React.FC = () => {
                 .single();
 
             if (error) {
-                if (error.code === 'PGRST116') { 
+                if (error.code === 'PGRST116') { // "Found 0 rows"
                     return 'NOT_FOUND';
                 }
                 throw new Error(error.message);
@@ -655,8 +682,10 @@ const App: React.FC = () => {
             setLicenseStatus('VALID');
             addToast("اعتبارسنجی با موفقیت انجام شد.", "success");
         } else if (result !== 'NETWORK_ERROR') {
-            setLastCheck(null); 
+            // Deactivated, machine ID mismatch, or not found
+            setLastCheck(null); // Revoke offline access
             setLicenseStatus('INVALID');
+            // Specific toast is shown within performOnlineValidation
         } else {
              addToast("خطا در اعتبارسنجی آنلاین. لطفاً اتصال اینترنت خود را بررسی کرده و دوباره تلاش کنید.", 'error');
         }
@@ -665,7 +694,7 @@ const App: React.FC = () => {
 
     useEffect(() => {
         if (isRemoteView) {
-            setLicenseStatus('VALID'); 
+            setLicenseStatus('VALID'); // Bypass local license check for remote view
             return;
         }
 
@@ -756,23 +785,21 @@ const App: React.FC = () => {
         totalDebt: { enabled: false, threshold: 1000000 }
     });
     const [rolePermissions, setRolePermissions] = usePersistentState<RolePermissions>('hayat_rolePermissions', initialRolePermissions);
-    
-    // --- NETWORK MODES STATE ---
     const [isOnlineMode, setIsOnlineMode] = usePersistentState<boolean>('hayat_isOnlineMode', false);
-    const [isLocalNetworkMode, setIsLocalNetworkMode] = usePersistentState<boolean>('hayat_isLocalNetworkMode', false);
-    const [localServerUrl, setLocalServerUrl] = usePersistentState<string>('hayat_localServerUrl', '');
     
+    // --- NEW: OFFLINE SYNC QUEUE ---
     const [syncQueue, setSyncQueue] = usePersistentState<SyncAction[]>('hayat_syncQueue', []);
     const [isSyncing, setIsSyncing] = useState(false);
 
 
-    // --- AUTHENTICATION STATE ---
+    // --- NEW AUTHENTICATION STATE ---
     const [currentUser, setCurrentUser] = usePersistentState<User | null>('hayat_currentUser', null);
     const [remoteUser, setRemoteUser] = useState<User | null>(null);
     const [remoteLicenseId, setRemoteLicenseId] = useState<number | null>(null);
     const [isSystemOnline, setIsSystemOnline] = useState<boolean | null>(null);
 
     
+    // --- NEW CONFIRMATION MODAL STATE ---
     const [confirmationModal, setConfirmationModal] = useState<{
         isOpen: boolean;
         title: string;
@@ -795,43 +822,28 @@ const App: React.FC = () => {
         setConfirmationModal(null);
     };
 
+    // --- NEW: SYNC QUEUE HELPER ---
     const addToSyncQueue = (action: Omit<SyncAction, 'id'>) => {
-        if(isLocalNetworkMode) return; // Don't add to Supabase queue if in local mode
         const newAction: SyncAction = {
             ...action,
             id: `${action.table}-${Date.now()}-${Math.random()}`
         };
         setSyncQueue(prev => [...prev, newAction]);
     };
-
-    // --- API WRAPPER FOR LOCAL SERVER ---
-    const localApiRequest = useCallback(async (resource: string, method: 'POST' | 'DELETE', data: any = {}) => {
-        if (!isLocalNetworkMode || !localServerUrl) return;
-        try {
-            const url = method === 'DELETE' ? `${localServerUrl}/api/data/${resource}/${data.id}` : `${localServerUrl}/api/data/${resource}`;
-            const response = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: method === 'POST' ? JSON.stringify(data) : undefined,
-            });
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error || 'Request failed');
-            }
-            // Real-time update will be handled by WebSocket, no need to return data
-        } catch (error: any) {
-            addToast(`خطا در ارتباط با سرور محلی: ${error.message}`, 'error');
-            console.error('Local API Error:', error);
-        }
-    }, [isLocalNetworkMode, localServerUrl, addToast]);
     
+    // --- NEW AUTH & USER MANAGEMENT LOGIC ---
     const handleLogin = (username: string, password_raw: string) => {
+        // In a real app, passwords would be hashed.
         const userToLogin = users.find(u => u.username === username && u.password === password_raw);
 
         if (userToLogin) {
             const now = new Date().toLocaleString('fa-IR');
             const updatedUser = { ...userToLogin, lastLogin: now };
+
+            // Update the user's last login time in the main users list
             setUsers(prevUsers => prevUsers.map(u => u.id === updatedUser.id ? updatedUser : u));
+            
+            // Set the current user for the session
             setCurrentUser(updatedUser);
             addToast(`خوش آمدید، ${username}!`, 'success');
         } else {
@@ -849,6 +861,7 @@ const App: React.FC = () => {
         setRemoteUser(null);
         setRemoteLicenseId(null);
         setIsSystemOnline(null);
+        // Turn off online mode for the remote client
         setIsOnlineMode(false);
     };
     
@@ -878,8 +891,12 @@ const App: React.FC = () => {
                 throw new Error('نام کاربری یا رمز عبور کارمند اشتباه است.');
             }
 
+            // Authentication successful
             setRemoteLicenseId(licenseData.id);
             setRemoteUser(userToLogin);
+            
+            // Set licenseInfo and trigger online mode, which will fetch all data
+            // Session object is not critical here as Supabase RLS will use the anon key
             setLicenseInfo({ id: licenseData.id, user_id: licenseData.user_id, machine_id: licenseData.machine_id, session: null! });
             setIsOnlineMode(true);
             
@@ -912,11 +929,7 @@ const App: React.FC = () => {
                  return [newUser, ...prev];
             }
         });
-        if (isLocalNetworkMode) {
-            localApiRequest('users', 'POST', userToSaveWithPassword);
-        } else {
-            addToSyncQueue({ type: 'UPSERT', table: 'users', payload: userToSaveWithPassword });
-        }
+        addToSyncQueue({ type: 'UPSERT', table: 'users', payload: userToSaveWithPassword });
         addToast(`کاربر ${userToSave.username} با موفقیت ذخیره شد.`, 'success');
     };
 
@@ -930,15 +943,12 @@ const App: React.FC = () => {
             return u;
         }));
         if(updatedUser) {
-            if (isLocalNetworkMode) {
-                localApiRequest('users', 'POST', updatedUser);
-            } else {
-                addToSyncQueue({ type: 'UPSERT', table: 'users', payload: updatedUser });
-            }
+            addToSyncQueue({ type: 'UPSERT', table: 'users', payload: updatedUser });
         }
         addToast(`رمز عبور کاربر ${username} با موفقیت تغییر کرد.`, 'success');
     };
     
+    // --- NEW: LOCAL BACKUP & RESTORE ---
     const handleBackupLocal = () => {
         addToast("در حال آماده‌سازی فایل پشتیبان...", 'info');
         try {
@@ -1017,6 +1027,7 @@ const App: React.FC = () => {
         );
     };
 
+    // --- RECYCLE BIN LOGIC ---
     const handleSoftDelete = (itemType: TrashItem['itemType'], itemData: TrashableItem, dependencyCheck?: () => boolean, dependencyMessage?: string) => {
         if (dependencyCheck && dependencyCheck()) {
             addToast(dependencyMessage || "امکان حذف به دلیل وجود وابستگی وجود ندارد.", 'error');
@@ -1032,11 +1043,7 @@ const App: React.FC = () => {
         };
 
         setTrash(prev => [trashItem, ...prev]);
-        if (isLocalNetworkMode) {
-            localApiRequest('trash', 'POST', trashItem);
-        } else {
-            addToSyncQueue({ type: 'UPSERT', table: 'trash', payload: trashItem });
-        }
+        addToSyncQueue({ type: 'UPSERT', table: 'trash', payload: trashItem });
 
         const tableMap = {
             customer: 'customers', supplier: 'suppliers', order: 'orders',
@@ -1071,11 +1078,7 @@ const App: React.FC = () => {
         
         const tableName = tableMap[itemType];
         if (tableName) {
-            if (isLocalNetworkMode) {
-                localApiRequest(tableName.replace('_', ''), 'DELETE', { id: (itemData as any).id });
-            } else {
-                addToSyncQueue({ type: 'DELETE', table: tableName, match: { id: (itemData as any).id } });
-            }
+            addToSyncQueue({ type: 'DELETE', table: tableName, match: { id: (itemData as any).id } });
         }
         addToast("آیتم به سطل زباله منتقل شد.", "info");
     };
@@ -1092,6 +1095,7 @@ const App: React.FC = () => {
         if (!order) return;
 
         let tempDrugs = JSON.parse(JSON.stringify(drugs));
+        // If it's a sale, add stock back. If it's a return, deduct stock.
         const multiplier = order.type === 'sale' ? 1 : -1;
         let changedDrugs: Drug[] = [];
 
@@ -1103,7 +1107,7 @@ const App: React.FC = () => {
                     const batchToUpdate = drugToUpdate.batches.find(b => b.lotNumber === allocation.lotNumber);
                     if (batchToUpdate) {
                         batchToUpdate.quantity += (allocation.quantity * multiplier);
-                    } else if (multiplier === 1) { 
+                    } else if (multiplier === 1) { // Only re-create batch if adding stock
                         drugToUpdate.batches.push({
                             lotNumber: allocation.lotNumber,
                             quantity: allocation.quantity,
@@ -1116,10 +1120,7 @@ const App: React.FC = () => {
             }
         }
         setDrugs(tempDrugs);
-        changedDrugs.forEach(d => {
-            if(isLocalNetworkMode) localApiRequest('drugs', 'POST', d);
-            else addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: d });
-        });
+        changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: d }));
         handleSoftDelete('order', order);
     };
 
@@ -1145,6 +1146,7 @@ const App: React.FC = () => {
         const billToDelete = purchaseBills.find(b => b.id === id);
         if (!billToDelete) return;
 
+        // Revert stock changes before soft deleting
         if (billToDelete.status === 'دریافت شده') {
             let changedDrugs: Drug[] = [];
             setMainWarehouseDrugs(currentWarehouse => {
@@ -1157,18 +1159,15 @@ const App: React.FC = () => {
 
                     const totalUnits = item.quantity + (item.bonusQuantity || 0);
                     if (billToDelete.type === 'purchase') {
-                        batch.quantity -= totalUnits;
-                    } else { 
-                        batch.quantity += totalUnits;
+                        batch.quantity -= totalUnits; // Revert purchase: decrease stock
+                    } else { // purchase_return
+                        batch.quantity += totalUnits; // Revert return: increase stock
                     }
                     changedDrugs.push(drug);
                 }
                 return updatedWarehouse;
             });
-            changedDrugs.forEach(d => {
-                 if (isLocalNetworkMode) localApiRequest('mainWarehouseDrugs', 'POST', d);
-                 else addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: d });
-            });
+            changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: d }));
         }
         handleSoftDelete('purchaseBill', billToDelete);
     };
@@ -1198,15 +1197,12 @@ const App: React.FC = () => {
             customer: 'customers', supplier: 'suppliers', order: 'orders',
             purchaseBill: 'purchase_bills', drug: 'drugs', expense: 'expenses', user: 'users'
         };
-        const resourceName = tableMap[item.itemType].replace('_', '');
+        const tableName = tableMap[item.itemType];
         
-        if (resourceName) {
-            if (isLocalNetworkMode) localApiRequest(resourceName, 'POST', item.data);
-            else addToSyncQueue({ type: 'UPSERT', table: tableMap[item.itemType], payload: item.data });
+        if (tableName) {
+             addToSyncQueue({ type: 'UPSERT', table: tableName, payload: item.data });
         }
-
-        if (isLocalNetworkMode) localApiRequest('trash', 'DELETE', {id: item.id});
-        else addToSyncQueue({ type: 'DELETE', table: 'trash', match: { id: item.id } });
+        addToSyncQueue({ type: 'DELETE', table: 'trash', match: { id: item.id } });
         
         if (item.itemType === 'order') {
             const orderToRestore = item.data as Order;
@@ -1229,10 +1225,7 @@ const App: React.FC = () => {
                 }
             }
             setDrugs(tempDrugs);
-            changedDrugs.forEach(d => {
-                if (isLocalNetworkMode) localApiRequest('drugs', 'POST', d);
-                else addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: d });
-            });
+            changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: d }));
             setOrders(prev => [...prev, orderToRestore].sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()));
         } else {
              switch (item.itemType) {
@@ -1286,24 +1279,18 @@ const App: React.FC = () => {
                             }
                             return updatedWarehouse;
                         });
-                        changedDrugs.forEach(d => {
-                            if (isLocalNetworkMode) localApiRequest('mainWarehouseDrugs', 'POST', d);
-                            else addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: d });
-                        });
+                        changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: d }));
                     }
                     setPurchaseBills(prev => [...prev, billToRestore].sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()));
                     break;
                 case 'drug': 
                     const restoredDrug = item.data as Drug;
+                    // Restore to both, assuming it existed in both conceptually
                     setDrugs(prev => [...prev, restoredDrug]);
                     setMainWarehouseDrugs(prev => [...prev, restoredDrug]);
-                    if (isLocalNetworkMode) {
-                        localApiRequest('drugs', 'POST', restoredDrug);
-                        localApiRequest('mainWarehouseDrugs', 'POST', restoredDrug);
-                    } else {
-                        addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: restoredDrug });
-                        addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: restoredDrug });
-                    }
+                    // Let's be more specific with sync
+                    addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: restoredDrug });
+                    addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: restoredDrug });
                     break;
                 case 'expense': setExpenses(prev => [...prev, item.data as Expense]); break;
                 case 'user': setUsers(prev => [...prev, item.data as User]); break;
@@ -1317,8 +1304,7 @@ const App: React.FC = () => {
     const handleDeletePermanently = (id: string) => {
         showConfirmation('حذف دائمی', 'آیا مطمئنید؟ این عمل غیرقابل بازگشت است.', () => {
             setTrash(prev => prev.filter(t => t.id !== id));
-            if (isLocalNetworkMode) localApiRequest('trash', 'DELETE', {id});
-            else addToSyncQueue({ type: 'DELETE', table: 'trash', match: { id } });
+            addToSyncQueue({ type: 'DELETE', table: 'trash', match: { id } });
             addToast('آیتم برای همیشه حذف شد.', 'info');
         });
     };
@@ -1327,10 +1313,7 @@ const App: React.FC = () => {
         showConfirmation('خالی کردن سطل زباله', 'آیا مطمئنید؟ تمام آیتم‌های موجود در سطل زباله برای همیشه حذف خواهند شد.', () => {
             const idsToDelete = trash.map(item => item.id);
             setTrash([]);
-            idsToDelete.forEach(id => {
-                if (isLocalNetworkMode) localApiRequest('trash', 'DELETE', {id});
-                else addToSyncQueue({ type: 'DELETE', table: 'trash', match: { id } })
-            });
+            idsToDelete.forEach(id => addToSyncQueue({ type: 'DELETE', table: 'trash', match: { id } }));
             addToast('سطل زباله با موفقیت خالی شد.', 'success');
         });
     };
@@ -1361,6 +1344,7 @@ const App: React.FC = () => {
         };
     
         setInventoryWriteOffs(prev => [newWriteOff, ...prev]);
+        addToSyncQueue({ type: 'UPSERT', table: 'inventory_write_offs', payload: newWriteOff });
     
         let updatedDrug: Drug | null = null;
         setDrugs(prevDrugs => prevDrugs.map(d => {
@@ -1380,13 +1364,7 @@ const App: React.FC = () => {
         }));
         
         if (updatedDrug) {
-            if (isLocalNetworkMode) {
-                localApiRequest('inventoryWriteOffs', 'POST', newWriteOff);
-                localApiRequest('drugs', 'POST', updatedDrug);
-            } else {
-                addToSyncQueue({ type: 'UPSERT', table: 'inventory_write_offs', payload: newWriteOff });
-                addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: updatedDrug });
-            }
+            addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: updatedDrug });
         }
     
         addToast(`تعداد ${quantity} از محصول ${drug.name} به عنوان ضایعات ثبت شد.`, 'success');
@@ -1399,6 +1377,7 @@ const App: React.FC = () => {
         setMainWarehouseDrugs(currentWarehouse => {
             let updatedWarehouse = JSON.parse(JSON.stringify(currentWarehouse));
     
+            // 1. REVERT: If it's an edit of a previously received bill, undo its effect.
             if (originalBill && originalBill.status === 'دریافت شده') {
                 for (const item of originalBill.items) {
                     const drug = updatedWarehouse.find(d => d.id === item.drugId);
@@ -1409,14 +1388,15 @@ const App: React.FC = () => {
                     const totalUnits = item.quantity + (item.bonusQuantity || 0);
                     
                     if (originalBill.type === 'purchase') {
-                        batch.quantity -= totalUnits; 
-                    } else { 
-                        batch.quantity += totalUnits; 
+                        batch.quantity -= totalUnits; // Revert purchase: decrease stock
+                    } else { // purchase_return
+                        batch.quantity += totalUnits; // Revert return: increase stock
                     }
                      if (!changedDrugs.some(d => d.id === drug.id)) changedDrugs.push(drug);
                 }
             }
     
+            // 2. APPLY: Apply the effect of the new bill if it's marked as received.
             if (bill.status === 'دریافت شده') {
                  if (bill.type === 'purchase') {
                     for (const item of bill.items) {
@@ -1468,10 +1448,7 @@ const App: React.FC = () => {
             return updatedWarehouse;
         });
         
-        changedDrugs.forEach(d => {
-            if (isLocalNetworkMode) localApiRequest('mainWarehouseDrugs', 'POST', d);
-            else addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: d });
-        });
+        changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: d }));
     
         setPurchaseBills(prev => {
             const exists = prev.some(b => b.id === bill.id);
@@ -1480,8 +1457,7 @@ const App: React.FC = () => {
             }
             return [bill, ...prev];
         });
-        if (isLocalNetworkMode) localApiRequest('purchaseBills', 'POST', bill);
-        else addToSyncQueue({ type: 'UPSERT', table: 'purchase_bills', payload: bill });
+        addToSyncQueue({ type: 'UPSERT', table: 'purchase_bills', payload: bill });
         addToast(`فاکتور ${bill.billNumber} با موفقیت ذخیره شد.`, 'success');
     };
 
@@ -1494,8 +1470,7 @@ const App: React.FC = () => {
             date: new Date().toISOString(),
         };
         setStockRequisitions(prev => [newRequisition, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-        if (isLocalNetworkMode) localApiRequest('stockRequisitions', 'POST', newRequisition);
-        else addToSyncQueue({ type: 'UPSERT', table: 'stock_requisitions', payload: newRequisition });
+        addToSyncQueue({ type: 'UPSERT', table: 'stock_requisitions', payload: newRequisition });
         addToast('درخواست جدید با موفقیت ثبت و به انبار اصلی ارسال شد.', 'success');
     };
 
@@ -1559,23 +1534,21 @@ const App: React.FC = () => {
             setStockRequisitions(prev => prev.map(r => r.id === requisition.id ? updatedRequisition : r) );
             
             changedDrugs.forEach(d => {
-                const isMain = updatedMainWarehouse.some(mwd => mwd.id === d.id);
-                 if (isLocalNetworkMode) localApiRequest(isMain ? 'mainWarehouseDrugs' : 'drugs', 'POST', d);
-                 else addToSyncQueue({ type: 'UPSERT', table: isMain ? 'main_warehouse_drugs' : 'drugs', payload: d });
+                addToSyncQueue({ type: 'UPSERT', table: updatedMainWarehouse.some(mwd => mwd.id === d.id) ? 'main_warehouse_drugs' : 'drugs', payload: d });
             });
-            if (isLocalNetworkMode) localApiRequest('stockRequisitions', 'POST', updatedRequisition);
-            else addToSyncQueue({ type: 'UPSERT', table: 'stock_requisitions', payload: updatedRequisition });
+            addToSyncQueue({ type: 'UPSERT', table: 'stock_requisitions', payload: updatedRequisition });
             
             addToast(`درخواست #${requisition.id} با موفقیت تکمیل شد.`, 'success');
         }
     };
 
     const handleSaveOrder = (order: Order) => {
+        // Pre-flight check for sales returns
         if (order.type === 'sale_return') {
             for (const item of order.items) {
                 if (!item.batchAllocations || item.batchAllocations.length === 0) {
                     addToast(`خطای بحرانی: اطلاعات بچ برای کالای مرجوعی '${item.drugName}' یافت نشد. عملیات لغو شد.`, 'error');
-                    return;
+                    return; // Abort save
                 }
             }
         }
@@ -1689,10 +1662,7 @@ const App: React.FC = () => {
              setDrugs(tempDrugs);
         }
         
-        changedDrugs.forEach(d => {
-            if (isLocalNetworkMode) localApiRequest('drugs', 'POST', d);
-            else addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: d });
-        });
+        changedDrugs.forEach(d => addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: d }));
 
         const finalOrderData = isEditMode ? order : { ...order, orderNumber: `${order.type === 'sale_return' ? 'SR' : 'SO'}-${new Date().getFullYear()}-${(orders.length + 1).toString().padStart(4, '0')}` };
 
@@ -1703,8 +1673,7 @@ const App: React.FC = () => {
             return [finalOrderData, ...prev];
         });
         
-        if (isLocalNetworkMode) localApiRequest('orders', 'POST', finalOrderData);
-        else addToSyncQueue({ type: 'UPSERT', table: 'orders', payload: finalOrderData });
+        addToSyncQueue({ type: 'UPSERT', table: 'orders', payload: finalOrderData });
         addToast(`سفارش ${finalOrderData.orderNumber || ''} با موفقیت ذخیره شد.`, 'success');
     }
 
@@ -1725,13 +1694,8 @@ const App: React.FC = () => {
         };
         setDrugs(updateLogic);
         setMainWarehouseDrugs(updateLogic);
-        if (isLocalNetworkMode) {
-            localApiRequest('drugs', 'POST', newDrugData);
-            localApiRequest('mainWarehouseDrugs', 'POST', newDrugData);
-        } else {
-            addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: newDrugData });
-            addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: newDrugData });
-        }
+        addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: newDrugData });
+        addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: newDrugData });
         addToast(`محصول ${drug.name} با موفقیت ذخیره شد.`, 'success');
     };
 
@@ -1746,13 +1710,8 @@ const App: React.FC = () => {
         const newDrugEntry = { ...drug, batches: [] };
         setDrugs(prev => [...prev, newDrugEntry]);
         setMainWarehouseDrugs(prev => [...prev, newDrugEntry]);
-         if (isLocalNetworkMode) {
-            localApiRequest('drugs', 'POST', newDrugEntry);
-            localApiRequest('mainWarehouseDrugs', 'POST', newDrugEntry);
-        } else {
-            addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: newDrugEntry });
-            addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: newDrugEntry });
-        }
+        addToSyncQueue({ type: 'UPSERT', table: 'drugs', payload: newDrugEntry });
+        addToSyncQueue({ type: 'UPSERT', table: 'main_warehouse_drugs', payload: newDrugEntry });
         addToast(`محصول ${drug.name} با موفقیت تعریف شد.`, 'success');
         setIsQuickAddDrugModalOpen(false);
     };
@@ -1810,16 +1769,19 @@ const App: React.FC = () => {
         return alerts;
     }, [drugs, alertSettings, orders, customers, customerBalances]);
 
+    // --- NEW: Handler for customer ledger shortcut ---
     const handleViewLedger = (customerId: number) => {
         setPreselectedCustomerId(customerId);
         setActiveItem('customer_accounts');
     };
 
+    // --- NEW: Handler for batch traceability shortcut ---
     const handleTraceLotNumber = (lotNumber: string) => {
         setLotNumberToTrace(lotNumber);
         setActiveItem('reports');
     };
     
+    // --- NEW: Clear trace state when navigating away from reports ---
     useEffect(() => {
         if (activeItem !== 'reports') {
             setLotNumberToTrace(null);
@@ -1851,9 +1813,13 @@ const App: React.FC = () => {
             }
         };
 
+        // Update status immediately on going online
         updateStatus();
-        heartbeatInterval = window.setInterval(updateStatus, 60000); 
 
+        // Then update every minute
+        heartbeatInterval = window.setInterval(updateStatus, 60000); // 60 seconds
+
+        // Cleanup on component unmount or if dependencies change
         return () => {
             clearInterval(heartbeatInterval);
         };
@@ -1880,13 +1846,13 @@ const App: React.FC = () => {
             const now = new Date().getTime();
             const minutesAgo = (now - lastSeen) / (1000 * 60);
 
-            setIsSystemOnline(minutesAgo < 2); 
+            setIsSystemOnline(minutesAgo < 2); // Consider online if seen within the last 2 minutes
         };
 
-        checkStatus(); 
-        const interval = setInterval(checkStatus, 30000); 
+        checkStatus(); // Check immediately
+        const interval = setInterval(checkStatus, 30000); // And every 30 seconds
         
-        return () => clearInterval(interval); 
+        return () => clearInterval(interval); // Cleanup interval
     }, [isRemoteView, remoteLicenseId]);
 
 
@@ -1894,6 +1860,7 @@ const App: React.FC = () => {
 
     // --- REFACTORED: Online Mode Real-time Sync Effect ---
     useEffect(() => {
+        // If offline or no license, ensure we are disconnected.
         if (!isOnlineMode || !licenseInfo) {
             if (realtimeChannelRef.current) {
                 supabase.removeChannel(realtimeChannelRef.current)
@@ -1929,11 +1896,11 @@ const App: React.FC = () => {
                 } catch (error) {
                     addToast(`همگام‌سازی عملیات برای جدول ${action.table} با خطا مواجه شد.`, 'error');
                     console.error("Sync error:", error);
-                    remainingActions.push(action); 
+                    remainingActions.push(action); // Keep failed action for retry
                 }
             }
             
-            setSyncQueue(remainingActions); 
+            setSyncQueue(remainingActions); // Update queue with only failed/remaining actions
             if (remainingActions.length === 0 && queueToProcess.length > 0) {
                  addToast('همگام‌سازی عملیات آفلاین با موفقیت انجام شد.', 'success');
             }
@@ -1944,8 +1911,10 @@ const App: React.FC = () => {
             if (realtimeChannelRef.current) return;
     
             try {
+                // --- 1. PUSH: Process local changes first ---
                 await processSyncQueue();
 
+                // --- 2. PULL: Fetch initial data after pushing ---
                 addToast("در حال دریافت آخرین اطلاعات از سرور...", "info");
                 const licenseFilter = { column: 'license_id', value: licenseInfo.id };
     
@@ -1967,12 +1936,18 @@ const App: React.FC = () => {
                 };
     
                 await Promise.all([
-                    fetchTable('drugs', setDrugs), fetchTable('main_warehouse_drugs', setMainWarehouseDrugs),
-                    fetchTable('customers', setCustomers), fetchTable('orders', setOrders),
-                    fetchTable('expenses', setExpenses), fetchTable('suppliers', setSuppliers),
-                    fetchTable('purchase_bills', setPurchaseBills), fetchTable('stock_requisitions', setStockRequisitions),
-                    fetchTable('inventory_write_offs', setInventoryWriteOffs), fetchTable('trash', setTrash),
-                    fetchTable('checkneh_invoices', setChecknehInvoices), fetchTable('users', setUsers),
+                    fetchTable('drugs', setDrugs),
+                    fetchTable('main_warehouse_drugs', setMainWarehouseDrugs),
+                    fetchTable('customers', setCustomers),
+                    fetchTable('orders', setOrders),
+                    fetchTable('expenses', setExpenses),
+                    fetchTable('suppliers', setSuppliers),
+                    fetchTable('purchase_bills', setPurchaseBills),
+                    fetchTable('stock_requisitions', setStockRequisitions),
+                    fetchTable('inventory_write_offs', setInventoryWriteOffs),
+                    fetchTable('trash', setTrash),
+                    fetchTable('checkneh_invoices', setChecknehInvoices),
+                    fetchTable('users', setUsers),
                     fetchSingleton('company_info', setCompanyInfo, { name: 'شفاخانه حیات', address: 'کابل, افغانستان', phone: '+93 78 123 4567', logo: null }),
                     fetchSingleton('document_settings', setDocumentSettings, { logoPosition: 'right', accentColor: '#0d9488', backgroundImage: null }),
                     fetchSingleton('alert_settings', setAlertSettings, { expiry: { enabled: true, months: 6 }, lowStock: { enabled: true, quantity: 50 }, customerDebt: { enabled: true, limits: {} }, totalDebt: { enabled: false, threshold: 1000000 } }),
@@ -1981,10 +1956,15 @@ const App: React.FC = () => {
     
                 addToast("همگام‌سازی اولیه با موفقیت انجام شد.", "success");
     
+                // --- 3. SUBSCRIBE: Setup real-time listeners ---
                 const handleArrayUpdate = (payload: any, setState: React.Dispatch<React.SetStateAction<any[]>>) => {
-                    if (payload.eventType === 'INSERT') setState(prev => [...prev.filter(item => item.id !== payload.new.id), payload.new]);
-                    else if (payload.eventType === 'UPDATE') setState(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
-                    else if (payload.eventType === 'DELETE') setState(prev => prev.filter(item => item.id !== payload.old.id));
+                    if (payload.eventType === 'INSERT') {
+                        setState(prev => [...prev.filter(item => item.id !== payload.new.id), payload.new]);
+                    } else if (payload.eventType === 'UPDATE') {
+                        setState(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
+                    } else if (payload.eventType === 'DELETE') {
+                        setState(prev => prev.filter(item => item.id !== payload.old.id));
+                    }
                 };
         
                 const handleSingletonUpdate = (payload: any, setState: React.Dispatch<React.SetStateAction<any>>) => {
@@ -1995,24 +1975,31 @@ const App: React.FC = () => {
                 };
         
                 const channel = supabase.channel(`public-tables-license-${licenseInfo.id}`);
-                const tables = ['drugs', 'main_warehouse_drugs', 'customers', 'orders', 'expenses', 'suppliers', 'purchase_bills', 'stock_requisitions', 'inventory_write_offs', 'trash', 'checkneh_invoices', 'users'];
-                const setters = [setDrugs, setMainWarehouseDrugs, setCustomers, setOrders, setExpenses, setSuppliers, setPurchaseBills, setStockRequisitions, setInventoryWriteOffs, setTrash, setChecknehInvoices, setUsers];
-                
-                tables.forEach((table, index) => {
-                    channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setters[index]));
-                });
-                
-                const singletons = ['company_info', 'document_settings', 'alert_settings', 'role_permissions'];
-                const singletonSetters = [setCompanyInfo, setDocumentSettings, setAlertSettings, setRolePermissions];
-                
-                singletons.forEach((table, index) => {
-                     channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, singletonSetters[index]));
-                });
-                
-                channel.subscribe((status, err) => {
-                        if (status === 'SUBSCRIBED') addToast("اتصال لحظه‌ای با سرور برقرار شد.", "info");
-                        if (err) addToast(`خطای اتصال لحظه‌ای: ${err.message}`, 'error');
-                });
+                channel
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'drugs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setDrugs))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'main_warehouse_drugs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setMainWarehouseDrugs))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'customers', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setCustomers))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setOrders))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setExpenses))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setSuppliers))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_bills', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setPurchaseBills))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_requisitions', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setStockRequisitions))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_write_offs', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setInventoryWriteOffs))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'trash', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setTrash))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'checkneh_invoices', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setChecknehInvoices))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'users', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleArrayUpdate(payload, setUsers))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'company_info', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setCompanyInfo))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'document_settings', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setDocumentSettings))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'alert_settings', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setAlertSettings))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'role_permissions', filter: `license_id=eq.${licenseInfo.id}` }, payload => handleSingletonUpdate(payload, setRolePermissions))
+                    .subscribe((status, err) => {
+                        if (status === 'SUBSCRIBED') {
+                            addToast("اتصال لحظه‌ای با سرور برقرار شد.", "info");
+                        }
+                        if (err) {
+                            addToast(`خطای اتصال لحظه‌ای: ${err.message}`, 'error');
+                        }
+                    });
         
                 realtimeChannelRef.current = channel;
 
@@ -2033,7 +2020,7 @@ const App: React.FC = () => {
         };
     }, [isOnlineMode, licenseInfo]);
 
-    // --- NEW: OFFLINE QUEUE PROCESSOR ---
+    // --- NEW: OFFLINE QUEUE PROCESSOR (Runs whenever online and queue has items) ---
     useEffect(() => {
         const processQueue = async () => {
             if (!isOnlineMode || isSyncing || syncQueue.length === 0 || !licenseInfo) {
@@ -2043,11 +2030,12 @@ const App: React.FC = () => {
             setIsSyncing(true);
             addToast(`در حال همگام‌سازی ${syncQueue.length} عملیات جدید...`, 'info');
     
-            const queueToProcess = [...syncQueue]; 
+            const queueToProcess = [...syncQueue]; // Create a copy to process
             const remainingActions: SyncAction[] = [];
     
             for (const action of queueToProcess) {
                 try {
+                    // Add license_id to payload for upsert/insert
                     const payloadWithLicense = action.payload ? (
                         Array.isArray(action.payload)
                             ? action.payload.map(p => ({ ...p, license_id: licenseInfo.id }))
@@ -2085,116 +2073,30 @@ const App: React.FC = () => {
     }, [isOnlineMode, syncQueue]);
 
 
-    // --- NEW: LOCAL NETWORK MODE EFFECT ---
-    const localWebSocketRef = useRef<WebSocket | null>(null);
-
-    useEffect(() => {
-        if (!isLocalNetworkMode || !localServerUrl) {
-            if (localWebSocketRef.current) {
-                localWebSocketRef.current.close();
-                localWebSocketRef.current = null;
-                 addToast("اتصال با سرور محلی قطع شد.", "info");
-            }
-            return;
-        }
-
-        const connectToLocalServer = async () => {
-            addToast("در حال اتصال به سرور محلی...", "info");
-            try {
-                // 1. PULL: Fetch all data first
-                const response = await fetch(`${localServerUrl}/api/pull`);
-                if (!response.ok) throw new Error("Failed to fetch initial data");
-                const data = await response.json();
-                
-                // Populate all states
-                setDrugs(data.drugs || []);
-                setMainWarehouseDrugs(data.mainWarehouseDrugs || []);
-                setCustomers(data.customers || []);
-                setOrders(data.orders || []);
-                setExpenses(data.expenses || []);
-                setSuppliers(data.suppliers || []);
-                setPurchaseBills(data.purchaseBills || []);
-                setStockRequisitions(data.stockRequisitions || []);
-                setInventoryWriteOffs(data.inventoryWriteOffs || []);
-                setTrash(data.trash || []);
-                setChecknehInvoices(data.checknehInvoices || []);
-                setUsers(data.users || initialMockUsers);
-                setCompanyInfo(data.companyInfo || { name: 'شفاخانه حیات', address: 'کابل, افغانستان', phone: '+93 78 123 4567', logo: null });
-                setDocumentSettings(data.documentSettings || { logoPosition: 'right', accentColor: '#0d9488', backgroundImage: null });
-                setAlertSettings(data.alertSettings || { expiry: { enabled: true, months: 6 }, lowStock: { enabled: true, quantity: 50 }, customerDebt: { enabled: true, limits: {} }, totalDebt: { enabled: false, threshold: 1000000 } });
-                setRolePermissions(data.rolePermissions || initialRolePermissions);
-
-                addToast("همگام‌سازی اولیه با سرور محلی موفق بود.", "success");
-
-                // 2. SUBSCRIBE: Connect to WebSocket for real-time updates
-                const wsUrl = localServerUrl.replace(/^http/, 'ws');
-                const ws = new WebSocket(wsUrl);
-                localWebSocketRef.current = ws;
-
-                ws.onopen = () => addToast("اتصال لحظه‌ای با سرور محلی برقرار شد.", "info");
-                ws.onerror = () => addToast("خطا در اتصال لحظه‌ای با سرور محلی.", "error");
-                ws.onclose = () => addToast("ارتباط لحظه‌ای با سرور محلی قطع شد.", "info");
-
-                ws.onmessage = (event) => {
-                    const message = JSON.parse(event.data);
-                    const { resource, action, data } = message;
-
-                    const setters = {
-                        drugs: setDrugs, mainWarehouseDrugs: setMainWarehouseDrugs, customers: setCustomers,
-                        orders: setOrders, expenses: setExpenses, suppliers: setSuppliers,
-                        purchaseBills: setPurchaseBills, stockRequisitions: setStockRequisitions,
-                        inventoryWriteOffs: setInventoryWriteOffs, trash: setTrash,
-                        checknehInvoices: setChecknehInvoices, users: setUsers
-                    };
-                    const singletonSetters = {
-                        companyInfo: setCompanyInfo, documentSettings: setDocumentSettings,
-                        alertSettings: setAlertSettings, rolePermissions: setRolePermissions
-                    };
-
-                    if (setters[resource]) {
-                        const setState = setters[resource];
-                        if (action === 'upsert') {
-                            setState((prev: any[]) => [...prev.filter(item => item.id !== data.id), data]);
-                        } else if (action === 'delete') {
-                            setState((prev: any[]) => prev.filter(item => item.id !== data.id));
-                        }
-                    } else if (singletonSetters[resource]) {
-                        const setState = singletonSetters[resource];
-                        if (action === 'upsert') {
-                            setState(data);
-                        }
-                    }
-                };
-
-            } catch (error) {
-                addToast("اتصال به سرور محلی با شکست مواجه شد. لطفاً آدرس را بررسی کنید.", "error");
-                setIsLocalNetworkMode(false);
-            }
-        };
-
-        connectToLocalServer();
-
-        return () => {
-            if (localWebSocketRef.current) {
-                localWebSocketRef.current.close();
-            }
-        };
-    }, [isLocalNetworkMode, localServerUrl]);
-
-
     // RENDER LOGIC
     // ==========================================================
 
+    // Loading Screen
     if (licenseStatus === 'LOADING' && !isRemoteView) {
-        return <div className="flex items-center justify-center min-h-screen bg-gray-100"><p>در حال بارگذاری...</p></div>;
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-100">
+                <p>در حال بارگذاری...</p>
+            </div>
+        );
     }
     
+    // License Screens
     if (licenseStatus === 'NEEDS_ACTIVATION' && !isRemoteView) {
         return (
             <>
                 <LicenseAuthScreen onActivationSuccess={handleActivationSuccess} addToast={addToast} showConfirmation={showConfirmation} />
                 <ToastContainer toasts={toasts} setToasts={setToasts} />
-                 <ConfirmationModal isOpen={!!confirmationModal?.isOpen} onClose={handleCloseConfirmation} onConfirm={handleConfirm} title={confirmationModal?.title || ''}>
+                 <ConfirmationModal
+                    isOpen={!!confirmationModal?.isOpen}
+                    onClose={handleCloseConfirmation}
+                    onConfirm={handleConfirm}
+                    title={confirmationModal?.title || ''}
+                >
                     {confirmationModal?.message}
                 </ConfirmationModal>
             </>
@@ -2214,52 +2116,50 @@ const App: React.FC = () => {
         return <InvalidLicenseScreen />;
     }
 
+    // Main App Screens (License is VALID)
     const renderActiveComponent = () => {
         const effectiveUser = isRemoteView ? remoteUser : currentUser;
         if (!effectiveUser) return null;
         const commonProps = {
-            currentUser: effectiveUser, addToast: addToast, companyInfo: companyInfo, documentSettings: documentSettings,
-            isRemoteView: isRemoteView, isSystemOnline: isSystemOnline,
+            currentUser: effectiveUser,
+            addToast: addToast,
+            companyInfo: companyInfo,
+            documentSettings: documentSettings,
+            isRemoteView: isRemoteView,
+            isSystemOnline: isSystemOnline,
         };
 
         if (isRemoteView && ['settings', 'recycle_bin', 'checkneh', 'main_warehouse', 'purchasing', 'supplier_accounts', 'finance', 'fulfillment', 'alerts'].includes(activeItem)) {
             return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
         }
-        
-        const localApiProps = isLocalNetworkMode ? {
-            onSave: (data) => localApiRequest('customers', 'POST', data),
-            onSaveExpense: (data) => localApiRequest('expenses', 'POST', data),
-        } : {
-            onSave: (c) => { setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'customers', payload: c }); },
-            onSaveExpense: (e) => { setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'expenses', payload: e }); }
-        };
 
         switch(activeItem) {
             case 'dashboard': return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
             case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={handleDeleteDrug} onWriteOff={handleWriteOff} onSaveRequisition={handleSaveRequisition} rolePermissions={rolePermissions} onTraceLotNumber={handleTraceLotNumber} {...commonProps} />;
             case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} onSave={handleSaveOrder} onDelete={handleDeleteOrder} rolePermissions={rolePermissions} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} {...commonProps} />;
-            case 'customers': return <Customers customers={customers} onSave={localApiProps.onSave} onDelete={handleDeleteCustomer} rolePermissions={rolePermissions} onViewLedger={handleViewLedger} {...commonProps} />;
-            case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => { setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev]); if(isLocalNetworkMode) localApiRequest('suppliers', 'POST', s); else addToSyncQueue({ type: 'UPSERT', table: 'suppliers', payload: s }); }} onDelete={handleDeleteSupplier} {...commonProps} />;
+            case 'customers': return <Customers customers={customers} onSave={(c) => { setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'customers', payload: c }); }} onDelete={handleDeleteCustomer} rolePermissions={rolePermissions} onViewLedger={handleViewLedger} {...commonProps} />;
+            case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => { setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'suppliers', payload: s }); }} onDelete={handleDeleteSupplier} {...commonProps} />;
             case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} {...commonProps} />;
-            case 'finance': return <Accounting orders={orders} expenses={expenses} onSave={localApiProps.onSaveExpense} onDelete={handleDeleteExpense} {...commonProps} />;
+            case 'finance': return <Accounting orders={orders} expenses={expenses} onSave={(e) => { setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'expenses', payload: e }); }} onDelete={handleDeleteExpense} {...commonProps} />;
             case 'reports': return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} lotNumberToTrace={lotNumberToTrace} {...commonProps} />;
             case 'fulfillment': return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} {...commonProps} />;
             case 'customer_accounts': return <CustomerAccounts customers={customers} orders={orders} preselectedCustomerId={preselectedCustomerId} {...commonProps} />;
             case 'supplier_accounts': return <SupplierAccounts suppliers={suppliers} purchaseBills={purchaseBills} {...commonProps} />;
             case 'main_warehouse': return <MainWarehouse mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onFulfillRequisition={(req, items, user) => handleFulfillRequisition(req, items, user)} onTraceLotNumber={handleTraceLotNumber} {...commonProps} />;
             case 'recycle_bin': return <RecycleBin trashItems={trash} onRestore={handleRestoreItem} onDelete={handleDeletePermanently} onEmptyTrash={handleEmptyTrash} {...commonProps} />;
-            case 'checkneh': return <Checkneh customers={customers} showConfirmation={showConfirmation} invoices={checknehInvoices} setInvoices={(action) => { const newInvoices = typeof action === 'function' ? action(checknehInvoices) : action; setChecknehInvoices(newInvoices); newInvoices.forEach(inv => isLocalNetworkMode ? localApiRequest('checknehInvoices', 'POST', inv) : addToSyncQueue({type: 'UPSERT', table: 'checkneh_invoices', payload: inv})); }} {...commonProps} />;
-            case 'alerts': return <Alerts settings={alertSettings} setSettings={(setter) => { const newSettings = typeof setter === 'function' ? setter(alertSettings) : setter; setAlertSettings(newSettings); if(isLocalNetworkMode) localApiRequest('alertSettings', 'POST', newSettings); else addToSyncQueue({ type: 'UPSERT', table: 'alert_settings', payload: newSettings }); }} customers={customers} />;
+            case 'checkneh': return <Checkneh customers={customers} showConfirmation={showConfirmation} invoices={checknehInvoices} setInvoices={setChecknehInvoices} {...commonProps} />;
+            case 'alerts': return <Alerts settings={alertSettings} setSettings={(setter) => { const newSettings = typeof setter === 'function' ? setter(alertSettings) : setter; setAlertSettings(newSettings); addToSyncQueue({ type: 'UPSERT', table: 'alert_settings', payload: newSettings }); }} customers={customers} />;
             case 'settings': return <Settings 
                 users={users} onSaveUser={handleSaveUser} onDeleteUser={handleDeleteUser} onPasswordReset={handlePasswordReset}
-                onSetCompanyInfo={(info) => { setCompanyInfo(info); if(isLocalNetworkMode) localApiRequest('companyInfo', 'POST', info); else addToSyncQueue({ type: 'UPSERT', table: 'company_info', payload: info }); }}
-                onSetDocumentSettings={(settings) => { setDocumentSettings(settings); if(isLocalNetworkMode) localApiRequest('documentSettings', 'POST', settings); else addToSyncQueue({ type: 'UPSERT', table: 'document_settings', payload: settings }); }}
-                onSetRolePermissions={(permissions) => { setRolePermissions(permissions); if(isLocalNetworkMode) localApiRequest('rolePermissions', 'POST', permissions); else addToSyncQueue({ type: 'UPSERT', table: 'role_permissions', payload: permissions }); }}
+                onSetCompanyInfo={(info) => { setCompanyInfo(info); addToSyncQueue({ type: 'UPSERT', table: 'company_info', payload: info }); }}
+                onSetDocumentSettings={(settings) => { setDocumentSettings(settings); addToSyncQueue({ type: 'UPSERT', table: 'document_settings', payload: settings }); }}
+                onSetRolePermissions={(permissions) => { setRolePermissions(permissions); addToSyncQueue({ type: 'UPSERT', table: 'role_permissions', payload: permissions }); }}
                 backupKey={null} onBackupKeyChange={()=>{}} 
-                onBackupLocal={handleBackupLocal} onRestoreLocal={handleRestoreLocal} onPurgeData={()=>{}}
-                isOnlineMode={isOnlineMode} onSetIsOnlineMode={setIsOnlineMode}
-                isLocalNetworkMode={isLocalNetworkMode} onSetIsLocalNetworkMode={setIsLocalNetworkMode}
-                localServerUrl={localServerUrl} onSetLocalServerUrl={setLocalServerUrl}
+                onBackupLocal={handleBackupLocal} 
+                onRestoreLocal={handleRestoreLocal} 
+                onPurgeData={()=>{}}
+                isOnlineMode={isOnlineMode}
+                onSetIsOnlineMode={setIsOnlineMode}
                 hasUnsavedChanges={false} showConfirmation={showConfirmation} 
                 {...commonProps} rolePermissions={rolePermissions} 
                 />;
@@ -2298,9 +2198,19 @@ const App: React.FC = () => {
     return (
         <div className="flex h-screen bg-gray-100" dir="rtl">
             {isRemoteView ? (
-                 <BottomNav activeItem={activeItem} setActiveItem={setActiveItem} userRole={effectiveUser.role} />
+                 <BottomNav 
+                    activeItem={activeItem} 
+                    setActiveItem={setActiveItem} 
+                    userRole={effectiveUser.role} 
+                />
             ) : (
-                <Sidebar activeItem={activeItem} setActiveItem={setActiveItem} userRole={effectiveUser.role} onLogout={isRemoteView ? handleRemoteLogout : handleLogout} pendingRequisitionCount={pendingRequisitionCount}/>
+                <Sidebar 
+                    activeItem={activeItem} 
+                    setActiveItem={setActiveItem} 
+                    userRole={effectiveUser.role} 
+                    onLogout={isRemoteView ? handleRemoteLogout : handleLogout} 
+                    pendingRequisitionCount={pendingRequisitionCount}
+                />
             )}
             <main className="flex-1 flex flex-col overflow-hidden">
                 {!isRemoteView && <Header title={pageTitles[activeItem] || 'داشبورد'} currentUser={effectiveUser} alerts={activeAlerts} onNavigate={setActiveItem}/>}
@@ -2311,8 +2221,19 @@ const App: React.FC = () => {
             </main>
             <ToastContainer toasts={toasts} setToasts={setToasts} />
             {isUpdateAvailable && <UpdateNotification onUpdate={handleUpdate} />}
-            <DrugModal isOpen={isQuickAddDrugModalOpen} onClose={() => setIsQuickAddDrugModalOpen(false)} onSave={handleQuickAddDrug} initialData={null} addToast={addToast}/>
-             <ConfirmationModal isOpen={!!confirmationModal?.isOpen} onClose={handleCloseConfirmation} onConfirm={handleConfirm} title={confirmationModal?.title || ''}>
+            <DrugModal 
+                isOpen={isQuickAddDrugModalOpen}
+                onClose={() => setIsQuickAddDrugModalOpen(false)}
+                onSave={handleQuickAddDrug}
+                initialData={null}
+                addToast={addToast}
+            />
+             <ConfirmationModal
+                isOpen={!!confirmationModal?.isOpen}
+                onClose={handleCloseConfirmation}
+                onConfirm={handleConfirm}
+                title={confirmationModal?.title || ''}
+            >
                 {confirmationModal?.message}
             </ConfirmationModal>
         </div>
@@ -2354,6 +2275,8 @@ const ActivationScreen = ({ onSwitchToLogin, onActivationSuccess, addToast }) =>
         let createdAuthUser: any = null;
 
         try {
+            // 1. Create Supabase User
+            // FIX: Corrected Supabase user creation method from `signUpWithPassword` to `signUp` as per Supabase JS v2 API.
             const { data: authData, error: signUpError } = await supabase.auth.signUp({
                 email: `${username}@example.com`,
                 password: password,
@@ -2372,6 +2295,7 @@ const ActivationScreen = ({ onSwitchToLogin, onActivationSuccess, addToast }) =>
             }
             createdAuthUser = authData.user;
 
+            // 2. Insert new license record with user_id to satisfy RLS
             const { data: licenseData, error: insertError } = await supabase
                 .from('licenses')
                 .insert({
@@ -2385,7 +2309,7 @@ const ActivationScreen = ({ onSwitchToLogin, onActivationSuccess, addToast }) =>
                 .single();
 
             if (insertError) {
-                if (insertError.code === '23505') { 
+                if (insertError.code === '23505') { // Postgres code for unique violation
                     throw new Error("این کلید فعال‌سازی قبلاً استفاده شده است.");
                 }
                 throw new Error(insertError.message);
@@ -2396,6 +2320,8 @@ const ActivationScreen = ({ onSwitchToLogin, onActivationSuccess, addToast }) =>
 
         } catch (error) {
             console.error("Activation failed:", error);
+            // Cleanup on failure (manual step needed if this fails often)
+            // It's complex to automate user deletion from client-side on failure.
             let errorMessage = "یک خطای ناشناخته در هنگام فعال‌سازی رخ داد.";
             if (error instanceof Error) {
                 errorMessage = error.message.includes('security policy') 
@@ -2471,6 +2397,8 @@ const TransferLoginScreen = ({ onSwitchToActivate, onTransferSuccess, addToast, 
         e.preventDefault();
         setIsLoading(true);
         try {
+            // 1. Sign in to validate credentials
+            // FIX: Corrected Supabase sign-in method from `signIn` to `signInWithPassword` as per Supabase JS v2 API.
             const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
                 email: `${username}@example.com`,
                 password: password,
@@ -2479,6 +2407,7 @@ const TransferLoginScreen = ({ onSwitchToActivate, onTransferSuccess, addToast, 
                 throw new Error("نام کاربری یا رمز عبور اشتباه است.");
             }
 
+            // 2. Fetch license data using the secure user_id
             const { data: license, error: fetchError } = await supabase
                 .from('licenses')
                 .select('id, machine_id')
@@ -2488,13 +2417,14 @@ const TransferLoginScreen = ({ onSwitchToActivate, onTransferSuccess, addToast, 
                 throw new Error("اطلاعات لایسنس برای این کاربر یافت نشد.");
             }
 
+            // 3. Check for device transfer
             const newMachineId = getOrCreateMachineId();
             if (license.machine_id !== newMachineId) {
                 showConfirmation(
                     'انتقال لایسنس به دستگاه جدید',
                     <p>به نظر می‌رسد شما از یک دستگاه جدید وارد شده‌اید. آیا می‌خواهید لایسنس خود را به این دستگاه منتقل کنید؟ <strong className="text-red-600">با این کار، دسترسی از دستگاه قبلی مسدود خواهد شد.</strong></p>,
                     async () => {
-                        setIsLoading(true); 
+                        setIsLoading(true); // Re-enable loading for the transfer process
                         addToast("در حال انتقال لایسنس...", "info");
                         const { error: updateError } = await supabase
                             .from('licenses')
@@ -2503,15 +2433,15 @@ const TransferLoginScreen = ({ onSwitchToActivate, onTransferSuccess, addToast, 
                         
                         if (updateError) {
                             addToast(`خطا در انتقال لایسنس: ${updateError.message}`, 'error');
-                            setIsLoading(false); 
+                            setIsLoading(false); // Stop loading on error
                             return;
                         }
                         addToast('لایسنس با موفقیت به این دستگاه منتقل شد.', 'success');
                         onTransferSuccess({ id: license.id, user_id: authData.user!.id, machine_id: newMachineId, session: authData.session! });
                     }
                 );
-                setIsLoading(false); 
-                return; 
+                setIsLoading(false); // Stop loading to show the modal
+                return; // Exit function, let modal handle the next step
             } else {
                  addToast('شما با موفقیت وارد شدید.', 'success');
                  onTransferSuccess({ id: license.id, user_id: authData.user!.id, machine_id: newMachineId, session: authData.session! });
@@ -2590,6 +2520,7 @@ const InvalidLicenseScreen = () => (
     </div>
 );
 
+// FIX: Moved RemoteLogin component here from RemoteControl.tsx to be accessible by App.tsx
 export const RemoteLogin = ({ onLogin, addToast }: { onLogin: (companyUsername: string, username: string, password_raw: string) => void; addToast: (message: string, type?: 'success' | 'error' | 'info') => void; }) => {
     const [companyUsername, setCompanyUsername] = useState('');
     const [username, setUsername] = useState('');
