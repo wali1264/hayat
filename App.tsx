@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { GoogleGenAI } from "@google/genai";
+// FIX: Import necessary types from @google/genai to align with API guidelines.
+import { GoogleGenAI, FunctionDeclaration, Modality, Type } from "@google/genai";
 // FIX: Import Supabase types with `import type` to resolve module export errors where `Session` and `RealtimeChannel` were not found.
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient, Session, RealtimeChannel } from '@supabase/supabase-js';
@@ -44,7 +45,7 @@ const CustomersIcon = ({ className }: { className?: string }) => <Icon path="M17
 const CustomerAccountsIcon = ({ className }: { className?: string }) => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" className={className} />;
 const AccountingIcon = ({ className }: { className?: string }) => <Icon path="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M12 21a9 9 0 110-18 9 9 0 010 18z" className={className} />;
 const ReportsIcon = ({ className }: { className?: string }) => <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className={className} />;
-const SettingsIcon = ({ className }: { className?: string }) => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0 3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" className={className} />;
+const SettingsIcon = ({ className }: { className?: string }) => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426-1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0 3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" className={className} />;
 const LogoutIcon = ({ className }: { className?: string }) => <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" className={className} />;
 const SuppliersIcon = ({ className }: { className?: string }) => <Icon path="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V6a1 1 0 011-1h2a1 1 0 011 1v10a1 1 0 01-1 1h-1m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" className={className} />;
 const PurchasingIcon = ({ className }: { className?: string }) => <Icon path="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" className={className} />;
@@ -73,6 +74,17 @@ const CloseIcon = ({ className = "w-6 h-6" }: { className?: string}) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
 );
+const MicrophoneIcon = ({ className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 016 0v8.25a3 3 0 01-3 3z" />
+    </svg>
+);
+const StopIcon = ({ className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path fillRule="evenodd" d="M4.5 7.5a3 3 0 013-3h9a3 3 0 013 3v9a3 3 0 01-3-3h-9a3 3 0 01-3-3v-9z" clipRule="evenodd" />
+    </svg>
+);
+
 
 //=========== TOAST & MODAL & UPDATE COMPONENTS ===========//
 type ToastType = 'success' | 'error' | 'info';
@@ -579,6 +591,735 @@ function getOrCreateMachineId(): string {
 }
 
 
+//=========== VOICE ASSISTANT COMPONENT (NEW) ===========//
+
+// --- Audio Helper Functions ---
+function encode(bytes: Uint8Array) {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
+// --- Function Declarations for Gemini ---
+// FIX: Use FunctionDeclaration type and Type enum for Gemini function calling.
+const navigateToDeclaration: FunctionDeclaration = {
+  name: 'navigateTo',
+  parameters: {
+    type: Type.OBJECT,
+    description: 'کاربر را به بخش مشخصی از اپلیکیشن هدایت می‌کند.',
+    properties: {
+      page: {
+        type: Type.STRING,
+        description: 'صفحه مقصد.',
+        enum: navItems.map(item => item.id),
+      },
+    },
+    required: ['page'],
+  },
+};
+
+// FIX: Use FunctionDeclaration type and Type enum for Gemini function calling.
+const startNewSaleDeclaration: FunctionDeclaration = {
+  name: 'startNewSale',
+  parameters: {
+    type: Type.OBJECT,
+    description: 'یک فرآیند جدید برای ثبت سفارش فروش را آغاز می‌کند و پنجره مربوطه را باز می‌کند.',
+    properties: {},
+  },
+};
+
+// FIX: Use FunctionDeclaration type and Type enum for Gemini function calling.
+const setSaleCustomerDeclaration: FunctionDeclaration = {
+  name: 'setSaleCustomer',
+  parameters: {
+    type: Type.OBJECT,
+    description: 'مشتری را برای سفارش فروش در حال ثبت، تنظیم می‌کند. این تابع هم برای مشتریان ثبت شده و هم مشتریان جدید کاربرد دارد.',
+    properties: {
+      customerName: {
+        type: Type.STRING,
+        description: 'نام کامل مشتری.',
+      },
+    },
+    required: ['customerName'],
+  },
+};
+
+// FIX: Use FunctionDeclaration type and Type enum for Gemini function calling.
+const addOrderItemDeclaration: FunctionDeclaration = {
+  name: 'addOrderItem',
+  parameters: {
+    type: Type.OBJECT,
+    description: 'یک یا چند قلم دارو را به سفارش فروش فعلی اضافه می‌کند. میتواند شامل جزئیات قیمت، تخفیف و بونس باشد.',
+    properties: {
+      drugName: {
+        type: Type.STRING,
+        description: 'نام دارو به فارسی یا انگلیسی، حتی به صورت ناقص.',
+      },
+      quantity: {
+        type: Type.NUMBER,
+        description: 'تعداد دارو برای افزودن.',
+      },
+      bonus: {
+        type: Type.NUMBER,
+        description: 'تعداد بونس (اختیاری).',
+      },
+      price: {
+        type: Type.NUMBER,
+        description: 'قیمت فروش نهایی برای هر واحد از دارو (اختیاری).',
+      },
+      discount: {
+        type: Type.NUMBER,
+        description: 'درصد تخفیف برای اعمال روی دارو (اختیاری).',
+      },
+    },
+    required: ['drugName', 'quantity'],
+  },
+};
+
+const setPaymentAmountDeclaration: FunctionDeclaration = {
+    name: 'setPaymentAmount',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'مبلغ پرداخت شده برای سفارش فعلی را ثبت می‌کند.',
+        properties: {
+            amount: { type: Type.NUMBER, description: 'مبلغ پرداخت شده.' },
+        },
+        required: ['amount'],
+    },
+};
+
+const saveOrderDeclaration: FunctionDeclaration = {
+    name: 'saveOrder',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'سفارش فروش فعلی را ذخیره و نهایی می‌کند.',
+        properties: {},
+    },
+};
+
+const removeOrderItemDeclaration: FunctionDeclaration = {
+    name: 'removeOrderItem',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'یک قلم دارو را از سفارش فعلی حذف می‌کند.',
+        properties: {
+            drugName: { type: Type.STRING, description: 'نام دارویی که باید حذف شود.' },
+        },
+        required: ['drugName'],
+    },
+};
+
+const editOrderItemQuantityDeclaration: FunctionDeclaration = {
+    name: 'editOrderItemQuantity',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'تعداد یک قلم دارو در سفارش فعلی را ویرایش می‌کند.',
+        properties: {
+            drugName: { type: Type.STRING, description: 'نام دارویی که باید ویرایش شود.' },
+            newQuantity: { type: Type.NUMBER, description: 'تعداد جدید.' },
+        },
+        required: ['drugName', 'newQuantity'],
+    },
+};
+
+const queryStockLevelDeclaration: FunctionDeclaration = {
+    name: 'queryStockLevel',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'موجودی یک داروی خاص در انبار فروش را استعلام می‌کند.',
+        properties: {
+            drugName: { type: Type.STRING, description: 'نام داروی مورد نظر.' },
+        },
+        required: ['drugName'],
+    },
+};
+
+const queryCustomerBalanceDeclaration: FunctionDeclaration = {
+    name: 'queryCustomerBalance',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'مانده حساب یک مشتری خاص را استعلام می‌کند.',
+        properties: {
+            customerName: { type: Type.STRING, description: 'نام مشتری مورد نظر.' },
+        },
+        required: ['customerName'],
+    },
+};
+
+const queryPurchaseHistoryDeclaration: FunctionDeclaration = {
+    name: 'queryPurchaseHistory',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'آخرین قیمت فروش و تخفیف یک داروی خاص به یک مشتری خاص را استعلام می‌کند.',
+        properties: {
+            drugName: { type: Type.STRING, description: 'نام داروی مورد نظر.' },
+            customerName: { type: Type.STRING, description: 'نام مشتری مورد نظر.' },
+        },
+        required: ['drugName', 'customerName'],
+    },
+};
+
+const addExtraChargeDeclaration: FunctionDeclaration = {
+    name: 'addExtraCharge',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'یک هزینه اضافی مانند کرایه حمل را به فاکتور اضافه می‌کند.',
+        properties: {
+            description: { type: Type.STRING, description: 'شرح هزینه.' },
+            amount: { type: Type.NUMBER, description: 'مبلغ هزینه.' },
+        },
+        required: ['description', 'amount'],
+    },
+};
+
+const saveAndPrintOrderDeclaration: FunctionDeclaration = {
+    name: 'saveAndPrintOrder',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'سفارش فروش فعلی را ذخیره کرده و بلافاصله پنجره چاپ را باز می‌کند.',
+        properties: {},
+    },
+};
+
+// --- NEW DECLARATIONS FOR PHASE 8 ---
+const startNewPurchaseBillDeclaration: FunctionDeclaration = {
+    name: 'startNewPurchaseBill',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'یک فرآیند جدید برای ثبت فاکتور خرید را آغاز می‌کند.',
+        properties: {},
+    },
+};
+
+const setPurchaseSupplierDeclaration: FunctionDeclaration = {
+    name: 'setPurchaseSupplier',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'تامین کننده (شرکت) را برای فاکتور خرید فعلی تنظیم می‌کند.',
+        properties: {
+            supplierName: { type: Type.STRING, description: 'نام شرکت تامین کننده.' },
+            billNumber: { type: Type.STRING, description: 'شماره فاکتور خرید (اختیاری).' },
+        },
+        required: ['supplierName'],
+    },
+};
+
+const addPurchaseItemDeclaration: FunctionDeclaration = {
+    name: 'addPurchaseItem',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'یک قلم دارو را به فاکتور خرید فعلی اضافه می‌کند.',
+        properties: {
+            drugName: { type: Type.STRING, description: 'نام دارو.' },
+            lotNumber: { type: Type.STRING, description: 'شماره لات دارو.' },
+            expiryDate: { type: Type.STRING, description: 'تاریخ انقضا به فرمت "ماه/سال" (مثال: "12/2028").' },
+            quantity: { type: Type.NUMBER, description: 'تعداد خریداری شده.' },
+            bonus: { type: Type.NUMBER, description: 'تعداد بونس (اختیاری).' },
+            price: { type: Type.NUMBER, description: 'قیمت خرید هر واحد.' },
+        },
+        required: ['drugName', 'lotNumber', 'expiryDate', 'quantity', 'price'],
+    },
+};
+
+const savePurchaseBillDeclaration: FunctionDeclaration = {
+    name: 'savePurchaseBill',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'فاکتور خرید فعلی را ذخیره می‌کند.',
+        properties: {},
+    },
+};
+
+const createStockRequisitionDeclaration: FunctionDeclaration = {
+    name: 'createStockRequisition',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'یک درخواست کالا از انبار اصلی ایجاد می‌کند.',
+        properties: {
+            items: {
+                type: Type.ARRAY,
+                description: 'لیستی از اقلام درخواستی.',
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        drugName: { type: Type.STRING, description: 'نام دارو.' },
+                        quantity: { type: Type.NUMBER, description: 'تعداد درخواستی.' },
+                    },
+                    required: ['drugName', 'quantity'],
+                },
+            },
+        },
+        required: ['items'],
+    },
+};
+
+
+const VoiceAssistant = ({ onNavigate, currentUser, addToast, activeItem, dispatchUiAction, drugs, customers, customerBalances, orders, onSaveRequisition, alertSettings, mainWarehouseDrugs }: { onNavigate: (page: string) => void; currentUser: User | null; addToast: (msg: string, type: ToastType) => void; activeItem: string; dispatchUiAction: (action: any) => void; drugs: Drug[]; customers: Customer[]; customerBalances: Map<string, number>; orders: Order[], onSaveRequisition: (req: any) => void, alertSettings: AlertSettings, mainWarehouseDrugs: Drug[] }) => {
+    const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+    const [status, setStatus] = useState<'IDLE' | 'LISTENING' | 'THINKING' | 'SPEAKING'>('IDLE');
+    const [transcript, setTranscript] = useState<{ speaker: 'user' | 'ai'; text: string }[]>([]);
+    
+    const sessionPromiseRef = useRef<any | null>(null);
+    const inputAudioContextRef = useRef<AudioContext | null>(null);
+    const outputAudioContextRef = useRef<AudioContext | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+    const nextAudioStartTimeRef = useRef(0);
+    const audioSourcesRef = useRef(new Set<AudioBufferSourceNode>());
+    
+    const currentInputTranscriptionRef = useRef('');
+    const currentOutputTranscriptionRef = useRef('');
+    const aiRef = useRef<GoogleGenAI | null>(null);
+
+    // Initialize AI client once
+    useEffect(() => {
+        // The user has requested to hardcode the API key for testing purposes.
+        // For production, it is strongly recommended to use environment variables.
+        aiRef.current = new GoogleGenAI({ apiKey: 'AIzaSyCW-Z_sKzymBIFbWyPHcIN1HlS_QLZr0Ow' });
+    }, []);
+
+    const cleanup = () => {
+        // RESILIENCY FIX: Guard to prevent race conditions from multiple cleanup calls.
+        if (status === 'IDLE' && !sessionPromiseRef.current) return;
+        setStatus('IDLE');
+
+        // Close session
+        if (sessionPromiseRef.current) {
+            sessionPromiseRef.current.then(session => {
+                if (session && typeof session.close === 'function') session.close();
+            }).catch(e => console.warn("Error during session close:", e));
+            sessionPromiseRef.current = null;
+        }
+        
+        // Disconnect audio nodes
+        if (scriptProcessorRef.current) {
+            try { scriptProcessorRef.current.disconnect(); } catch (e) {}
+            scriptProcessorRef.current = null;
+        }
+
+        // Close contexts safely
+        if (inputAudioContextRef.current && inputAudioContextRef.current.state !== 'closed') {
+            inputAudioContextRef.current.close().catch(e => console.warn("Input context close error:", e));
+        }
+        inputAudioContextRef.current = null;
+
+        if (outputAudioContextRef.current && outputAudioContextRef.current.state !== 'closed') {
+            outputAudioContextRef.current.close().catch(e => console.warn("Output context close error:", e));
+        }
+        outputAudioContextRef.current = null;
+        
+        // Stop media stream tracks
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+
+        // Reset audio playback state
+        audioSourcesRef.current.forEach(source => { try { source.stop(); } catch(e) {} });
+        audioSourcesRef.current.clear();
+        nextAudioStartTimeRef.current = 0;
+    };
+    
+    useEffect(() => {
+        // Cleanup on unmount
+        return () => cleanup();
+    }, []);
+
+    const startSession = async () => {
+        if (!aiRef.current || status !== 'IDLE') return;
+
+        setStatus('LISTENING');
+        setTranscript([]);
+        currentInputTranscriptionRef.current = '';
+        currentOutputTranscriptionRef.current = '';
+
+        try {
+            streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (e) {
+            addToast('دسترسی به میکروفون لازم است.', 'error');
+            console.error('Microphone access denied:', e);
+            setStatus('IDLE');
+            return;
+        }
+
+        inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+        outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        nextAudioStartTimeRef.current = 0;
+
+        const allFunctionDeclarations = [
+            // Sales
+            navigateToDeclaration, 
+            startNewSaleDeclaration, 
+            setSaleCustomerDeclaration, 
+            addOrderItemDeclaration,
+            setPaymentAmountDeclaration,
+            saveOrderDeclaration,
+            removeOrderItemDeclaration,
+            editOrderItemQuantityDeclaration,
+            addExtraChargeDeclaration,
+            saveAndPrintOrderDeclaration,
+            // Queries
+            queryStockLevelDeclaration,
+            queryCustomerBalanceDeclaration,
+            queryPurchaseHistoryDeclaration,
+            // Purchasing
+            startNewPurchaseBillDeclaration,
+            setPurchaseSupplierDeclaration,
+            addPurchaseItemDeclaration,
+            savePurchaseBillDeclaration,
+            // Inventory
+            createStockRequisitionDeclaration,
+        ];
+        
+        const systemInstruction = `شما یک دستیار هوشمند، همدل و بسیار توانمند به نام "حیات" برای یک پلتفرم مدیریت پخش دارو هستید. شما یک "موتور محاوره‌ای تجارت" (Conversational Commerce Engine) هستید.
+        
+هویت و قوانین اصلی شما:
+1.  **واقع‌گرایی:** همیشه قبل از پیشنهاد یا انجام کاری، نتیجه توابع را بررسی کن. اگر تابعی خطا برگرداند (مثلا «دارو یافت نشد»)، کار را متوقف کرده و خطا را به صورت یک پاسخ طبیعی و مفید به کاربر اطلاع بده.
+2.  **درک عمیق زبان:** شما باید زبان‌های فارسی (دری) و انگلیسی را با تمام تنوعات لهجه‌ای آن درک کنید. نام داروها ممکن است به هر دو زبان ثبت شده باشد. شما باید بتوانید نام "Amoxicillin" را با شنیدن «آموکسی سیلین» تطبیق دهید. تابع جستجوی شما هوشمند است و فاصله‌ها را نادیده می‌گیرد.
+3.  **شخصیت انطباق‌پذیر:** لحن شما صمیمی و محترمانه است، اما بر اساس درخواست کاربر (مثلا «شوخی کن» یا «جدی باش») تغییر می‌کند.
+4.  **راهنما و مشاور:** اگر کاربر سوالی کلی پرسید، با صبر توضیح دهید و همیشه پیشنهاد دهید که خودتان کار را برایش انجام دهید.
+5.  **هوشمندی پیشگیرانه (بسیار مهم):**
+    *   **رفع ابهام (Disambiguation):** اگر نتیجه جستجوی یک تابع با "MULTIPLE_MATCHES_FOUND:" شروع شد، این یک خطا نیست. این یعنی شما باید از کاربر بپرسید کدام مورد را انتخاب کند. مثال: اگر نتیجه "MULTIPLE_MATCHES_FOUND: شربت پاراستامول, قرص پاراستامول" بود، شما باید بپرسید: «چندین نوع پاراستامول پیدا کردم. کدام یک را به فاکتور اضافه کنم؟ شربت یا قرص؟».
+    *   **تایید هوشمند:** اگر کاربر نام ناقصی گفت (مثلا «آمکسی») و تابع فقط یک نتیجه برگرداند (مثلا «آیتم «آموکسی سیلین ۵۰۰» اضافه شد.»)، شما قبل از تایید نهایی، از کاربر بپرسید: «آیا منظورتان آموکسی سیلین ۵۰۰ بود؟ آن را به فاکتور اضافه کردم. کار دیگری هست؟»
+    *   **ارائه هشدار:** اگر نتیجه یک تابع حاوی کلمه "هشدار" بود، آن را به عنوان یک نکته مهم و مفید به کاربر اطلاع بده. این یک خطا نیست، بلکه یک کمک است.
+    *   **خلاصه سازی:** قبل از فراخوانی توابع \`saveOrder\` یا \`savePurchaseBill\`، اگر در همان مکالمه چندین قلم اضافه کرده‌اید، یک خلاصه کوتاه (مثلا: «بسیار خب، فاکتور برای آقای ایکس با ۵ قلم و مجموع ۱۲۰۰۰ افغانی. آیا ذخیره شود؟») ارائه دهید و منتظر تایید باشید.
+
+گردش‌های کاری شما:
+*   **فروش:** وقتی کاربر می‌گوید «یک فاکتور جدید ثبت کن»، شما باید تابع \`startNewSale\` را فراخوانی کرده و سپس بلافاصله از کاربر بپرسید «برای کدام مشتری؟». پس از دریافت نام مشتری، تابع \`setSaleCustomer\` را فراخوانی کنید و سپس بپرسید «چه اقلامی به فاکتور اضافه کنم؟».
+*   **خرید:** گردش کار خرید مشابه فروش است. با دستور «یک فاکتور خرید جدید ثبت کن» شروع می‌شود و شما با پرسیدن نام شرکت و اقلام، کاربر را راهنمایی می‌کنید.
+*   **حالت سریع:** شما می‌توانید دستورات پیچیده و چند مرحله‌ای را در یک جمله درک کنید. (مثال: «برای آقای ایکس یک فاکتور باز کن، ۵ عدد آموکسی‌سیلین با ۱۰ درصد تخفیف اضافه کن و ذخیره کن.») در این حالت، شما باید تمام توابع لازم را به ترتیب فراخوانی کنید.
+*   **درخواست انبار:** وقتی کاربر می‌گوید «از انبار درخواست کالا بده»، شما تابع \`createStockRequisition\` را با اقلام گفته شده فراخوانی می‌کنید. این یک عملیات پس‌زمینه است و نیازی به باز کردن پنجره ندارد.`;
+
+
+        const sessionPromise = aiRef.current.live.connect({
+            model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+            callbacks: {
+                onopen: () => {
+                    // RESILIENCY FIX: If cleanup has run while the connection was opening,
+                    // the audio context will be null. Abort to prevent a crash.
+                    if (!inputAudioContextRef.current || !streamRef.current) {
+                        console.warn("[Voice Assistant] onopen triggered after cleanup. Aborting audio setup.");
+                        return;
+                    }
+                    const source = inputAudioContextRef.current!.createMediaStreamSource(streamRef.current!);
+                    const scriptProcessor = inputAudioContextRef.current!.createScriptProcessor(4096, 1, 1);
+                    scriptProcessorRef.current = scriptProcessor;
+
+                    scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+                        const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                        const pcmBlob = {
+                            data: encode(new Uint8Array(new Int16Array(inputData.map(x => x * 32768)).buffer)),
+                            mimeType: 'audio/pcm;rate=16000',
+                        };
+                        sessionPromiseRef.current?.then((session) => {
+                            session.sendRealtimeInput({ media: pcmBlob });
+                        });
+                    };
+                    source.connect(scriptProcessor);
+                    scriptProcessor.connect(inputAudioContextRef.current!.destination);
+                },
+                onmessage: async (message: any) => {
+                    if (message.serverContent) {
+                        if (message.serverContent.inputTranscription) {
+                            currentInputTranscriptionRef.current += message.serverContent.inputTranscription.text;
+                        }
+                        if (message.serverContent.outputTranscription) {
+                            currentOutputTranscriptionRef.current += message.serverContent.outputTranscription.text;
+                        }
+                        if (message.serverContent.turnComplete) {
+                            if (currentInputTranscriptionRef.current.trim()) {
+                                setTranscript(prev => [...prev, { speaker: 'user', text: currentInputTranscriptionRef.current.trim() }]);
+                            }
+                             if (currentOutputTranscriptionRef.current.trim()) {
+                                setTranscript(prev => [...prev, { speaker: 'ai', text: currentOutputTranscriptionRef.current.trim() }]);
+                            }
+                            currentInputTranscriptionRef.current = '';
+                            currentOutputTranscriptionRef.current = '';
+                        }
+                    }
+
+                    if (message.toolCall) {
+                        setStatus('THINKING');
+                        for (const fc of message.toolCall.functionCalls) {
+                            let result = 'ok'; // Default success response
+
+                            // --- Sales Workflow ---
+                            if (fc.name === 'navigateTo' && fc.args.page) {
+                                onNavigate(fc.args.page as string);
+                                setIsAssistantOpen(false); 
+                            } else if (fc.name === 'startNewSale') {
+                                if (activeItem !== 'sales') onNavigate('sales');
+                                dispatchUiAction({ type: 'START_NEW_SALE' });
+                            } else if (fc.name === 'setSaleCustomer' && fc.args.customerName) {
+                                const customerExists = customers.some(c => c.name.toLowerCase() === fc.args.customerName.toLowerCase());
+                                if (customerExists) {
+                                    dispatchUiAction({ type: 'SET_CUSTOMER', payload: { customerName: fc.args.customerName } });
+                                    result = `مشتری ثبت شده «${fc.args.customerName}» انتخاب شد.`;
+                                } else {
+                                    dispatchUiAction({ type: 'SET_TEMPORARY_CUSTOMER', payload: { customerName: fc.args.customerName } });
+                                    result = `مشتری «${fc.args.customerName}» در لیست نبود، اما به صورت موقت برای این فاکتور ثبت شد.`;
+                                }
+                            } else if (fc.name === 'addOrderItem' && fc.args.drugName && fc.args.quantity) {
+                                const searchTerm = fc.args.drugName.toLowerCase().trim().replace(/\s+/g, '');
+                                if (searchTerm) {
+                                    const matchingDrugs = drugs.filter(d => {
+                                        const normalizedDrugName = d.name.toLowerCase().trim().replace(/\s+/g, '');
+                                        return normalizedDrugName.includes(searchTerm);
+                                    });
+
+                                    if (matchingDrugs.length > 1) {
+                                        result = `MULTIPLE_MATCHES_FOUND: ${matchingDrugs.map(d => d.name).join(', ')}`;
+                                    } else if (matchingDrugs.length === 0) {
+                                        result = `داروی «${fc.args.drugName}» در انبار موجود نیست.`;
+                                    } else {
+                                        const drug = matchingDrugs[0];
+                                        const totalStock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
+                                        const quantityNeeded = (fc.args.quantity || 0) + (fc.args.bonus || 0);
+                                        if (totalStock < quantityNeeded) {
+                                            result = `موجودی «${drug.name}» (${totalStock}) برای فروش (${quantityNeeded}) کافی نیست.`;
+                                        } else {
+                                            dispatchUiAction({ type: 'ADD_ORDER_ITEM', payload: { ...fc.args, drugName: drug.name } }); // Use exact name
+                                            result = `آیتم «${drug.name}» اضافه شد.`;
+
+                                            // Proactive alerts
+                                            if (alertSettings.lowStock.enabled && (totalStock - quantityNeeded) < alertSettings.lowStock.quantity) {
+                                                result += ` هشدار: موجودی این کالا به کمتر از ${alertSettings.lowStock.quantity} عدد رسید.`;
+                                            }
+                                            const expiryLimitDate = new Date();
+                                            expiryLimitDate.setMonth(expiryLimitDate.getMonth() + alertSettings.expiry.months);
+                                            const hasNearExpiryBatch = drug.batches.some(b => b.quantity > 0 && new Date(b.expiryDate) < expiryLimitDate);
+                                            if (alertSettings.expiry.enabled && hasNearExpiryBatch) {
+                                                result += ` هشدار: این کالا دارای بچ نزدیک به انقضا است.`;
+                                            }
+                                        }
+                                    }
+                                } else {
+                                     result = `نام داروی معتبری برای جستجو ارائه نشده است.`;
+                                }
+                            } else if (fc.name === 'setPaymentAmount' && fc.args.amount !== undefined) {
+                                dispatchUiAction({ type: 'SET_PAYMENT_AMOUNT', payload: { amount: fc.args.amount } });
+                            } else if (fc.name === 'saveOrder') {
+                                dispatchUiAction({ type: 'SAVE_ORDER' });
+                            } else if (fc.name === 'saveAndPrintOrder') {
+                                dispatchUiAction({ type: 'SAVE_AND_PRINT_ORDER' });
+                            } else if (fc.name === 'addExtraCharge' && fc.args.description && fc.args.amount) {
+                                dispatchUiAction({ type: 'ADD_EXTRA_CHARGE', payload: { ...fc.args } });
+                            } else if (fc.name === 'removeOrderItem' && fc.args.drugName) {
+                                dispatchUiAction({ type: 'REMOVE_ORDER_ITEM', payload: { drugName: fc.args.drugName } });
+                            } else if (fc.name === 'editOrderItemQuantity' && fc.args.drugName && fc.args.newQuantity) {
+                                dispatchUiAction({ type: 'EDIT_ORDER_ITEM_QUANTITY', payload: { drugName: fc.args.drugName, newQuantity: fc.args.newQuantity } });
+                            
+                            // --- Purchasing Workflow ---
+                            } else if (fc.name === 'startNewPurchaseBill') {
+                                if (activeItem !== 'purchasing') onNavigate('purchasing');
+                                dispatchUiAction({ type: 'START_NEW_PURCHASE_BILL' });
+                            } else if (fc.name === 'setPurchaseSupplier' && fc.args.supplierName) {
+                                dispatchUiAction({ type: 'SET_PURCHASE_SUPPLIER', payload: { ...fc.args } });
+                            } else if (fc.name === 'addPurchaseItem' && fc.args.drugName) {
+                                const drugExists = [...drugs, ...mainWarehouseDrugs].some(d => d.name.toLowerCase().includes(fc.args.drugName.toLowerCase()));
+                                if (!drugExists) {
+                                    result = `داروی «${fc.args.drugName}» در سیستم تعریف نشده است.`;
+                                } else {
+                                    dispatchUiAction({ type: 'ADD_PURCHASE_ITEM', payload: { ...fc.args } });
+                                }
+                            } else if (fc.name === 'savePurchaseBill') {
+                                dispatchUiAction({ type: 'SAVE_PURCHASE_BILL' });
+
+                            // --- Inventory Workflow ---
+                            } else if (fc.name === 'createStockRequisition' && fc.args.items) {
+                                const requisitionItems: StockRequisitionItem[] = [];
+                                let allItemsFound = true;
+                                for (const item of fc.args.items) {
+                                    const searchTerm = item.drugName.toLowerCase().trim().replace(/\s+/g, '');
+                                    const drug = mainWarehouseDrugs.find(d => d.name.toLowerCase().replace(/\s+/g, '').includes(searchTerm));
+                                    if (drug) {
+                                        requisitionItems.push({ drugId: drug.id, drugName: drug.name, quantityRequested: item.quantity, quantityFulfilled: 0 });
+                                    } else {
+                                        result = `داروی «${item.drugName}» در انبار اصلی یافت نشد.`;
+                                        allItemsFound = false;
+                                        break;
+                                    }
+                                }
+                                if (allItemsFound) {
+                                    onSaveRequisition({ items: requisitionItems, notes: 'ایجاد شده توسط دستیار صوتی' });
+                                    result = `درخواست کالا با ${requisitionItems.length} قلم با موفقیت ثبت شد.`;
+                                }
+                            
+                            // --- Query Workflow ---
+                            } else if (fc.name === 'queryStockLevel' && fc.args.drugName) {
+                                const searchTerm = fc.args.drugName.toLowerCase().trim().replace(/\s+/g, '');
+                                const drug = drugs.find(d => d.name.toLowerCase().replace(/\s+/g, '').includes(searchTerm));
+                                if (drug) {
+                                    const stock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
+                                    result = `در حال حاضر ${stock} عدد از این دارو در انبار فروش موجود است.`;
+                                } else {
+                                    result = 'متاسفانه این دارو در انبار فروش یافت نشد.';
+                                }
+                            } else if (fc.name === 'queryCustomerBalance' && fc.args.customerName) {
+                                const customer = customers.find(c => c.name.toLowerCase().includes(fc.args.customerName.toLowerCase()));
+                                if (customer) {
+                                    const balance = customerBalances.get(customer.name);
+                                    if (balance !== undefined) {
+                                        if (balance > 0) result = `مشتری ${customer.name} در حال حاضر ${Math.round(balance).toLocaleString()} افغانی بدهکار است.`;
+                                        else if (balance < 0) result = `مشتری ${customer.name} در حال حاضر ${Math.round(Math.abs(balance)).toLocaleString()} افغانی بستانکار است.`;
+                                        else result = `حساب مشتری ${customer.name} تسویه شده است.`;
+                                    } else {
+                                         result = `برای مشتری ${customer.name} هیچ حساب مالی ثبت نشده است.`;
+                                    }
+                                } else {
+                                    result = 'مشتری با این نام یافت نشد.';
+                                }
+                            } else if (fc.name === 'queryPurchaseHistory' && fc.args.drugName && fc.args.customerName) {
+                                const customerOrders = orders
+                                    .filter(o => o.customerName.toLowerCase().includes(fc.args.customerName.toLowerCase()))
+                                    .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
+                                let lastPurchase: OrderItem | null = null;
+                                for (const order of customerOrders) {
+                                    const searchTerm = fc.args.drugName.toLowerCase().trim().replace(/\s+/g, '');
+                                    const foundItem = order.items.find(i => i.drugName.toLowerCase().replace(/\s+/g, '').includes(searchTerm));
+                                    if (foundItem) {
+                                        lastPurchase = foundItem;
+                                        break;
+                                    }
+                                }
+                                if (lastPurchase) {
+                                    result = `آخرین بار این دارو با قیمت نهایی ${Math.round(lastPurchase.finalPrice)} و تخفیف ${lastPurchase.discountPercentage}% فروخته شده است.`;
+                                } else {
+                                    result = 'سابقه خریدی برای این دارو از این مشتری یافت نشد.';
+                                }
+                            } else {
+                                result = `Unknown function call: ${fc.name}`;
+                            }
+                            // After executing, send a response back to the model.
+                            sessionPromiseRef.current?.then(session => session.sendToolResponse({
+                                functionResponses: { id : fc.id, name: fc.name, response: { result } }
+                            }));
+                        }
+                    }
+
+                    const audioData = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+                    if (audioData) {
+                        setStatus('SPEAKING');
+                        const outputContext = outputAudioContextRef.current!;
+                        nextAudioStartTimeRef.current = Math.max(nextAudioStartTimeRef.current, outputContext.currentTime);
+                        const audioBuffer = await decodeAudioData(decode(audioData), outputContext, 24000, 1);
+                        const source = outputContext.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(outputContext.destination);
+                        source.addEventListener('ended', () => audioSourcesRef.current.delete(source));
+                        source.start(nextAudioStartTimeRef.current);
+                        nextAudioStartTimeRef.current += audioBuffer.duration;
+                        audioSourcesRef.current.add(source);
+                    }
+                },
+                onerror: (e) => {
+                    console.error('Session error:', e);
+                    addToast('خطا در ارتباط با دستیار صوتی.', 'error');
+                    cleanup();
+                },
+                onclose: () => {
+                    console.log('Session closed.');
+                    cleanup();
+                },
+            },
+            config: {
+                // FIX: Use Modality.AUDIO enum member instead of a string literal.
+                responseModalities: [Modality.AUDIO],
+                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+                tools: [{ functionDeclarations: allFunctionDeclarations }],
+                inputAudioTranscription: {},
+                outputAudioTranscription: {},
+                systemInstruction
+            },
+        });
+        sessionPromiseRef.current = sessionPromise;
+    };
+    
+    const toggleAssistant = () => {
+        if (!aiRef.current) {
+            addToast('کلید API برای دستیار صوتی تنظیم نشده است.', 'error');
+            return;
+        }
+        if (status === 'IDLE') {
+            setIsAssistantOpen(true);
+            startSession();
+        } else {
+            cleanup();
+            setIsAssistantOpen(false);
+        }
+    };
+
+    const statusMap = {
+        IDLE: { text: 'برای شروع صحبت کنید', color: 'text-gray-500' },
+        LISTENING: { text: 'در حال شنیدن...', color: 'text-blue-500' },
+        THINKING: { text: 'در حال پردازش...', color: 'text-yellow-500' },
+        SPEAKING: { text: 'در حال صحبت کردن...', color: 'text-green-500' },
+    };
+
+    return (
+        <>
+            <button
+                onClick={toggleAssistant}
+                className={`fixed bottom-6 left-6 z-[102] w-16 h-16 rounded-full text-white shadow-2xl flex items-center justify-center transition-all duration-300 ${status === 'IDLE' ? 'bg-teal-600 hover:bg-teal-700' : 'bg-red-600 hover:bg-red-700'}`}
+                aria-label={status === 'IDLE' ? 'فعال کردن دستیار صوتی' : 'غیرفعال کردن دستیار صوتی'}
+            >
+                {status !== 'IDLE' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>}
+                {status === 'IDLE' ? <MicrophoneIcon className="w-8 h-8"/> : <StopIcon className="w-8 h-8" />}
+            </button>
+
+            {isAssistantOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-30 z-[95] flex items-end justify-center p-4" onClick={() => { if (status === 'IDLE') setIsAssistantOpen(false); }}>
+                    <div className="bg-white rounded-t-2xl w-full max-w-2xl max-h-[60vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <header className="p-4 border-b flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <SparklesIcon className="w-6 h-6 text-teal-500" />
+                                <h3 className="text-lg font-bold">دستیار هوشمند حیات</h3>
+                                <p className={`text-sm font-semibold ${statusMap[status].color}`}>{statusMap[status].text}</p>
+                            </div>
+                            <button onClick={() => { cleanup(); setIsAssistantOpen(false); }} className="p-1 rounded-full hover:bg-gray-100"><CloseIcon/></button>
+                        </header>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {transcript.length === 0 && <p className="text-center text-gray-500 py-8">برای شروع، دستور خود را بگویید...</p>}
+                            {transcript.map((t, i) => (
+                                <div key={i} className={`flex ${t.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                    <p className={`max-w-[80%] p-3 rounded-2xl ${t.speaker === 'user' ? 'bg-teal-600 text-white rounded-br-none' : 'bg-gray-200 text-gray-800 rounded-bl-none'}`}>
+                                        {t.text}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
+    );
+};
+
+
 //=========== MAIN APP COMPONENT ===========//
 const App: React.FC = () => {
     // --- Remote Control View ---
@@ -598,6 +1339,16 @@ const App: React.FC = () => {
     const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>('LOADING');
     const [licenseInfo, setLicenseInfo] = usePersistentState<LicenseInfo | null>('hayat_license_info', null);
     const [lastCheck, setLastCheck] = usePersistentState<string | null>('hayat_last_license_check', null);
+
+    // --- NEW: UI ACTION QUEUE FOR VOICE ASSISTANT ---
+    const [uiActionQueue, setUiActionQueue] = useState<any[]>([]);
+    const dispatchUiAction = (action: any) => {
+        setUiActionQueue(prev => [...prev, { ...action, id: Date.now() + Math.random() }]);
+    };
+    const consumeUiAction = (actionId: number) => {
+        setUiActionQueue(prev => prev.filter(a => a.id !== actionId));
+    };
+
 
     // --- NEW: SERVICE WORKER REGISTRATION & UPDATE HANDLING ---
     useEffect(() => {
@@ -2136,10 +2887,10 @@ const App: React.FC = () => {
         switch(activeItem) {
             case 'dashboard': return <Dashboard orders={orders} drugs={drugs} customers={customers} onNavigate={setActiveItem} activeAlerts={activeAlerts} />;
             case 'inventory': return <Inventory drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} stockRequisitions={stockRequisitions} onSaveDrug={handleSaveDrug} onDelete={handleDeleteDrug} onWriteOff={handleWriteOff} onSaveRequisition={handleSaveRequisition} rolePermissions={rolePermissions} onTraceLotNumber={handleTraceLotNumber} {...commonProps} />;
-            case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} onSave={handleSaveOrder} onDelete={handleDeleteOrder} rolePermissions={rolePermissions} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} {...commonProps} />;
+            case 'sales': return <Sales orders={orders} drugs={drugs} customers={customers} onSave={handleSaveOrder} onDelete={handleDeleteOrder} rolePermissions={rolePermissions} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} uiActionQueue={uiActionQueue} consumeUiAction={consumeUiAction} {...commonProps} />;
             case 'customers': return <Customers customers={customers} onSave={(c) => { setCustomers(prev => prev.find(i => i.id === c.id) ? prev.map(i => i.id === c.id ? c : i) : [{...c, registrationDate: new Date().toISOString()}, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'customers', payload: c }); }} onDelete={handleDeleteCustomer} rolePermissions={rolePermissions} onViewLedger={handleViewLedger} {...commonProps} />;
             case 'suppliers': return <Suppliers suppliers={suppliers} onSave={(s) => { setSuppliers(prev => prev.find(i => i.id === s.id) ? prev.map(i => i.id === s.id ? s : i) : [s, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'suppliers', payload: s }); }} onDelete={handleDeleteSupplier} {...commonProps} />;
-            case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} {...commonProps} />;
+            case 'purchasing': return <Purchasing purchaseBills={purchaseBills} suppliers={suppliers} drugs={[...mainWarehouseDrugs, ...drugs]} onSave={handleSavePurchaseBill} onDelete={handleDeletePurchaseBill} onOpenQuickAddModal={() => setIsQuickAddDrugModalOpen(true)} uiActionQueue={uiActionQueue} consumeUiAction={consumeUiAction} {...commonProps} />;
             case 'finance': return <Accounting orders={orders} expenses={expenses} onSave={(e) => { setExpenses(prev => prev.find(i => i.id === e.id) ? prev.map(i => i.id === e.id ? e : i) : [e, ...prev]); addToSyncQueue({ type: 'UPSERT', table: 'expenses', payload: e }); }} onDelete={handleDeleteExpense} {...commonProps} />;
             case 'reports': return <Reports orders={orders} drugs={drugs} mainWarehouseDrugs={mainWarehouseDrugs} customers={customers} suppliers={suppliers} purchaseBills={purchaseBills} inventoryWriteOffs={inventoryWriteOffs} lotNumberToTrace={lotNumberToTrace} {...commonProps} />;
             case 'fulfillment': return <Fulfillment orders={orders} drugs={drugs} onUpdateOrder={handleSaveOrder} {...commonProps} />;
@@ -2236,6 +2987,20 @@ const App: React.FC = () => {
             >
                 {confirmationModal?.message}
             </ConfirmationModal>
+            <VoiceAssistant 
+                onNavigate={setActiveItem} 
+                currentUser={effectiveUser} 
+                addToast={addToast} 
+                activeItem={activeItem} 
+                dispatchUiAction={dispatchUiAction} 
+                drugs={drugs}
+                customers={customers}
+                customerBalances={customerBalances}
+                orders={orders}
+                onSaveRequisition={handleSaveRequisition}
+                alertSettings={alertSettings}
+                mainWarehouseDrugs={mainWarehouseDrugs}
+            />
         </div>
     );
 };

@@ -193,15 +193,18 @@ type OrderModalProps = {
     customers: Customer[];
     orders: Order[];
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
-    mode: 'sale' | 'return';
+    // FIX: Add 'edit' to the mode type to resolve the assignment error.
+    mode: 'sale' | 'return' | 'edit';
     onOpenQuickAddModal: () => void;
     permissions: {
         canGiveManualDiscount: boolean;
         maxDiscountPercentage: number;
     };
+    uiActionQueue: any[];
+    consumeUiAction: (actionId: number) => void;
 };
 
-const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initialData, drugs, customers, orders, addToast, mode, onOpenQuickAddModal, permissions }) => {
+const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initialData, drugs, customers, orders, addToast, mode, onOpenQuickAddModal, permissions, uiActionQueue, consumeUiAction }) => {
     
     const [orderInfo, setOrderInfo] = useState({
         customerName: '', amountPaid: '' as number | '', status: 'ارسال شده' as OrderStatus,
@@ -210,13 +213,15 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
     const [extraCharges, setExtraCharges] = useState<ExtraCharge[]>([]);
     const [newCharge, setNewCharge] = useState({ description: '', amount: '' });
     const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const formRef = useRef<HTMLFormElement>(null);
     
     // --- NEW: States for the product catalog ---
     const [catalogSearchTerm, setCatalogSearchTerm] = useState('');
     const [catalogCategory, setCatalogCategory] = useState('all');
     const [historyVisibleForDrugId, setHistoryVisibleForDrugId] = useState<number | null>(null);
 
-    const isEditMode = initialData !== null && mode === 'sale';
+    // FIX: Correctly determine if the modal is in edit mode.
+    const isEditMode = mode === 'edit';
 
     const totalAmount = useMemo(() => {
         const itemsTotal = items.reduce((sum, item) => {
@@ -283,6 +288,115 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
             setHistoryVisibleForDrugId(null);
         }
     }, [isOpen, initialData, mode]);
+    
+    // Voice Assistant Action Handler
+    useEffect(() => {
+        if (!isOpen || uiActionQueue.length === 0) return;
+
+        const action = uiActionQueue[0]; // Process one action at a time
+
+        const handleRemoveItem = (drugId: number) => {
+            setItems(prev => prev.filter(item => item.drugId !== drugId));
+        };
+
+        const handleQuantityChange = (drugId: number, newQuantityStr: string) => {
+            const newQuantity = parseInt(newQuantityStr, 10) || 0;
+            const item = items.find(i => i.drugId === drugId);
+            if (!item) return;
+    
+            const drugInStock = drugs.find(d => d.id === drugId);
+            const totalStock = drugInStock ? drugInStock.batches.reduce((sum, b) => sum + b.quantity, 0) : 0;
+    
+            if (mode === 'sale' && drugInStock && (newQuantity + item.bonusQuantity) > totalStock) {
+                addToast(`مجموع تعداد فروش و بونس (${newQuantity + item.bonusQuantity}) بیشتر از موجودی انبار (${totalStock}) است.`, 'error');
+                return;
+            }
+    
+            if (mode === 'return' && initialData) {
+                const originalItem = initialData.items.find(i => i.drugId === drugId);
+                if (originalItem && newQuantity > originalItem.quantity) {
+                    addToast(`تعداد برگشتی نمی‌تواند بیشتر از تعداد فروخته شده (${originalItem.quantity}) باشد.`, 'error');
+                    return;
+                }
+            }
+    
+            setItems(currentItems =>
+                currentItems.map(it => it.drugId === drugId ? { ...it, quantity: newQuantity } : it)
+            );
+        };
+
+
+        switch(action.type) {
+            case 'SET_CUSTOMER':
+            case 'SET_TEMPORARY_CUSTOMER':
+                const customerName = action.payload.customerName;
+                setOrderInfo(prev => ({ ...prev, customerName: customerName }));
+                break;
+            
+            case 'ADD_ORDER_ITEM':
+                const { drugName, quantity, bonus, price, discount } = action.payload;
+                const drugToAdd = drugs.find(d => d.name.toLowerCase().includes(drugName.toLowerCase()));
+
+                if (drugToAdd) {
+                    const success = addItemToOrder(drugToAdd, quantity || 1);
+                    
+                    if (success) {
+                         setItems(currentItems => currentItems.map(it => {
+                            if (it.drugId === drugToAdd.id) {
+                                let updatedItem = { ...it, bonusQuantity: (it.bonusQuantity || 0) + (bonus || 0) };
+
+                                if (price !== undefined || discount !== undefined) {
+                                    updatedItem = {...updatedItem, isPriceOverridden: true };
+                                    if (price !== undefined) {
+                                        updatedItem.finalPrice = Number(price);
+                                        updatedItem.discountPercentage = ((it.originalPrice - Number(price)) / it.originalPrice) * 100;
+                                    } else if (discount !== undefined) {
+                                        const clampedDiscount = Math.min(Number(discount), permissions.maxDiscountPercentage);
+                                        updatedItem.discountPercentage = clampedDiscount;
+                                        updatedItem.finalPrice = it.originalPrice * (1 - (clampedDiscount / 100));
+                                    }
+                                }
+                                return updatedItem;
+                            }
+                            return it;
+                        }));
+                    }
+                }
+                break;
+
+            case 'SET_PAYMENT_AMOUNT':
+                setOrderInfo(prev => ({ ...prev, amountPaid: Number(action.payload.amount) }));
+                break;
+
+            case 'SAVE_ORDER':
+                handleSubmit(null, false);
+                break;
+            case 'SAVE_AND_PRINT_ORDER':
+                handleSubmit(null, true);
+                break;
+            
+            case 'ADD_EXTRA_CHARGE':
+                setExtraCharges(prev => [...prev, { id: Date.now(), description: action.payload.description, amount: action.payload.amount }]);
+                break;
+            
+            case 'REMOVE_ORDER_ITEM':
+                const itemToRemove = items.find(i => i.drugName.toLowerCase().includes(action.payload.drugName.toLowerCase()));
+                if (itemToRemove) {
+                    handleRemoveItem(itemToRemove.drugId);
+                }
+                break;
+
+            case 'EDIT_ORDER_ITEM_QUANTITY':
+                 const itemToEdit = items.find(i => i.drugName.toLowerCase().includes(action.payload.drugName.toLowerCase()));
+                 if (itemToEdit) {
+                    handleQuantityChange(itemToEdit.drugId, String(action.payload.newQuantity));
+                 }
+                 break;
+        }
+
+        consumeUiAction(action.id);
+
+    }, [uiActionQueue, isOpen, customers, addToast, consumeUiAction, drugs, permissions.maxDiscountPercentage, items, initialData, mode]);
 
 
     if (!isOpen) return null;
@@ -449,8 +563,8 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
         setExtraCharges(prev => prev.filter(charge => charge.id !== id));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = (e: React.FormEvent | null, andPrint: boolean = false) => {
+        e?.preventDefault();
         const amountPaid = Number(orderInfo.amountPaid) || 0;
 
         if (!orderInfo.customerName || items.length === 0) {
@@ -493,8 +607,14 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
             totalAmount: finalAmount,
             paymentStatus
         };
+        
         onSave(finalOrderData);
-        onClose();
+        
+        if (andPrint) {
+            // The parent component will handle the printing logic
+        } else {
+            onClose();
+        }
     };
 
     const inputStyles = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition-shadow";
@@ -551,7 +671,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose, onSave, initia
                     </div>
                     {/* RIGHT PANEL: ORDER FORM */}
                     <div className="w-full lg:w-2/3 overflow-y-auto p-6">
-                        <form id="order-modal-form" onSubmit={handleSubmit} className="space-y-6">
+                        <form id="order-modal-form" ref={formRef} onSubmit={(e) => handleSubmit(e, false)} className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label htmlFor="customerName" className={labelStyles}>نام مشتری</label>
@@ -778,8 +898,16 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                 <div 
                     id="print-section"
                     className={`p-10 ${'template-' + selectedTemplate} ${'layout-logo-' + documentSettings.logoPosition}`}
-                    style={{ '--accent-color': documentSettings.accentColor } as React.CSSProperties}
+                    style={{
+                        '--accent-color': documentSettings.accentColor,
+                        ...(documentSettings.backgroundImage && { 
+                            '--bg-image': `url(${documentSettings.backgroundImage})`,
+                            '--bg-overlay': 'rgba(255, 255, 255, 0.85)' 
+                        })
+                    } as React.CSSProperties}
                 >
+                    <div className="print-section-background"></div>
+
                     <header className="print-header">
                         <div className="print-company-info">
                             <h1 className="text-3xl font-bold text-gray-800 print-title">{companyInfo.name}</h1>
@@ -788,13 +916,13 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                         </div>
                         {companyInfo.logo && <img src={companyInfo.logo} alt="Company Logo" className="print-logo" />}
                     </header>
-                    <div className="grid grid-cols-3 gap-8 my-8">
+                     <div className="grid grid-cols-3 gap-8 my-8">
                         <div>
                             <h4 className="text-sm text-gray-500 font-bold mb-1">فاکتور برای:</h4>
-                            <p className="font-semibold text-gray-800">{customer?.name}</p>
-                            <p className="text-xs text-gray-600">{customer?.address}</p>
+                            <p className="font-semibold text-gray-800">{order.customerName}</p>
+                            {customer && <p className="text-xs text-gray-500">{customer.address}</p>}
                         </div>
-                        <div>
+                         <div>
                             <h4 className="text-sm text-gray-500 font-bold mb-1">شماره فاکتور:</h4>
                             <p className="font-semibold text-gray-800">{order.orderNumber}</p>
                         </div>
@@ -820,71 +948,88 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
                         </thead>
                         <tbody className="divide-y">
                             {order.items.map((item, index) => {
+                                const finalItemTotal = item.finalPrice * item.quantity;
                                 const drugInfo = drugs.find(d => d.id === item.drugId);
                                 return (
                                 <tr key={item.drugId}>
                                     <td className="p-3">{index + 1}</td>
                                     <td className="p-3 font-medium">
                                         {item.drugName}
-                                        {item.batchAllocations && item.batchAllocations.length > 0 && (
-                                            <div className="text-xs text-gray-500 font-mono mt-1">
-                                            لات: {item.batchAllocations.map(a => a.lotNumber).join(', ')}
-                                            </div>
-                                        )}
+                                        <div className="text-xs text-gray-500">{item.manufacturer}</div>
                                     </td>
                                     <td className="p-3">{formatQuantity(item.quantity, drugInfo?.unitsPerCarton, drugInfo?.cartonSize)}</td>
                                     {showBonusInPrint && <td className="p-3">{item.bonusQuantity > 0 ? formatQuantity(item.bonusQuantity, drugInfo?.unitsPerCarton, drugInfo?.cartonSize) : '-'}</td>}
-                                    <td className="p-3">{Math.round(item.originalPrice).toLocaleString()}</td>
-                                    <td className="p-3">{item.discountPercentage > 0 ? `${item.discountPercentage.toFixed(2)}%` : '-'}</td>
-                                    <td className="p-3 font-semibold">{Math.round(item.finalPrice * item.quantity).toLocaleString()}</td>
+                                    <td className="p-3">{item.originalPrice.toLocaleString()}</td>
+                                    <td className="p-3">{item.discountPercentage > 0 ? `${item.discountPercentage.toFixed(1)}%` : '-'}</td>
+                                    <td className="p-3 font-semibold">{finalItemTotal.toLocaleString()}</td>
                                 </tr>
                             )})}
                         </tbody>
                     </table>
-                    <div className="flex justify-end mt-8">
+                    <div className="flex justify-between mt-8">
+                        <div className="w-1/2">
+                            {notes && (
+                                <>
+                                    <h4 className="font-bold mb-2">یادداشت‌ها:</h4>
+                                    <p className="text-sm whitespace-pre-wrap">{notes}</p>
+                                </>
+                            )}
+                        </div>
                         <div className="w-full max-w-sm space-y-3 print-summary pt-4">
                             <div className="flex justify-between">
                                 <span className="text-gray-600">جمع جزء:</span>
-                                <span className="font-semibold">{Math.round(itemsSubtotal).toLocaleString()}</span>
+                                <span className="font-semibold">{itemsSubtotal.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-gray-600">مجموع تخفیف:</span>
-                                <span className="font-semibold text-green-600">{Math.round(totalItemsDiscount).toLocaleString()}</span>
+                                <span className="text-gray-600">مجموع تخفیف اقلام:</span>
+                                <span className="font-semibold text-green-600">{totalItemsDiscount.toLocaleString()}</span>
                             </div>
-                            {extraCharges.map(charge => (
+                             {extraCharges.map(charge => (
                                 <div key={charge.id} className="flex justify-between">
                                     <span className="text-gray-600">{charge.description}:</span>
-                                    <span className="font-semibold">{Math.round(charge.amount).toLocaleString()}</span>
+                                    <span className="font-semibold">{charge.amount.toLocaleString()}</span>
                                 </div>
-                            ))}
+                             ))}
                             <div className="flex justify-between text-xl font-bold text-gray-800 pt-2 border-t">
-                                <span>مبلغ نهایی قابل پرداخت:</span>
-                                <span>{Math.round(order.totalAmount).toLocaleString()} افغانی</span>
-                            </div>
-                             <div className="flex justify-between">
-                                <span>مبلغ پرداخت شده:</span>
-                                <span>{Math.round(order.amountPaid).toLocaleString()}</span>
-                            </div>
-                             <div className="flex justify-between">
-                                <span>مانده قبلی:</span>
-                                <span>{Math.round(previousBalance).toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between text-lg font-bold">
-                                <span>مانده نهایی:</span>
-                                <span>{Math.round(finalBalance).toLocaleString()}</span>
+                                <span>مبلغ نهایی فاکتور:</span>
+                                <span>{order.totalAmount.toLocaleString()} افغانی</span>
                             </div>
                         </div>
                     </div>
-                    {notes && <div className="mt-8 pt-4 border-t"><p className="font-semibold">یادداشت:</p><p className="text-sm text-gray-600 whitespace-pre-wrap">{notes}</p></div>}
+                     <div className="flex justify-between mt-8 text-sm p-4 bg-gray-50 rounded-lg">
+                         <div>
+                            <p className="text-gray-600">مانده حساب قبلی:</p>
+                            <p className="font-bold text-lg">{previousBalance.toLocaleString()} افغانی</p>
+                         </div>
+                         <div>
+                            <p className="text-gray-600">مبلغ این فاکتور:</p>
+                            <p className="font-bold text-lg">{order.totalAmount.toLocaleString()} افغانی</p>
+                         </div>
+                         <div>
+                            <p className="text-gray-600">مبلغ پرداختی:</p>
+                            <p className="font-bold text-lg text-green-600">{order.amountPaid.toLocaleString()} افغانی</p>
+                         </div>
+                         <div className="border-r pr-4">
+                            <p className="text-gray-600">مانده حساب نهایی:</p>
+                            <p className="font-bold text-xl text-red-600">{finalBalance.toLocaleString()} افغانی</p>
+                         </div>
+                    </div>
+                     <footer className="mt-16 pt-6 border-t text-sm text-gray-500 text-center">
+                        <span>تاریخ و زمان چاپ: {new Date().toLocaleString('fa-IR')}</span>
+                    </footer>
                 </div>
                 <div className="flex justify-between items-center space-x-2 space-x-reverse p-4 bg-gray-50 rounded-b-xl border-t print:hidden">
-                    <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={showBonusInPrint} onChange={e => setShowBonusInPrint(e.target.checked)} /> نمایش ستون بونس</label>
-                        <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="اضافه کردن یادداشت..." className="p-1 border rounded-md text-sm" />
-                        <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="bg-white border border-gray-300 rounded-md px-2 py-1 text-sm">
+                    <div className="flex gap-4 items-center">
+                        <label className="text-sm font-semibold mr-2 flex items-center gap-2">
+                            <input type="checkbox" checked={showBonusInPrint} onChange={() => setShowBonusInPrint(p => !p)} />
+                            نمایش ستون بونس
+                        </label>
+                        <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="bg-white border border-gray-300 rounded-md px-2 py-1">
                             <option value="modern">مدرن</option>
                             <option value="classic">کلاسیک</option>
+                            <option value="minimalist">ساده</option>
                         </select>
+                         <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="یادداشت‌های اضافی برای چاپ..." className="p-1 border rounded-md text-sm" rows={1}></textarea>
                     </div>
                     <div className='flex gap-2'>
                         <button type="button" onClick={onClose} className="px-6 py-2 rounded-lg bg-gray-200 font-semibold">بستن</button>
@@ -896,28 +1041,33 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ isOpen, onClose, 
     );
 };
 
+
 //=========== MAIN COMPONENT ===========//
 type SalesProps = {
     orders: Order[];
     drugs: Drug[];
     customers: Customer[];
-    companyInfo: CompanyInfo;
     onSave: (order: Order) => void;
     onDelete: (id: number) => void;
     currentUser: User;
     rolePermissions: RolePermissions;
-    documentSettings: DocumentSettings;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     onOpenQuickAddModal: () => void;
+    companyInfo: CompanyInfo;
+    documentSettings: DocumentSettings;
+    uiActionQueue: any[];
+    consumeUiAction: (actionId: number) => void;
+    isRemoteView?: boolean;
+    isSystemOnline?: boolean;
 };
 
-const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, onSave, onDelete, currentUser, rolePermissions, documentSettings, addToast, onOpenQuickAddModal }) => {
-    const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
-    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-    const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
-    const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-    const [modalMode, setModalMode] = useState<'sale' | 'return'>('sale');
+const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, onSave, onDelete, currentUser, rolePermissions, addToast, onOpenQuickAddModal, companyInfo, documentSettings, uiActionQueue, consumeUiAction, isRemoteView, isSystemOnline }) => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [modalMode, setModalMode] = useState<'sale' | 'return' | 'edit'>('sale');
+    const [initialModalData, setInitialModalData] = useState<Order | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+    const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
 
     const permissions = useMemo(() => {
         if (currentUser.role === 'مدیر کل') {
@@ -931,44 +1081,10 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
         }
         return rolePermissions[currentUser.role];
     }, [currentUser.role, rolePermissions]);
-
+    
     const hasAnyPermission = useMemo(() => {
         return permissions.canCreateSale || permissions.canEditSale || permissions.canDeleteSale;
     }, [permissions]);
-
-    if (!hasAnyPermission && currentUser.role !== 'مدیر کل') {
-        return <NoPermissionMessage />;
-    }
-
-    const handleOpenAddModal = () => {
-        setEditingOrder(null);
-        setModalMode('sale');
-        setIsOrderModalOpen(true);
-    };
-
-    const handleOpenEditModal = (order: Order) => {
-        setEditingOrder(order);
-        setModalMode('sale');
-        setIsOrderModalOpen(true);
-    };
-    
-    const handleOpenReturnModal = (order: Order) => {
-        setEditingOrder(order);
-        setModalMode('return');
-        setIsOrderModalOpen(true);
-    };
-
-    const handleOpenPrintModal = (order: Order) => {
-        setOrderToPrint(order);
-        setIsPrintModalOpen(true);
-    };
-
-    const filteredOrders = useMemo(() => {
-        return orders.filter(o => 
-            o.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            o.orderNumber.toLowerCase().includes(searchTerm.toLowerCase())
-        ).sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
-    }, [orders, searchTerm]);
 
     const customerBalances = useMemo(() => {
         const balances = new Map<string, number>();
@@ -979,24 +1095,88 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
         return balances;
     }, [orders]);
 
+    const handleOpenAddModal = useCallback(() => {
+        if (!permissions.canCreateSale) return;
+        setInitialModalData(null);
+        setModalMode('sale');
+        setIsModalOpen(true);
+    }, [permissions.canCreateSale]);
+
+    useEffect(() => {
+        const startSaleAction = uiActionQueue.find(a => a.type === 'START_NEW_SALE');
+        if (startSaleAction) {
+            handleOpenAddModal();
+            consumeUiAction(startSaleAction.id);
+        }
+    }, [uiActionQueue, consumeUiAction, handleOpenAddModal]);
+
+
+    const handleOpenReturnModal = (order: Order) => {
+        setInitialModalData(order);
+        setModalMode('return');
+        setIsModalOpen(true);
+    };
+
+    const handleOpenEditModal = (order: Order) => {
+        if (!permissions.canEditSale) return;
+        setInitialModalData(order);
+        setModalMode('edit');
+        setIsModalOpen(true);
+    };
+
+    const handlePrintOrder = (order: Order) => {
+        setOrderToPrint(order);
+        setIsPrintPreviewOpen(true);
+    };
+
+    const handleSaveAndPrint = (order: Order) => {
+        onSave(order); // Save first
+        // Wait a bit for state to update, then print
+        setTimeout(() => {
+            setOrderToPrint(order);
+            setIsPrintPreviewOpen(true);
+            setIsModalOpen(false); // Close the order modal
+        }, 300);
+    };
+
+    const sortedAndFilteredOrders = useMemo(() => {
+        return [...orders]
+            .filter(order => 
+                order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase())
+            )
+            .sort((a,b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
+    }, [orders, searchTerm]);
+    
+    if (!hasAnyPermission && currentUser.role !== 'مدیر کل') {
+        return <NoPermissionMessage />;
+    }
+    
+    // Filter out actions handled here so they are not passed to modal
+    const modalActions = uiActionQueue.filter(a => a.type !== 'START_NEW_SALE');
+
     return (
-        <div className="p-8">
-            <OrderModal
-                isOpen={isOrderModalOpen}
-                onClose={() => setIsOrderModalOpen(false)}
-                onSave={onSave}
-                initialData={editingOrder}
-                drugs={drugs}
-                customers={customers}
-                orders={orders}
-                addToast={addToast}
-                mode={modalMode}
-                onOpenQuickAddModal={onOpenQuickAddModal}
-                permissions={permissions}
-            />
-            <PrintPreviewModal 
-                isOpen={isPrintModalOpen}
-                onClose={() => setIsPrintModalOpen(false)}
+        <div className="p-4 md:p-8">
+            {permissions.canCreateSale && (
+                <OrderModal
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
+                    onSave={handleSaveAndPrint}
+                    initialData={initialModalData}
+                    drugs={drugs}
+                    customers={customers}
+                    orders={orders}
+                    addToast={addToast}
+                    mode={modalMode}
+                    onOpenQuickAddModal={onOpenQuickAddModal}
+                    permissions={permissions}
+                    uiActionQueue={modalActions}
+                    consumeUiAction={consumeUiAction}
+                />
+            )}
+             <PrintPreviewModal
+                isOpen={isPrintPreviewOpen}
+                onClose={() => setIsPrintPreviewOpen(false)}
                 order={orderToPrint}
                 customer={customers.find(c => c.name === orderToPrint?.customerName) || null}
                 companyInfo={companyInfo}
@@ -1004,82 +1184,82 @@ const Sales: React.FC<SalesProps> = ({ orders, drugs, customers, companyInfo, on
                 previousBalance={(customerBalances.get(orderToPrint?.customerName || '') || 0) - ((orderToPrint?.totalAmount || 0) - (orderToPrint?.amountPaid || 0))}
                 drugs={drugs}
             />
-
             <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
-                <div>
+                 <div>
                     <h2 className="text-2xl font-bold text-gray-800">فروش و سفارشات</h2>
-                    <p className="text-gray-500">لیست فاکتورهای فروش و مستردی</p>
+                    <p className="text-gray-500">فاکتورهای فروش و مستردی مشتریان را مدیریت کنید.</p>
                 </div>
-                 <div className="flex items-center space-x-2 space-x-reverse flex-wrap gap-2">
+                <div className="flex items-center space-x-4 space-x-reverse">
                     <div className="relative">
                         <input
                             type="text"
                             placeholder="جستجوی فاکتور..."
+                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 pr-4 py-2 border rounded-lg"
                         />
-                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                            <SearchIcon />
                         </div>
                     </div>
-                     {permissions.canCreateSale && (
-                        <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 shadow-md">
-                            <PlusIcon />
-                            <span className="mr-2">ثبت سفارش جدید</span>
-                        </button>
-                    )}
+                     {permissions.canCreateSale && <button onClick={handleOpenAddModal} className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 shadow-md">
+                        <PlusIcon />
+                        <span className="mr-2">سفارش جدید</span>
+                    </button>}
                 </div>
             </div>
-
+            
             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-                 <div className="overflow-x-auto">
+                <div className="overflow-x-auto">
                     <table className="w-full text-right">
                         <thead className="bg-gray-50 border-b-2">
                              <tr>
-                                <th className="p-4">شماره فاکتور</th>
-                                <th className="p-4">مشتری</th>
-                                <th className="p-4">تاریخ</th>
-                                <th className="p-4">مبلغ کل</th>
-                                <th className="p-4">سود</th>
-                                <th className="p-4">وضعیت پرداخت</th>
-                                <th className="p-4">وضعیت سفارش</th>
-                                <th className="p-4">عملیات</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">شماره فاکتور</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">مشتری</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">تاریخ</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">مبلغ کل</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">مانده</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">وضعیت پرداخت</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">وضعیت سفارش</th>
+                                <th className="p-2 md:p-4 text-sm font-semibold text-gray-600">عملیات</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y">
-                            {filteredOrders.map(order => {
-                                const orderStatusStyle = getOrderStatusStyle(order.status);
+                            {sortedAndFilteredOrders.map(order => {
+                                const remaining = order.totalAmount - order.amountPaid;
+                                const isReturn = order.type === 'sale_return';
                                 const paymentStatusStyle = getPaymentStatusStyle(order.paymentStatus);
-                                const itemsRevenue = order.items.reduce((sum, item) => {
-                                    return sum + (item.quantity * item.finalPrice);
-                                }, 0);
-                                const cogs = order.items.reduce((sum, item) => sum + (item.batchAllocations || []).reduce((cogsSum, alloc) => cogsSum + (alloc.quantity * alloc.purchasePrice), 0), 0);
-                                // FIX: Correctly calculate profit for sale returns as a negative value.
-                                const profit = order.type === 'sale_return' ? -(itemsRevenue - cogs) : (itemsRevenue - cogs);
+                                const orderStatusStyle = getOrderStatusStyle(order.status);
                                 return (
-                                <tr key={order.id} className={order.type === 'sale_return' ? 'bg-orange-50 hover:bg-orange-100' : 'hover:bg-gray-50'}>
-                                    <td className="p-4 font-mono">{order.orderNumber}</td>
-                                    <td className="p-4">{order.customerName}</td>
-                                    <td className="p-4 whitespace-nowrap text-gray-500 text-sm">
+                                <tr key={order.id} className={`${isReturn ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'} transition-colors`}>
+                                    <td className="p-2 md:p-4 font-medium text-gray-800">
+                                        <div className='flex items-center gap-2'>
+                                            {isReturn && <span className="text-red-600" title="مستردی"><ReturnIcon /></span>}
+                                            <span>{order.orderNumber}</span>
+                                        </div>
+                                    </td>
+                                    <td className="p-2 md:p-4 text-gray-500">{order.customerName}</td>
+                                    <td className="p-2 md:p-4 whitespace-nowrap text-gray-500 text-sm">
                                         {new Date(order.orderDate).toLocaleDateString('fa-IR')}
                                         <div className="font-mono text-xs text-gray-400">{formatGregorianForDisplay(order.orderDate)}</div>
                                     </td>
-                                    <td className="p-4 font-semibold">{Math.round(Math.abs(order.totalAmount)).toLocaleString()}</td>
-                                    <td className={`p-4 font-semibold ${profit < 0 ? 'text-red-600' : 'text-gray-700'}`}>{Math.round(profit).toLocaleString()}</td>
-                                    <td className="p-4"><span className={`px-2 py-1 text-xs font-bold rounded-full ${paymentStatusStyle.bg} ${paymentStatusStyle.text}`}>{order.paymentStatus}</span></td>
-                                    <td className="p-4"><span className={`px-2 py-1 text-xs font-bold rounded-full ${orderStatusStyle.bg} ${orderStatusStyle.text}`}>{order.status}</span></td>
-                                    <td className="p-4"><div className="flex gap-2">
-                                        <button onClick={() => handleOpenPrintModal(order)} title="چاپ"><PrintIcon /></button>
-                                        {permissions.canEditSale && <button onClick={() => handleOpenEditModal(order)} title="ویرایش"><EditIcon /></button>}
-                                        {permissions.canDeleteSale && <button onClick={() => onDelete(order.id)} title="حذف"><TrashIcon className="w-5 h-5 text-red-500" /></button>}
-                                        {permissions.canCreateSale && order.type === 'sale' && <button onClick={() => handleOpenReturnModal(order)} title="ثبت مستردی"><ReturnIcon /></button>}
-                                    </div></td>
+                                    <td className={`p-2 md:p-4 font-semibold ${isReturn ? 'text-red-600' : 'text-gray-800'}`}>{order.totalAmount.toLocaleString()}</td>
+                                    <td className={`p-2 md:p-4 font-semibold ${remaining > 0 ? 'text-red-600' : 'text-gray-800'}`}>{remaining.toLocaleString()}</td>
+                                    <td className="p-2 md:p-4"><span className={`px-2 py-1 text-xs font-bold rounded-full ${paymentStatusStyle.bg} ${paymentStatusStyle.text}`}>{order.paymentStatus}</span></td>
+                                    <td className="p-2 md:p-4"><span className={`px-2 py-1 text-xs font-bold rounded-full ${orderStatusStyle.bg} ${orderStatusStyle.text}`}>{order.status}</span></td>
+                                    <td className="p-2 md:p-4">
+                                        <div className="flex items-center space-x-2 space-x-reverse">
+                                            <button onClick={() => handlePrintOrder(order)} title="چاپ" className="text-blue-600 hover:text-blue-800 p-1"><PrintIcon /></button>
+                                            {permissions.canEditSale && !isReturn && <button onClick={() => handleOpenEditModal(order)} title="ویرایش" className="text-blue-500 hover:text-blue-700 p-1"><EditIcon /></button>}
+                                            {permissions.canDeleteSale && <button onClick={() => onDelete(order.id)} title="حذف" className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-5 h-5"/></button>}
+                                            {!isReturn && <button onClick={() => handleOpenReturnModal(order)} title="مستردی/برگشت" className="text-yellow-600 hover:text-yellow-800 p-1"><ReturnIcon /></button>}
+                                        </div>
+                                    </td>
                                 </tr>
                             )})}
                         </tbody>
                     </table>
-                 </div>
+                </div>
             </div>
         </div>
     );

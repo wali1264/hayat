@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Drug, Batch, formatQuantity } from './Inventory';
 import { Supplier } from './Suppliers';
 import { User } from './Settings';
@@ -141,9 +141,12 @@ type PurchaseModalProps = {
     mode: 'purchase' | 'return' | 'edit';
     initialData: PurchaseBill | null;
     onOpenQuickAddModal: () => void;
+    // FIX: Add props for voice assistant UI actions
+    uiActionQueue: any[];
+    consumeUiAction: (actionId: number) => void;
 };
 
-const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, suppliers, drugs, addToast, mode, initialData, onOpenQuickAddModal }) => {
+const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, suppliers, drugs, addToast, mode, initialData, onOpenQuickAddModal, uiActionQueue, consumeUiAction }) => {
     const [billInfo, setBillInfo] = useState({
         supplierName: '', billNumber: '', purchaseDate: new Date().toISOString().split('T')[0], amountPaid: '', status: 'دریافت شده' as PurchaseStatus, currency: 'AFN' as PurchaseBill['currency'], exchangeRate: 1
     });
@@ -208,6 +211,78 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
             itemsContainerRef.current.scrollTop = itemsContainerRef.current.scrollHeight;
         }
     }, [items]);
+
+    // FIX: Wrap handleSubmit in useCallback and add voice assistant useEffect
+    const handleSubmit = useCallback(() => {
+        if (!billInfo.supplierName || !billInfo.billNumber || items.length === 0) {
+            addToast("لطفاً تامین کننده، شماره فاکتور و حداقل یک قلم دارو را وارد کنید.", 'error');
+            return;
+        }
+        
+        const finalAmount = mode === 'return' ? -totalAmount : totalAmount;
+        const finalPaid = mode === 'return' ? -Number(billInfo.amountPaid) : Number(billInfo.amountPaid);
+
+        const billToSave: PurchaseBill = {
+            id: (isEditMode || mode === 'return') ? initialData!.id : Date.now(),
+            ...billInfo,
+            type: mode === 'return' ? 'purchase_return' : 'purchase',
+            amountPaid: finalPaid || 0,
+            items,
+            totalAmount: finalAmount,
+            exchangeRate: Number(billInfo.exchangeRate) || 1
+        };
+        onSave(billToSave);
+        onClose();
+    }, [billInfo, items, totalAmount, mode, isEditMode, initialData, onSave, onClose, addToast]);
+
+    useEffect(() => {
+        if (!isOpen || uiActionQueue.length === 0) return;
+
+        const action = uiActionQueue[0];
+
+        switch(action.type) {
+            case 'SET_PURCHASE_SUPPLIER':
+                const { supplierName, billNumber } = action.payload;
+                setBillInfo(prev => ({ ...prev, supplierName, billNumber: billNumber || prev.billNumber }));
+                break;
+            
+            case 'ADD_PURCHASE_ITEM':
+                const { drugName, lotNumber, expiryDate, quantity, bonus, price } = action.payload;
+                const drugToAdd = drugs.find(d => d.name.toLowerCase().includes(drugName.toLowerCase()));
+
+                if (drugToAdd) {
+                    const expiryParts = expiryDate.split('/');
+                    if (expiryParts.length !== 2 || expiryParts[0].length < 1 || expiryParts[0].length > 2 || expiryParts[1].length !== 4) {
+                        addToast(`فرمت تاریخ انقضا نامعتبر است. باید ماه/سال (مثال: 12/2028) باشد.`, 'error');
+                        break;
+                    }
+                    const [month, year] = expiryParts;
+                    const lastDayOfMonth = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
+                    const isoExpiryDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+                    
+                    const newItem: PurchaseItem = {
+                        drugId: drugToAdd.id,
+                        drugName: drugToAdd.name,
+                        quantity: Number(quantity),
+                        bonusQuantity: Number(bonus) || 0,
+                        discountPercentage: 0,
+                        purchasePrice: Number(price),
+                        lotNumber: lotNumber,
+                        expiryDate: isoExpiryDate,
+                    };
+                    setItems(prev => [...prev, newItem]);
+                }
+                break;
+
+            case 'SAVE_PURCHASE_BILL':
+                handleSubmit();
+                break;
+        }
+
+        consumeUiAction(action.id);
+
+    }, [uiActionQueue, isOpen, addToast, consumeUiAction, drugs, handleSubmit, setItems, setBillInfo]);
+
 
     if (!isOpen) return null;
 
@@ -298,27 +373,6 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ isOpen, onClose, onSave, 
         setItems(prev => prev.filter(item => !(item.drugId === drugId && item.lotNumber === lotNumber)));
     };
 
-    const handleSubmit = () => {
-        if (!billInfo.supplierName || !billInfo.billNumber || items.length === 0) {
-            addToast("لطفاً تامین کننده، شماره فاکتور و حداقل یک قلم دارو را وارد کنید.", 'error');
-            return;
-        }
-        
-        const finalAmount = mode === 'return' ? -totalAmount : totalAmount;
-        const finalPaid = mode === 'return' ? -Number(billInfo.amountPaid) : Number(billInfo.amountPaid);
-
-        const billToSave: PurchaseBill = {
-            id: (isEditMode || mode === 'return') ? initialData!.id : Date.now(),
-            ...billInfo,
-            type: mode === 'return' ? 'purchase_return' : 'purchase',
-            amountPaid: finalPaid || 0,
-            items,
-            totalAmount: finalAmount,
-            exchangeRate: Number(billInfo.exchangeRate) || 1
-        };
-        onSave(billToSave);
-        onClose();
-    };
     
     const inputStyles = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500";
     const labelStyles = "block text-gray-700 text-sm font-bold mb-2";
@@ -481,10 +535,13 @@ type PurchasingProps = {
     currentUser: User;
     addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     onOpenQuickAddModal: () => void;
+    // FIX: Add props for voice assistant UI actions
+    uiActionQueue: any[];
+    consumeUiAction: (actionId: number) => void;
 };
 
 
-const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs, onSave, onDelete, currentUser, addToast, onOpenQuickAddModal }) => {
+const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs, onSave, onDelete, currentUser, addToast, onOpenQuickAddModal, uiActionQueue, consumeUiAction }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState<'purchase' | 'return' | 'edit'>('purchase');
     const [initialModalData, setInitialModalData] = useState<PurchaseBill | null>(null);
@@ -493,11 +550,20 @@ const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs
 
     const canManage = useMemo(() => currentUser.role === 'مدیر کل' || currentUser.role === 'انباردار', [currentUser.role]);
 
-    const handleOpenAddModal = () => {
+    // FIX: Add logic to handle opening the modal via voice command
+    const handleOpenAddModal = useCallback(() => {
         setInitialModalData(null);
         setModalMode('purchase');
         setIsModalOpen(true);
-    };
+    }, []);
+
+    useEffect(() => {
+        const startBillAction = uiActionQueue.find(a => a.type === 'START_NEW_PURCHASE_BILL');
+        if (startBillAction) {
+            handleOpenAddModal();
+            consumeUiAction(startBillAction.id);
+        }
+    }, [uiActionQueue, consumeUiAction, handleOpenAddModal]);
 
     const handleOpenEditModal = (bill: PurchaseBill) => {
         setInitialModalData(bill);
@@ -520,6 +586,9 @@ const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs
             .sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime());
     }, [purchaseBills, searchTerm]);
     
+    // FIX: Filter out the action handled by this component so it's not passed to the modal
+    const modalActions = uiActionQueue.filter(a => a.type !== 'START_NEW_PURCHASE_BILL');
+
     return (
         <div className="p-8">
             {canManage && <PurchaseModal 
@@ -532,6 +601,8 @@ const Purchasing: React.FC<PurchasingProps> = ({ purchaseBills, suppliers, drugs
                 mode={modalMode}
                 initialData={initialModalData}
                 onOpenQuickAddModal={onOpenQuickAddModal}
+                uiActionQueue={modalActions}
+                consumeUiAction={consumeUiAction}
             />}
             <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
                  <div>
