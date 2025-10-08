@@ -21,6 +21,8 @@ import Checkneh, { ChecknehInvoice } from './Checkneh';
 import Alerts, { AlertSettings } from './Alerts';
 import MainWarehouse from './MainWarehouse';
 import Login from './Login';
+import { allFunctionDeclarations } from './voiceAssistant.declarations';
+import { handlerMap } from './voiceAssistant.handlers';
 
 
 //=========== SUPABASE CLIENT ===========//
@@ -373,7 +375,7 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, isActive, onClick, badge
     </li>
 );
 
-const navItems = [
+export const navItems = [
     { id: 'dashboard', label: 'داشبورد', icon: <DashboardIcon /> },
     { id: 'main_warehouse', label: 'انبار اصلی', icon: <MainWarehouseIcon /> },
     { id: 'inventory', label: 'انبار فروش', icon: <InventoryIcon /> },
@@ -624,260 +626,6 @@ async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: 
   return buffer;
 }
 
-// --- Function Declarations for Gemini ---
-// FIX: Use FunctionDeclaration type and Type enum for Gemini function calling.
-const navigateToDeclaration: FunctionDeclaration = {
-  name: 'navigateTo',
-  parameters: {
-    type: Type.OBJECT,
-    description: 'کاربر را به بخش مشخصی از اپلیکیشن هدایت می‌کند.',
-    properties: {
-      page: {
-        type: Type.STRING,
-        description: 'صفحه مقصد.',
-        enum: navItems.map(item => item.id),
-      },
-    },
-    required: ['page'],
-  },
-};
-
-// FIX: Use FunctionDeclaration type and Type enum for Gemini function calling.
-const startNewSaleDeclaration: FunctionDeclaration = {
-  name: 'startNewSale',
-  parameters: {
-    type: Type.OBJECT,
-    description: 'یک فرآیند جدید برای ثبت سفارش فروش را آغاز می‌کند و پنجره مربوطه را باز می‌کند.',
-    properties: {},
-  },
-};
-
-// FIX: Use FunctionDeclaration type and Type enum for Gemini function calling.
-const setSaleCustomerDeclaration: FunctionDeclaration = {
-  name: 'setSaleCustomer',
-  parameters: {
-    type: Type.OBJECT,
-    description: 'مشتری را برای سفارش فروش در حال ثبت، تنظیم می‌کند. این تابع هم برای مشتریان ثبت شده و هم مشتریان جدید کاربرد دارد.',
-    properties: {
-      customerName: {
-        type: Type.STRING,
-        description: 'نام کامل مشتری.',
-      },
-    },
-    required: ['customerName'],
-  },
-};
-
-// FIX: Use FunctionDeclaration type and Type enum for Gemini function calling.
-const addOrderItemDeclaration: FunctionDeclaration = {
-  name: 'addOrderItem',
-  parameters: {
-    type: Type.OBJECT,
-    description: 'یک یا چند قلم دارو را به سفارش فروش فعلی اضافه می‌کند. میتواند شامل جزئیات قیمت، تخفیف و بونس باشد.',
-    properties: {
-      drugName: {
-        type: Type.STRING,
-        description: 'نام دارو به فارسی یا انگلیسی، حتی به صورت ناقص.',
-      },
-      quantity: {
-        type: Type.NUMBER,
-        description: 'تعداد دارو برای افزودن.',
-      },
-      bonus: {
-        type: Type.NUMBER,
-        description: 'تعداد بونس (اختیاری).',
-      },
-      price: {
-        type: Type.NUMBER,
-        description: 'قیمت فروش نهایی برای هر واحد از دارو (اختیاری).',
-      },
-      discount: {
-        type: Type.NUMBER,
-        description: 'درصد تخفیف برای اعمال روی دارو (اختیاری).',
-      },
-    },
-    required: ['drugName', 'quantity'],
-  },
-};
-
-const setPaymentAmountDeclaration: FunctionDeclaration = {
-    name: 'setPaymentAmount',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'مبلغ پرداخت شده برای سفارش فعلی را ثبت می‌کند.',
-        properties: {
-            amount: { type: Type.NUMBER, description: 'مبلغ پرداخت شده.' },
-        },
-        required: ['amount'],
-    },
-};
-
-const saveOrderDeclaration: FunctionDeclaration = {
-    name: 'saveOrder',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'سفارش فروش فعلی را ذخیره و نهایی می‌کند.',
-        properties: {},
-    },
-};
-
-const removeOrderItemDeclaration: FunctionDeclaration = {
-    name: 'removeOrderItem',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'یک قلم دارو را از سفارش فعلی حذف می‌کند.',
-        properties: {
-            drugName: { type: Type.STRING, description: 'نام دارویی که باید حذف شود.' },
-        },
-        required: ['drugName'],
-    },
-};
-
-const editOrderItemQuantityDeclaration: FunctionDeclaration = {
-    name: 'editOrderItemQuantity',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'تعداد یک قلم دارو در سفارش فعلی را ویرایش می‌کند.',
-        properties: {
-            drugName: { type: Type.STRING, description: 'نام دارویی که باید ویرایش شود.' },
-            newQuantity: { type: Type.NUMBER, description: 'تعداد جدید.' },
-        },
-        required: ['drugName', 'newQuantity'],
-    },
-};
-
-const queryStockLevelDeclaration: FunctionDeclaration = {
-    name: 'queryStockLevel',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'موجودی یک داروی خاص در انبار فروش را استعلام می‌کند.',
-        properties: {
-            drugName: { type: Type.STRING, description: 'نام داروی مورد نظر.' },
-        },
-        required: ['drugName'],
-    },
-};
-
-const queryCustomerBalanceDeclaration: FunctionDeclaration = {
-    name: 'queryCustomerBalance',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'مانده حساب یک مشتری خاص را استعلام می‌کند.',
-        properties: {
-            customerName: { type: Type.STRING, description: 'نام مشتری مورد نظر.' },
-        },
-        required: ['customerName'],
-    },
-};
-
-const queryPurchaseHistoryDeclaration: FunctionDeclaration = {
-    name: 'queryPurchaseHistory',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'آخرین قیمت فروش و تخفیف یک داروی خاص به یک مشتری خاص را استعلام می‌کند.',
-        properties: {
-            drugName: { type: Type.STRING, description: 'نام داروی مورد نظر.' },
-            customerName: { type: Type.STRING, description: 'نام مشتری مورد نظر.' },
-        },
-        required: ['drugName', 'customerName'],
-    },
-};
-
-const addExtraChargeDeclaration: FunctionDeclaration = {
-    name: 'addExtraCharge',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'یک هزینه اضافی مانند کرایه حمل را به فاکتور اضافه می‌کند.',
-        properties: {
-            description: { type: Type.STRING, description: 'شرح هزینه.' },
-            amount: { type: Type.NUMBER, description: 'مبلغ هزینه.' },
-        },
-        required: ['description', 'amount'],
-    },
-};
-
-const saveAndPrintOrderDeclaration: FunctionDeclaration = {
-    name: 'saveAndPrintOrder',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'سفارش فروش فعلی را ذخیره کرده و بلافاصله پنجره چاپ را باز می‌کند.',
-        properties: {},
-    },
-};
-
-// --- NEW DECLARATIONS FOR PHASE 8 ---
-const startNewPurchaseBillDeclaration: FunctionDeclaration = {
-    name: 'startNewPurchaseBill',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'یک فرآیند جدید برای ثبت فاکتور خرید را آغاز می‌کند.',
-        properties: {},
-    },
-};
-
-const setPurchaseSupplierDeclaration: FunctionDeclaration = {
-    name: 'setPurchaseSupplier',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'تامین کننده (شرکت) را برای فاکتور خرید فعلی تنظیم می‌کند.',
-        properties: {
-            supplierName: { type: Type.STRING, description: 'نام شرکت تامین کننده.' },
-            billNumber: { type: Type.STRING, description: 'شماره فاکتور خرید (اختیاری).' },
-        },
-        required: ['supplierName'],
-    },
-};
-
-const addPurchaseItemDeclaration: FunctionDeclaration = {
-    name: 'addPurchaseItem',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'یک قلم دارو را به فاکتور خرید فعلی اضافه می‌کند.',
-        properties: {
-            drugName: { type: Type.STRING, description: 'نام دارو.' },
-            lotNumber: { type: Type.STRING, description: 'شماره لات دارو.' },
-            expiryDate: { type: Type.STRING, description: 'تاریخ انقضا به فرمت "ماه/سال" (مثال: "12/2028").' },
-            quantity: { type: Type.NUMBER, description: 'تعداد خریداری شده.' },
-            bonus: { type: Type.NUMBER, description: 'تعداد بونس (اختیاری).' },
-            price: { type: Type.NUMBER, description: 'قیمت خرید هر واحد.' },
-        },
-        required: ['drugName', 'lotNumber', 'expiryDate', 'quantity', 'price'],
-    },
-};
-
-const savePurchaseBillDeclaration: FunctionDeclaration = {
-    name: 'savePurchaseBill',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'فاکتور خرید فعلی را ذخیره می‌کند.',
-        properties: {},
-    },
-};
-
-const createStockRequisitionDeclaration: FunctionDeclaration = {
-    name: 'createStockRequisition',
-    parameters: {
-        type: Type.OBJECT,
-        description: 'یک درخواست کالا از انبار اصلی ایجاد می‌کند.',
-        properties: {
-            items: {
-                type: Type.ARRAY,
-                description: 'لیستی از اقلام درخواستی.',
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        drugName: { type: Type.STRING, description: 'نام دارو.' },
-                        quantity: { type: Type.NUMBER, description: 'تعداد درخواستی.' },
-                    },
-                    required: ['drugName', 'quantity'],
-                },
-            },
-        },
-        required: ['items'],
-    },
-};
-
-
 const VoiceAssistant = ({ onNavigate, currentUser, addToast, activeItem, dispatchUiAction, drugs, customers, customerBalances, orders, onSaveRequisition, alertSettings, mainWarehouseDrugs }: { onNavigate: (page: string) => void; currentUser: User | null; addToast: (msg: string, type: ToastType) => void; activeItem: string; dispatchUiAction: (action: any) => void; drugs: Drug[]; customers: Customer[]; customerBalances: Map<string, number>; orders: Order[], onSaveRequisition: (req: any) => void, alertSettings: AlertSettings, mainWarehouseDrugs: Drug[] }) => {
     const [isAssistantOpen, setIsAssistantOpen] = useState(false);
     const [status, setStatus] = useState<'IDLE' | 'LISTENING' | 'THINKING' | 'SPEAKING'>('IDLE');
@@ -970,49 +718,16 @@ const VoiceAssistant = ({ onNavigate, currentUser, addToast, activeItem, dispatc
         outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
         nextAudioStartTimeRef.current = 0;
 
-        const allFunctionDeclarations = [
-            // Sales
-            navigateToDeclaration, 
-            startNewSaleDeclaration, 
-            setSaleCustomerDeclaration, 
-            addOrderItemDeclaration,
-            setPaymentAmountDeclaration,
-            saveOrderDeclaration,
-            removeOrderItemDeclaration,
-            editOrderItemQuantityDeclaration,
-            addExtraChargeDeclaration,
-            saveAndPrintOrderDeclaration,
-            // Queries
-            queryStockLevelDeclaration,
-            queryCustomerBalanceDeclaration,
-            queryPurchaseHistoryDeclaration,
-            // Purchasing
-            startNewPurchaseBillDeclaration,
-            setPurchaseSupplierDeclaration,
-            addPurchaseItemDeclaration,
-            savePurchaseBillDeclaration,
-            // Inventory
-            createStockRequisitionDeclaration,
-        ];
         
-        const systemInstruction = `شما یک دستیار هوشمند، همدل و بسیار توانمند به نام "حیات" برای یک پلتفرم مدیریت پخش دارو هستید. شما یک "موتور محاوره‌ای تجارت" (Conversational Commerce Engine) هستید.
-        
-هویت و قوانین اصلی شما:
-1.  **واقع‌گرایی:** همیشه قبل از پیشنهاد یا انجام کاری، نتیجه توابع را بررسی کن. اگر تابعی خطا برگرداند (مثلا «دارو یافت نشد»)، کار را متوقف کرده و خطا را به صورت یک پاسخ طبیعی و مفید به کاربر اطلاع بده.
-2.  **درک عمیق زبان:** شما باید زبان‌های فارسی (دری) و انگلیسی را با تمام تنوعات لهجه‌ای آن درک کنید. نام داروها ممکن است به هر دو زبان ثبت شده باشد. شما باید بتوانید نام "Amoxicillin" را با شنیدن «آموکسی سیلین» تطبیق دهید. تابع جستجوی شما هوشمند است و فاصله‌ها را نادیده می‌گیرد.
-3.  **شخصیت انطباق‌پذیر:** لحن شما صمیمی و محترمانه است، اما بر اساس درخواست کاربر (مثلا «شوخی کن» یا «جدی باش») تغییر می‌کند.
-4.  **راهنما و مشاور:** اگر کاربر سوالی کلی پرسید، با صبر توضیح دهید و همیشه پیشنهاد دهید که خودتان کار را برایش انجام دهید.
-5.  **هوشمندی پیشگیرانه (بسیار مهم):**
-    *   **رفع ابهام (Disambiguation):** اگر نتیجه جستجوی یک تابع با "MULTIPLE_MATCHES_FOUND:" شروع شد، این یک خطا نیست. این یعنی شما باید از کاربر بپرسید کدام مورد را انتخاب کند. مثال: اگر نتیجه "MULTIPLE_MATCHES_FOUND: شربت پاراستامول, قرص پاراستامول" بود، شما باید بپرسید: «چندین نوع پاراستامول پیدا کردم. کدام یک را به فاکتور اضافه کنم؟ شربت یا قرص؟».
-    *   **تایید هوشمند:** اگر کاربر نام ناقصی گفت (مثلا «آمکسی») و تابع فقط یک نتیجه برگرداند (مثلا «آیتم «آموکسی سیلین ۵۰۰» اضافه شد.»)، شما قبل از تایید نهایی، از کاربر بپرسید: «آیا منظورتان آموکسی سیلین ۵۰۰ بود؟ آن را به فاکتور اضافه کردم. کار دیگری هست؟»
-    *   **ارائه هشدار:** اگر نتیجه یک تابع حاوی کلمه "هشدار" بود، آن را به عنوان یک نکته مهم و مفید به کاربر اطلاع بده. این یک خطا نیست، بلکه یک کمک است.
-    *   **خلاصه سازی:** قبل از فراخوانی توابع \`saveOrder\` یا \`savePurchaseBill\`، اگر در همان مکالمه چندین قلم اضافه کرده‌اید، یک خلاصه کوتاه (مثلا: «بسیار خب، فاکتور برای آقای ایکس با ۵ قلم و مجموع ۱۲۰۰۰ افغانی. آیا ذخیره شود؟») ارائه دهید و منتظر تایید باشید.
+        const systemInstruction = `دستور اصلی: شما یک دستیار هوشمند برای مدیریت داروخانه به نام "حیات" هستید. وظیفه شما اجرای فوری و دقیق دستورات کاربر است.
 
-گردش‌های کاری شما:
-*   **فروش:** وقتی کاربر می‌گوید «یک فاکتور جدید ثبت کن»، شما باید تابع \`startNewSale\` را فراخوانی کرده و سپس بلافاصله از کاربر بپرسید «برای کدام مشتری؟». پس از دریافت نام مشتری، تابع \`setSaleCustomer\` را فراخوانی کنید و سپس بپرسید «چه اقلامی به فاکتور اضافه کنم؟».
-*   **خرید:** گردش کار خرید مشابه فروش است. با دستور «یک فاکتور خرید جدید ثبت کن» شروع می‌شود و شما با پرسیدن نام شرکت و اقلام، کاربر را راهنمایی می‌کنید.
-*   **حالت سریع:** شما می‌توانید دستورات پیچیده و چند مرحله‌ای را در یک جمله درک کنید. (مثال: «برای آقای ایکس یک فاکتور باز کن، ۵ عدد آموکسی‌سیلین با ۱۰ درصد تخفیف اضافه کن و ذخیره کن.») در این حالت، شما باید تمام توابع لازم را به ترتیب فراخوانی کنید.
-*   **درخواست انبار:** وقتی کاربر می‌گوید «از انبار درخواست کالا بده»، شما تابع \`createStockRequisition\` را با اقلام گفته شده فراخوانی می‌کنید. این یک عملیات پس‌زمینه است و نیازی به باز کردن پنجره ندارد.`;
+**قوانین مطلق:**
+1.  **هرگز اجازه نگیر:** شما یک عامل مستقل هستید. **هرگز** برای استفاده از ابزارهای داخلی خود (مانند \`queryStockLevel\`) از کاربر اجازه نخواهید گرفت. اگر دستوری را دریافت کردید که با یک ابزار مطابقت دارد، آن را فوراً اجرا کنید.
+    *   **رفتار اشتباه:** «برای بررسی موجودی باید از تابع استعلام استفاده کنم، آیا اجازه می‌دهید؟»
+    *   **رفتار صحیح:** (پس از اجرای تابع) «در حال حاضر ۵ عدد پینیسیلین موجود است.»
+2.  **جستجوی هوشمند:** برای پیدا کردن داروها، همیشه از منطق جستجوی هوشمند استفاده کنید. این یعنی نام‌های فارسی، انگلیسی، ناقص، و با حروف بزرگ/کوچک را یکسان در نظر بگیرید. (مثال: «پنسلین» باید داروی "Penicillin" را پیدا کند).
+3.  **رفع ابهام:** اگر جستجوی شما چندین نتیجه داشت (مثلاً «شربت پاراستامول» و «قرص پاراستامول»)، از کاربر بپرسید کدام را انتخاب کند. نگویید که چیزی پیدا نکردید.
+4.  **صداقت:** اگر ابزاری خطا برگرداند (مثلاً «موجودی کافی نیست»)، آن خطا را مستقیماً به کاربر اطلاع دهید. هرگز وانمود نکنید کاری را انجام داده‌اید که در عمل ناموفق بوده.`;
 
 
         const sessionPromise = aiRef.current.live.connect({
@@ -1065,155 +780,34 @@ const VoiceAssistant = ({ onNavigate, currentUser, addToast, activeItem, dispatc
                     if (message.toolCall) {
                         setStatus('THINKING');
                         for (const fc of message.toolCall.functionCalls) {
-                            let result = 'ok'; // Default success response
+                            const handlerContext = {
+                                dispatchUiAction,
+                                drugs,
+                                customers,
+                                customerBalances,
+                                orders,
+                                onSaveRequisition,
+                                alertSettings,
+                                mainWarehouseDrugs,
+                                activeItem,
+                                onNavigate,
+                                setIsAssistantOpen,
+                            };
 
-                            // --- Sales Workflow ---
-                            if (fc.name === 'navigateTo' && fc.args.page) {
-                                onNavigate(fc.args.page as string);
-                                setIsAssistantOpen(false); 
-                            } else if (fc.name === 'startNewSale') {
-                                if (activeItem !== 'sales') onNavigate('sales');
-                                dispatchUiAction({ type: 'START_NEW_SALE' });
-                            } else if (fc.name === 'setSaleCustomer' && fc.args.customerName) {
-                                const customerExists = customers.some(c => c.name.toLowerCase() === fc.args.customerName.toLowerCase());
-                                if (customerExists) {
-                                    dispatchUiAction({ type: 'SET_CUSTOMER', payload: { customerName: fc.args.customerName } });
-                                    result = `مشتری ثبت شده «${fc.args.customerName}» انتخاب شد.`;
-                                } else {
-                                    dispatchUiAction({ type: 'SET_TEMPORARY_CUSTOMER', payload: { customerName: fc.args.customerName } });
-                                    result = `مشتری «${fc.args.customerName}» در لیست نبود، اما به صورت موقت برای این فاکتور ثبت شد.`;
-                                }
-                            } else if (fc.name === 'addOrderItem' && fc.args.drugName && fc.args.quantity) {
-                                const searchTerm = fc.args.drugName.toLowerCase().trim().replace(/\s+/g, '');
-                                if (searchTerm) {
-                                    const matchingDrugs = drugs.filter(d => {
-                                        const normalizedDrugName = d.name.toLowerCase().trim().replace(/\s+/g, '');
-                                        return normalizedDrugName.includes(searchTerm);
-                                    });
+                            const handler = handlerMap[fc.name];
+                            let result = 'ok';
 
-                                    if (matchingDrugs.length > 1) {
-                                        result = `MULTIPLE_MATCHES_FOUND: ${matchingDrugs.map(d => d.name).join(', ')}`;
-                                    } else if (matchingDrugs.length === 0) {
-                                        result = `داروی «${fc.args.drugName}» در انبار موجود نیست.`;
-                                    } else {
-                                        const drug = matchingDrugs[0];
-                                        const totalStock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
-                                        const quantityNeeded = (fc.args.quantity || 0) + (fc.args.bonus || 0);
-                                        if (totalStock < quantityNeeded) {
-                                            result = `موجودی «${drug.name}» (${totalStock}) برای فروش (${quantityNeeded}) کافی نیست.`;
-                                        } else {
-                                            dispatchUiAction({ type: 'ADD_ORDER_ITEM', payload: { ...fc.args, drugName: drug.name } }); // Use exact name
-                                            result = `آیتم «${drug.name}» اضافه شد.`;
-
-                                            // Proactive alerts
-                                            if (alertSettings.lowStock.enabled && (totalStock - quantityNeeded) < alertSettings.lowStock.quantity) {
-                                                result += ` هشدار: موجودی این کالا به کمتر از ${alertSettings.lowStock.quantity} عدد رسید.`;
-                                            }
-                                            const expiryLimitDate = new Date();
-                                            expiryLimitDate.setMonth(expiryLimitDate.getMonth() + alertSettings.expiry.months);
-                                            const hasNearExpiryBatch = drug.batches.some(b => b.quantity > 0 && new Date(b.expiryDate) < expiryLimitDate);
-                                            if (alertSettings.expiry.enabled && hasNearExpiryBatch) {
-                                                result += ` هشدار: این کالا دارای بچ نزدیک به انقضا است.`;
-                                            }
-                                        }
-                                    }
-                                } else {
-                                     result = `نام داروی معتبری برای جستجو ارائه نشده است.`;
-                                }
-                            } else if (fc.name === 'setPaymentAmount' && fc.args.amount !== undefined) {
-                                dispatchUiAction({ type: 'SET_PAYMENT_AMOUNT', payload: { amount: fc.args.amount } });
-                            } else if (fc.name === 'saveOrder') {
-                                dispatchUiAction({ type: 'SAVE_ORDER' });
-                            } else if (fc.name === 'saveAndPrintOrder') {
-                                dispatchUiAction({ type: 'SAVE_AND_PRINT_ORDER' });
-                            } else if (fc.name === 'addExtraCharge' && fc.args.description && fc.args.amount) {
-                                dispatchUiAction({ type: 'ADD_EXTRA_CHARGE', payload: { ...fc.args } });
-                            } else if (fc.name === 'removeOrderItem' && fc.args.drugName) {
-                                dispatchUiAction({ type: 'REMOVE_ORDER_ITEM', payload: { drugName: fc.args.drugName } });
-                            } else if (fc.name === 'editOrderItemQuantity' && fc.args.drugName && fc.args.newQuantity) {
-                                dispatchUiAction({ type: 'EDIT_ORDER_ITEM_QUANTITY', payload: { drugName: fc.args.drugName, newQuantity: fc.args.newQuantity } });
-                            
-                            // --- Purchasing Workflow ---
-                            } else if (fc.name === 'startNewPurchaseBill') {
-                                if (activeItem !== 'purchasing') onNavigate('purchasing');
-                                dispatchUiAction({ type: 'START_NEW_PURCHASE_BILL' });
-                            } else if (fc.name === 'setPurchaseSupplier' && fc.args.supplierName) {
-                                dispatchUiAction({ type: 'SET_PURCHASE_SUPPLIER', payload: { ...fc.args } });
-                            } else if (fc.name === 'addPurchaseItem' && fc.args.drugName) {
-                                const drugExists = [...drugs, ...mainWarehouseDrugs].some(d => d.name.toLowerCase().includes(fc.args.drugName.toLowerCase()));
-                                if (!drugExists) {
-                                    result = `داروی «${fc.args.drugName}» در سیستم تعریف نشده است.`;
-                                } else {
-                                    dispatchUiAction({ type: 'ADD_PURCHASE_ITEM', payload: { ...fc.args } });
-                                }
-                            } else if (fc.name === 'savePurchaseBill') {
-                                dispatchUiAction({ type: 'SAVE_PURCHASE_BILL' });
-
-                            // --- Inventory Workflow ---
-                            } else if (fc.name === 'createStockRequisition' && fc.args.items) {
-                                const requisitionItems: StockRequisitionItem[] = [];
-                                let allItemsFound = true;
-                                for (const item of fc.args.items) {
-                                    const searchTerm = item.drugName.toLowerCase().trim().replace(/\s+/g, '');
-                                    const drug = mainWarehouseDrugs.find(d => d.name.toLowerCase().replace(/\s+/g, '').includes(searchTerm));
-                                    if (drug) {
-                                        requisitionItems.push({ drugId: drug.id, drugName: drug.name, quantityRequested: item.quantity, quantityFulfilled: 0 });
-                                    } else {
-                                        result = `داروی «${item.drugName}» در انبار اصلی یافت نشد.`;
-                                        allItemsFound = false;
-                                        break;
-                                    }
-                                }
-                                if (allItemsFound) {
-                                    onSaveRequisition({ items: requisitionItems, notes: 'ایجاد شده توسط دستیار صوتی' });
-                                    result = `درخواست کالا با ${requisitionItems.length} قلم با موفقیت ثبت شد.`;
-                                }
-                            
-                            // --- Query Workflow ---
-                            } else if (fc.name === 'queryStockLevel' && fc.args.drugName) {
-                                const searchTerm = fc.args.drugName.toLowerCase().trim().replace(/\s+/g, '');
-                                const drug = drugs.find(d => d.name.toLowerCase().replace(/\s+/g, '').includes(searchTerm));
-                                if (drug) {
-                                    const stock = drug.batches.reduce((sum, b) => sum + b.quantity, 0);
-                                    result = `در حال حاضر ${stock} عدد از این دارو در انبار فروش موجود است.`;
-                                } else {
-                                    result = 'متاسفانه این دارو در انبار فروش یافت نشد.';
-                                }
-                            } else if (fc.name === 'queryCustomerBalance' && fc.args.customerName) {
-                                const customer = customers.find(c => c.name.toLowerCase().includes(fc.args.customerName.toLowerCase()));
-                                if (customer) {
-                                    const balance = customerBalances.get(customer.name);
-                                    if (balance !== undefined) {
-                                        if (balance > 0) result = `مشتری ${customer.name} در حال حاضر ${Math.round(balance).toLocaleString()} افغانی بدهکار است.`;
-                                        else if (balance < 0) result = `مشتری ${customer.name} در حال حاضر ${Math.round(Math.abs(balance)).toLocaleString()} افغانی بستانکار است.`;
-                                        else result = `حساب مشتری ${customer.name} تسویه شده است.`;
-                                    } else {
-                                         result = `برای مشتری ${customer.name} هیچ حساب مالی ثبت نشده است.`;
-                                    }
-                                } else {
-                                    result = 'مشتری با این نام یافت نشد.';
-                                }
-                            } else if (fc.name === 'queryPurchaseHistory' && fc.args.drugName && fc.args.customerName) {
-                                const customerOrders = orders
-                                    .filter(o => o.customerName.toLowerCase().includes(fc.args.customerName.toLowerCase()))
-                                    .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
-                                let lastPurchase: OrderItem | null = null;
-                                for (const order of customerOrders) {
-                                    const searchTerm = fc.args.drugName.toLowerCase().trim().replace(/\s+/g, '');
-                                    const foundItem = order.items.find(i => i.drugName.toLowerCase().replace(/\s+/g, '').includes(searchTerm));
-                                    if (foundItem) {
-                                        lastPurchase = foundItem;
-                                        break;
-                                    }
-                                }
-                                if (lastPurchase) {
-                                    result = `آخرین بار این دارو با قیمت نهایی ${Math.round(lastPurchase.finalPrice)} و تخفیف ${lastPurchase.discountPercentage}% فروخته شده است.`;
-                                } else {
-                                    result = 'سابقه خریدی برای این دارو از این مشتری یافت نشد.';
+                            if (handler) {
+                                try {
+                                    result = handler(fc.args, handlerContext);
+                                } catch (error) {
+                                    console.error(`Error executing handler for ${fc.name}:`, error);
+                                    result = `خطایی در اجرای دستور «${fc.name}» رخ داد.`;
                                 }
                             } else {
-                                result = `Unknown function call: ${fc.name}`;
+                                result = `دستور صوتی «${fc.name}» پشتیبانی نمی‌شود.`;
                             }
+                            
                             // After executing, send a response back to the model.
                             sessionPromiseRef.current?.then(session => session.sendToolResponse({
                                 functionResponses: { id : fc.id, name: fc.name, response: { result } }
