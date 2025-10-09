@@ -655,21 +655,39 @@ const VoiceAssistant = ({ onNavigate, currentUser, addToast, activeItem, dispatc
         if (status === 'IDLE' && !sessionPromiseRef.current) return;
         setStatus('IDLE');
 
-        // Close session
+        // 1. HARDWARE STOP: Immediately stop all microphone tracks.
+        // This is the absolute first step. It ensures no new audio data can be captured from the hardware.
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+
+        // 2. PROCESSING STOP: Disconnect the script processor node.
+        // This stops the `onaudioprocess` event from firing, preventing any queued audio buffers
+        // from attempting to be sent.
+        if (scriptProcessorRef.current) {
+            try { scriptProcessorRef.current.disconnect(); } catch (e) { /* Ignore errors on disconnect */ }
+            scriptProcessorRef.current = null;
+        }
+        
+        // 3. OUTPUT STOP: Stop any assistant audio that is currently playing.
+        audioSourcesRef.current.forEach(source => {
+            try { source.stop(); } catch (e) { /* Ignore errors if already stopped */ }
+        });
+        audioSourcesRef.current.clear();
+        nextAudioStartTimeRef.current = 0;
+
+        // 4. CONNECTION CLOSE: Now that all audio I/O is stopped, it is safe to close the WebSocket session.
         if (sessionPromiseRef.current) {
             sessionPromiseRef.current.then(session => {
-                if (session && typeof session.close === 'function') session.close();
+                if (session && typeof session.close === 'function') {
+                    session.close();
+                }
             }).catch(e => console.warn("Error during session close:", e));
             sessionPromiseRef.current = null;
         }
         
-        // Disconnect audio nodes
-        if (scriptProcessorRef.current) {
-            try { scriptProcessorRef.current.disconnect(); } catch (e) {}
-            scriptProcessorRef.current = null;
-        }
-
-        // Close contexts safely
+        // 5. RESOURCE RELEASE: Finally, close the audio contexts to release system resources.
         if (inputAudioContextRef.current && inputAudioContextRef.current.state !== 'closed') {
             inputAudioContextRef.current.close().catch(e => console.warn("Input context close error:", e));
         }
@@ -679,17 +697,6 @@ const VoiceAssistant = ({ onNavigate, currentUser, addToast, activeItem, dispatc
             outputAudioContextRef.current.close().catch(e => console.warn("Output context close error:", e));
         }
         outputAudioContextRef.current = null;
-        
-        // Stop media stream tracks
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
-        }
-
-        // Reset audio playback state
-        audioSourcesRef.current.forEach(source => { try { source.stop(); } catch(e) {} });
-        audioSourcesRef.current.clear();
-        nextAudioStartTimeRef.current = 0;
     };
     
     useEffect(() => {
@@ -722,7 +729,7 @@ const VoiceAssistant = ({ onNavigate, currentUser, addToast, activeItem, dispatc
         const systemInstruction = `دستور اصلی: شما یک دستیار هوشمند برای مدیریت داروخانه به نام "حیات" هستید. وظیفه شما اجرای فوری و دقیق دستورات کاربر است.
 
 **قوانین مطلق:**
-1.  **هرگز اجازه نگیر:** شما یک عامل مستقل هستید. **هرگز** برای استفاده از ابزارهای داخلی خود (مانند \`queryStockLevel\`) از کاربر اجازه نخواهید گرفت. اگر دستوری را دریافت کردید که با یک ابزار مطابقت دارد، آن را فوراً اجرا کنید.
+1.  **هرگز اجازه نگیر:** شما یک عامل مستقل هستید. **هرگز** برای استفاده از ابزارهای داخلی خود (مانند \`queryStockLevel\`) از کاربر نخواهید گرفت. اگر دستوری را دریافت کردید که با یک ابزار مطابقت دارد، آن را فوراً اجرا کنید.
     *   **رفتار اشتباه:** «برای بررسی موجودی باید از تابع استعلام استفاده کنم، آیا اجازه می‌دهید؟»
     *   **رفتار صحیح:** (پس از اجرای تابع) «در حال حاضر ۵ عدد پینیسیلین موجود است.»
 2.  **جستجوی هوشمند:** برای پیدا کردن داروها، همیشه از منطق جستجوی هوشمند استفاده کنید. این یعنی نام‌های فارسی، انگلیسی، ناقص، و با حروف بزرگ/کوچک را یکسان در نظر بگیرید. (مثال: «پنسلین» باید داروی "Penicillin" را پیدا کند).
